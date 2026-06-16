@@ -15,6 +15,7 @@ namespace UCG
         [Header("Optional Scene References")]
         public Canvas canvas;
         public RectTransform cardHolder;
+        public RectTransform playerPlayArea;
 
         [Header("Optional Demo Sprites")]
         public Sprite[] testCardSprites = new Sprite[DemoCardCount];
@@ -39,6 +40,7 @@ namespace UCG
         {
             EnsureEventSystem();
             EnsureCanvas();
+            EnsurePlayerPlayArea();
             EnsureCardHolder();
             BuildDemoHand();
         }
@@ -68,6 +70,42 @@ namespace UCG
                     canvas.gameObject.AddComponent<GraphicRaycaster>();
                 }
             }
+        }
+
+        void EnsurePlayerPlayArea()
+        {
+            if (playerPlayArea == null)
+            {
+                Transform existingPlayArea = canvas.transform.Find("Player Play Area");
+                if (existingPlayArea != null)
+                {
+                    playerPlayArea = existingPlayArea as RectTransform;
+                }
+            }
+
+            if (playerPlayArea == null)
+            {
+                var playAreaObject = new GameObject("Player Play Area", typeof(RectTransform), typeof(Image));
+                playAreaObject.transform.SetParent(canvas.transform, false);
+                playerPlayArea = playAreaObject.GetComponent<RectTransform>();
+            }
+
+            playerPlayArea.anchorMin = new Vector2(0.5f, 0f);
+            playerPlayArea.anchorMax = new Vector2(0.5f, 0f);
+            playerPlayArea.pivot = new Vector2(0.5f, 0.5f);
+            playerPlayArea.anchoredPosition = new Vector2(0f, 520f);
+            playerPlayArea.sizeDelta = new Vector2(300f, 390f);
+
+            var image = playerPlayArea.GetComponent<Image>();
+            if (image == null) image = playerPlayArea.gameObject.AddComponent<Image>();
+            image.raycastTarget = true;
+            image.color = new Color(0.08f, 0.16f, 0.22f, 0.35f);
+
+            var playArea = playerPlayArea.GetComponent<UcgPlayArea>();
+            if (playArea == null) playArea = playerPlayArea.gameObject.AddComponent<UcgPlayArea>();
+            playArea.cardSlot = playerPlayArea;
+            playArea.highlightImage = image;
+            playArea.placedCardSize = cardSize;
         }
 
         void EnsureCardHolder()
