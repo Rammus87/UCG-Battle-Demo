@@ -340,9 +340,66 @@ Transform:
   m_Children: []
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!1 &896090841
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 896090843}
+  - component: {fileID: 896090842}
+  m_Layer: 0
+  m_Name: UCGHandDemo
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!114 &896090842
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 896090841}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: be0d73dbe2cc44b55be74da3adf808ab, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::UCG.UcgHandDemo
+  canvas: {fileID: 0}
+  cardHolder: {fileID: 0}
+  testCardSprites:
+  - {fileID: 21300000, guid: 9e8c39aeb9e3948778861842a4f23488, type: 3}
+  - {fileID: 21300000, guid: e13899642c23c4688952cf165d1365ca, type: 3}
+  - {fileID: 21300000, guid: 630315ad78e7547bab3074fe817b0938, type: 3}
+  - {fileID: 21300000, guid: 5d6d4590d0d4645fabca6bb8a4a67249, type: 3}
+  - {fileID: 21300000, guid: f3b79c700f3db4b53830599420b8e8ec, type: 3}
+  - {fileID: 21300000, guid: 4f528071ec8e641f18e00c6c8871d511, type: 3}
+  cardSize: {x: 204, y: 296}
+  holderHeight: 320
+  minimumHolderWidth: 1280
+--- !u!4 &896090843
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 896090841}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1660057539 &9223372036854775807
 SceneRoots:
   m_ObjectHideFlags: 0
   m_Roots:
   - {fileID: 519420032}
   - {fileID: 619394802}
+  - {fileID: 896090843}
