@@ -21,9 +21,11 @@ namespace UCG
         public Sprite[] testCardSprites = new Sprite[DemoCardCount];
 
         [Header("Layout")]
-        public Vector2 cardSize = new Vector2(204f, 296f);
-        public float holderHeight = 320f;
-        public float minimumHolderWidth = 1280f;
+        public Vector2 cardSize = new Vector2(190f, 276f);
+        public float holderHeight = 430f;
+        public float bottomSafePadding = 64f;
+        public float horizontalSafePadding = 48f;
+        public float minimumHolderWidth = 984f;
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
         static void BootstrapBattleDemo()
@@ -57,11 +59,6 @@ namespace UCG
                 var canvasObject = new GameObject("Canvas", typeof(RectTransform), typeof(Canvas), typeof(CanvasScaler), typeof(GraphicRaycaster));
                 canvas = canvasObject.GetComponent<Canvas>();
                 canvas.renderMode = RenderMode.ScreenSpaceOverlay;
-
-                var scaler = canvasObject.GetComponent<CanvasScaler>();
-                scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
-                scaler.referenceResolution = new Vector2(1920f, 1080f);
-                scaler.matchWidthOrHeight = 0.5f;
             }
             else
             {
@@ -70,6 +67,19 @@ namespace UCG
                     canvas.gameObject.AddComponent<GraphicRaycaster>();
                 }
             }
+
+            ConfigureCanvasScaler(canvas.gameObject);
+        }
+
+        void ConfigureCanvasScaler(GameObject canvasObject)
+        {
+            var scaler = canvasObject.GetComponent<CanvasScaler>();
+            if (scaler == null) scaler = canvasObject.AddComponent<CanvasScaler>();
+
+            scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
+            scaler.referenceResolution = new Vector2(1080f, 1920f);
+            scaler.screenMatchMode = CanvasScaler.ScreenMatchMode.MatchWidthOrHeight;
+            scaler.matchWidthOrHeight = 0.5f;
         }
 
         void EnsurePlayerPlayArea()
@@ -93,8 +103,8 @@ namespace UCG
             playerPlayArea.anchorMin = new Vector2(0.5f, 0f);
             playerPlayArea.anchorMax = new Vector2(0.5f, 0f);
             playerPlayArea.pivot = new Vector2(0.5f, 0.5f);
-            playerPlayArea.anchoredPosition = new Vector2(0f, 520f);
-            playerPlayArea.sizeDelta = new Vector2(300f, 390f);
+            playerPlayArea.anchoredPosition = new Vector2(0f, 820f);
+            playerPlayArea.sizeDelta = new Vector2(340f, 430f);
 
             var image = playerPlayArea.GetComponent<Image>();
             if (image == null) image = playerPlayArea.gameObject.AddComponent<Image>();
@@ -106,6 +116,50 @@ namespace UCG
             playArea.cardSlot = playerPlayArea;
             playArea.highlightImage = image;
             playArea.placedCardSize = cardSize;
+
+            EnsurePlayAreaLabel(playerPlayArea);
+        }
+
+        void EnsurePlayAreaLabel(RectTransform parent)
+        {
+            const string labelName = "PlayAreaHint";
+            Transform existingLabel = parent.Find(labelName);
+            RectTransform labelRect;
+            Text label;
+
+            if (existingLabel == null)
+            {
+                var labelObject = new GameObject(labelName, typeof(RectTransform), typeof(Text));
+                labelObject.transform.SetParent(parent, false);
+                labelRect = labelObject.GetComponent<RectTransform>();
+                label = labelObject.GetComponent<Text>();
+            }
+            else
+            {
+                labelRect = existingLabel as RectTransform;
+                label = existingLabel.GetComponent<Text>();
+                if (label == null) label = existingLabel.gameObject.AddComponent<Text>();
+            }
+
+            labelRect.anchorMin = new Vector2(0f, 1f);
+            labelRect.anchorMax = new Vector2(1f, 1f);
+            labelRect.pivot = new Vector2(0.5f, 1f);
+            labelRect.anchoredPosition = new Vector2(0f, -12f);
+            labelRect.sizeDelta = new Vector2(-24f, 42f);
+
+            label.text = "拖到這裡出牌";
+            label.alignment = TextAnchor.MiddleCenter;
+            label.color = new Color(1f, 1f, 1f, 0.82f);
+            Font placeholderFont = LoadPlaceholderFont();
+            if (placeholderFont != null)
+            {
+                label.font = placeholderFont;
+            }
+            label.fontSize = 24;
+            label.resizeTextForBestFit = true;
+            label.resizeTextMinSize = 14;
+            label.resizeTextMaxSize = 24;
+            label.raycastTarget = false;
         }
 
         void EnsureCardHolder()
@@ -129,16 +183,17 @@ namespace UCG
             cardHolder.anchorMin = new Vector2(0f, 0f);
             cardHolder.anchorMax = new Vector2(1f, 0f);
             cardHolder.pivot = new Vector2(0.5f, 0.5f);
-            cardHolder.anchoredPosition = new Vector2(0f, holderHeight * 0.5f);
-            cardHolder.sizeDelta = new Vector2(0f, holderHeight);
+            cardHolder.anchoredPosition = new Vector2(0f, bottomSafePadding + holderHeight * 0.5f);
+            cardHolder.offsetMin = new Vector2(horizontalSafePadding, bottomSafePadding);
+            cardHolder.offsetMax = new Vector2(-horizontalSafePadding, bottomSafePadding + holderHeight);
             cardHolder.SetSizeWithCurrentAnchors(RectTransform.Axis.Horizontal, Mathf.Max(cardHolder.rect.width, minimumHolderWidth));
             cardHolder.SetSizeWithCurrentAnchors(RectTransform.Axis.Vertical, holderHeight);
 
             var layout = cardHolder.GetComponent<UIHandLayout>();
             if (layout == null) layout = cardHolder.gameObject.AddComponent<UIHandLayout>();
 
-            layout.radius = 520f;
-            layout.totalAngle = 82f;
+            layout.radius = 500f;
+            layout.totalAngle = 46f;
             layout.rotateWithArc = true;
             layout.invertRotation = true;
             layout.invertY = false;
@@ -146,9 +201,9 @@ namespace UCG
             layout.perItemExtraAngle = 0f;
             layout.adaptiveSpread = true;
             layout.cardsForFullSpread = DemoCardCount;
-            layout.minAngle = 18f;
+            layout.minAngle = 10f;
             layout.useBottomBaseline = true;
-            layout.baselinePadding = 170f;
+            layout.baselinePadding = 128f;
             layout.smooth = true;
             layout.smoothSpeed = 12f;
         }
@@ -231,12 +286,13 @@ namespace UCG
             var view = cardObject.AddComponent<UcgCardView>();
             view.cardImage = image;
             view.placeholderText = label;
+            view.selectedSizeMultiplier = 1.23f;
             view.Initialize(data);
             view.OnCardSelected += HandleCardSelected;
 
             var hover = cardObject.AddComponent<UIHandCardHover>();
-            hover.lift = 90f;
-            hover.scale = 1.08f;
+            hover.lift = 48f;
+            hover.scale = 1.05f;
             hover.straightenOnHover = true;
             hover.bringToFrontOnHover = true;
             hover.useOverlaySorting = true;
