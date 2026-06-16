@@ -1,0 +1,14 @@
+fileFormatVersion: 2
+guid: d275e154d05c64c819a5c6619dfc4621
+AssemblyDefinitionImporter:
+  externalObjects: {}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 330614
+  packageName: CardFanToolUI
+  packageVersion: 1.1
+  assetPath: Assets/CardFanUI/Runtime/CardFanUI.asmdef
+  uploadId: 818692

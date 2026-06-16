@@ -1,0 +1,18 @@
+fileFormatVersion: 2
+guid: 065bb0fdf170f4c2fa2c72cf70c05fc4
+MonoImporter:
+  externalObjects: {}
+  serializedVersion: 2
+  defaultReferences: []
+  executionOrder: 0
+  icon: {instanceID: 0}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 330614
+  packageName: CardFanToolUI
+  packageVersion: 1.1
+  assetPath: Assets/CardFanUI/Runtime/UIDragCard.cs
+  uploadId: 818692

@@ -1,0 +1,18 @@
+fileFormatVersion: 2
+guid: c5dbebe21f2aa4a359723fa850362010
+MonoImporter:
+  externalObjects: {}
+  serializedVersion: 2
+  defaultReferences: []
+  executionOrder: 0
+  icon: {instanceID: 0}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 330614
+  packageName: CardFanToolUI
+  packageVersion: 1.1
+  assetPath: Assets/CardFanUI/Scripts/CardDealerManager.cs
+  uploadId: 818692

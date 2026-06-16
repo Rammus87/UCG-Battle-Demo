@@ -1,0 +1,14 @@
+fileFormatVersion: 2
+guid: 922fe9fa5fa2b4058b9c6a543ce11873
+DefaultImporter:
+  externalObjects: {}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 330614
+  packageName: CardFanToolUI
+  packageVersion: 1.1
+  assetPath: Assets/CardFanUI/Samples/Scenes/CardHandDemo.unity
+  uploadId: 818692

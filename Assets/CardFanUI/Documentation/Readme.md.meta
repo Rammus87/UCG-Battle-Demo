@@ -1,0 +1,14 @@
+fileFormatVersion: 2
+guid: a36f2521fb9be4367951ab74a9e8ec76
+TextScriptImporter:
+  externalObjects: {}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 330614
+  packageName: CardFanToolUI
+  packageVersion: 1.1
+  assetPath: Assets/CardFanUI/Documentation/Readme.md
+  uploadId: 818692

@@ -1,0 +1,14 @@
+fileFormatVersion: 2
+guid: c56bab1573f3f488cb7a554e036d7aa1
+PrefabImporter:
+  externalObjects: {}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 330614
+  packageName: CardFanToolUI
+  packageVersion: 1.1
+  assetPath: Assets/CardFanUI/Samples/Prefabs/CardType2.prefab
+  uploadId: 818692

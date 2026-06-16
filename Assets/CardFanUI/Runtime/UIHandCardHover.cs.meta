@@ -1,0 +1,18 @@
+fileFormatVersion: 2
+guid: 961711fad8b3c4c598642a517c28ce84
+MonoImporter:
+  externalObjects: {}
+  serializedVersion: 2
+  defaultReferences: []
+  executionOrder: 0
+  icon: {instanceID: 0}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 330614
+  packageName: CardFanToolUI
+  packageVersion: 1.1
+  assetPath: Assets/CardFanUI/Runtime/UIHandCardHover.cs
+  uploadId: 818692
