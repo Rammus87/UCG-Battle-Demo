@@ -43,8 +43,8 @@ namespace UCG
         UcgCardData _fixedOpponentCardData;
         Sprite _fixedOpponentCardSprite;
         Vector2 _fixedOpponentCardSize;
-        Color _opponentSlotDefaultColor = new Color(0.12f, 0.08f, 0.14f, 0.30f);
-        Color _effectTargetColor = new Color(0.25f, 0.95f, 0.58f, 0.7f);
+        Color _opponentSlotDefaultColor = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.DeepGlass, 0.18f);
+        Color _effectTargetColor = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.BrandPinkLight, 0.62f);
         Image _laneFocusImage;
         Outline _laneFocusOutline;
         UcgGuidancePulse _laneFocusPulse;
@@ -78,7 +78,7 @@ namespace UCG
 
             resultLabel = EnsureResultLabel();
 
-            playerSlot = EnsureSlot("Player Slot", new Vector2(0f, -310f), playerSlotSize, new Color(0.018f, 0.07f, 0.105f, 0.26f), true);
+            playerSlot = EnsureSlot("Player Slot", new Vector2(0f, -310f), playerSlotSize, UcgToolUiPalette.WithAlpha(UcgToolUiPalette.DeepGlass, 0.2f), true);
             playerPlayArea = playerSlot.GetComponent<UcgPlayArea>();
             if (playerPlayArea == null) playerPlayArea = playerSlot.gameObject.AddComponent<UcgPlayArea>();
 
@@ -91,13 +91,13 @@ namespace UCG
             playerPlayArea.phaseManager = phaseManager;
             playerPlayArea.placedCardSize = placedCardSize;
             playerPlayArea.upgradeStackOffset = new Vector2(10f, 6f);
-            playerPlayArea.defaultColor = new Color(0.018f, 0.07f, 0.105f, 0.26f);
-            playerPlayArea.hoverColor = new Color(0.08f, 0.28f, 0.40f, 0.36f);
-            playerPlayArea.occupiedColor = new Color(0.018f, 0.04f, 0.075f, 0.30f);
-            playerPlayArea.activeSetupColor = new Color(1f, 0.66f, 0.18f, 0.22f);
-            playerPlayArea.upgradeAvailableColor = new Color(1f, 0.76f, 0.22f, 0.24f);
-            playerPlayArea.validDropColor = new Color(1f, 0.70f, 0.20f, 0.26f);
-            playerPlayArea.invalidDropColor = new Color(0.32f, 0.08f, 0.10f, 0.22f);
+            playerPlayArea.defaultColor = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.DeepGlass, 0.2f);
+            playerPlayArea.hoverColor = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.FocusCyan, 0.18f);
+            playerPlayArea.occupiedColor = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.DeepGlass, 0.24f);
+            playerPlayArea.activeSetupColor = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.BrandPink, 0.2f);
+            playerPlayArea.upgradeAvailableColor = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.WarningGold, 0.24f);
+            playerPlayArea.validDropColor = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.FocusCyan, 0.24f);
+            playerPlayArea.invalidDropColor = new Color(0.46f, 0.08f, 0.12f, 0.22f);
             ResetLaneState();
             SetActiveLaneFocus(false);
         }
@@ -988,15 +988,15 @@ namespace UCG
 
             _laneFocusImage.enabled = true;
             _laneFocusImage.color = active
-                ? new Color(0.025f, 0.12f, 0.18f, 0.045f)
-                : new Color(0.012f, 0.055f, 0.085f, 0.028f);
+                ? UcgToolUiPalette.WithAlpha(UcgToolUiPalette.DeepGlass, 0.06f)
+                : UcgToolUiPalette.WithAlpha(UcgToolUiPalette.DeepGlass, 0.035f);
 
             if (_laneFocusOutline != null)
             {
                 _laneFocusOutline.enabled = true;
                 _laneFocusOutline.effectColor = active
-                    ? new Color(0.30f, 0.82f, 1f, 0.20f)
-                    : new Color(0.24f, 0.62f, 0.92f, 0.10f);
+                    ? UcgToolUiPalette.WithAlpha(UcgToolUiPalette.BrandPinkLight, 0.28f)
+                    : UcgToolUiPalette.WithAlpha(UcgToolUiPalette.GlassBorder, 0.12f);
                 _laneFocusOutline.effectDistance = active
                     ? new Vector2(2.2f, -2.2f)
                     : new Vector2(1.7f, -1.7f);
@@ -1022,19 +1022,19 @@ namespace UCG
             {
                 image.color = active
                     ? opponent
-                        ? new Color(0.045f, 0.035f, 0.055f, 0.17f)
-                        : new Color(1f, 0.68f, 0.18f, 0.18f)
+                        ? UcgToolUiPalette.WithAlpha(UcgToolUiPalette.DeepGlass, 0.18f)
+                        : UcgToolUiPalette.WithAlpha(UcgToolUiPalette.BrandPink, 0.2f)
                     : opponent
-                        ? new Color(0.045f, 0.035f, 0.055f, 0.17f)
-                        : new Color(0.015f, 0.055f, 0.085f, 0.18f);
+                        ? UcgToolUiPalette.WithAlpha(UcgToolUiPalette.DeepGlass, 0.18f)
+                        : UcgToolUiPalette.WithAlpha(UcgToolUiPalette.DeepGlass, 0.2f);
             }
 
             Outline outline = slot.GetComponent<Outline>();
             if (outline != null)
             {
                 outline.effectColor = active
-                    ? new Color(1f, 0.76f, 0.22f, 0.72f)
-                    : new Color(0.34f, 0.72f, 1f, 0.16f);
+                    ? UcgToolUiPalette.WithAlpha(UcgToolUiPalette.BrandPinkLight, 0.68f)
+                    : UcgToolUiPalette.WithAlpha(UcgToolUiPalette.GlassBorder, 0.18f);
                 outline.effectDistance = active
                     ? new Vector2(3.2f, -3.2f)
                     : new Vector2(1.5f, -1.5f);
@@ -1219,8 +1219,8 @@ namespace UCG
             _laneFocusOutline.useGraphicAlpha = true;
 
             Shadow backdropShadow = EnsureUiShadow(backdropRect.gameObject);
-            backdropShadow.effectColor = new Color(0f, 0.14f, 0.26f, 0.22f);
-            backdropShadow.effectDistance = new Vector2(0f, -5f);
+            backdropShadow.effectColor = new Color(15f / 255f, 23f / 255f, 42f / 255f, 0.2f);
+            backdropShadow.effectDistance = new Vector2(0f, -3f);
             backdropShadow.useGraphicAlpha = true;
 
             _laneFocusPulse = backdropRect.GetComponent<UcgGuidancePulse>();
@@ -1267,14 +1267,14 @@ namespace UCG
             var outline = slotRect.GetComponent<Outline>();
             if (outline == null) outline = slotRect.gameObject.AddComponent<Outline>();
             outline.effectColor = slotName.Contains("Player")
-                ? new Color(0.46f, 0.9f, 1f, 0.54f)
-                : new Color(0.54f, 0.82f, 1f, 0.38f);
-            outline.effectDistance = new Vector2(3f, -3f);
+                ? UcgToolUiPalette.WithAlpha(UcgToolUiPalette.GlassBorder, 0.42f)
+                : UcgToolUiPalette.WithAlpha(UcgToolUiPalette.GlassBorder, 0.3f);
+            outline.effectDistance = new Vector2(1.8f, -1.8f);
             outline.useGraphicAlpha = true;
 
             var shadow = EnsureUiShadow(slotRect.gameObject);
-            shadow.effectColor = new Color(0f, 0.12f, 0.24f, 0.32f);
-            shadow.effectDistance = new Vector2(0f, -5f);
+            shadow.effectColor = new Color(15f / 255f, 23f / 255f, 42f / 255f, 0.24f);
+            shadow.effectDistance = new Vector2(0f, -3f);
             shadow.useGraphicAlpha = true;
 
             return slotRect;

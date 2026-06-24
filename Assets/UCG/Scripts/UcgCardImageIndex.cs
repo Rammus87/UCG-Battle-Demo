@@ -59,8 +59,20 @@ namespace UCG
 
         public void BuildIndex(string publicRootPath, string unityRootPath)
         {
-            string normalizedPublicRoot = NormalizeCardsRoot(publicRootPath, publicImagesRootPath);
-            string normalizedUnityRoot = NormalizeCardsRoot(unityRootPath, unityImagesRootPath);
+            if (!UcgExternalCardDatabase.CanUseLocalPublicFiles())
+            {
+                _entries.Clear();
+                _builtPublicRootPath = "";
+                _builtUnityRootPath = "";
+                _publicFileCount = 0;
+                _unityFileCount = 0;
+                _built = true;
+                Debug.Log("UCG card image index skipped: local file image scan is disabled for WebGL.");
+                return;
+            }
+
+            string normalizedPublicRoot = NormalizeCardsRoot(publicRootPath, publicImagesRootPath, true);
+            string normalizedUnityRoot = NormalizeCardsRoot(unityRootPath, unityImagesRootPath, false);
 
             if (_built &&
                 string.Equals(_builtPublicRootPath, normalizedPublicRoot, StringComparison.Ordinal) &&
@@ -255,13 +267,21 @@ namespace UCG
             return 99;
         }
 
-        static string NormalizeCardsRoot(string configuredRoot, string fallbackRoot)
+        static string NormalizeCardsRoot(string configuredRoot, string fallbackRoot, bool allowAdjacentPublicFallback)
         {
             string root = string.IsNullOrWhiteSpace(configuredRoot) ? fallbackRoot : configuredRoot.Trim();
             if (string.IsNullOrWhiteSpace(root)) return "";
 
             string nestedCardsRoot = Path.Combine(root, "images", "cards");
             if (Directory.Exists(nestedCardsRoot)) return nestedCardsRoot;
+            if (Directory.Exists(root)) return root;
+
+            if (allowAdjacentPublicFallback)
+            {
+                string adjacentCardsRoot = UcgExternalCardDatabase.GetAdjacentUcgToolCardsRootPath();
+                if (Directory.Exists(adjacentCardsRoot)) return adjacentCardsRoot;
+            }
+
             return root;
         }
 

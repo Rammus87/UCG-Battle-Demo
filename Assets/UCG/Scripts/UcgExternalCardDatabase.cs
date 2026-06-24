@@ -8,6 +8,16 @@ namespace UCG
     [DisallowMultipleComponent]
     public class UcgExternalCardDatabase : MonoBehaviour
     {
+        const string PublicCardsRelativeRoot = "images/cards";
+        const string UcgToolProjectFolderName = "UCG-tool";
+        static readonly string[] AdjacentCardsJsonRelativePaths =
+        {
+            Path.Combine("src", "data", "cards.json"),
+            Path.Combine("public", "data", "cards.json"),
+            Path.Combine("src", "assets", "data", "cards.json"),
+            "cards.json"
+        };
+
         public string cardsJsonPath = "/Users/xiaoma/UCGShared/ucg-tool-data/cards.json/cards.json";
         public string publicRootPath = "/Users/xiaoma/UCGShared/ucg-tool-public";
         public bool debugLoadOnStart;
@@ -17,9 +27,12 @@ namespace UCG
         readonly List<UcgCardData> _cards = new List<UcgCardData>();
 
         bool _loaded;
+        bool _loggedMissingCardsJson;
+        string _loadedCardsJsonPath = "";
 
         public int Count => _cards.Count;
         public IReadOnlyList<UcgCardData> Cards => _cards;
+        public string LoadedCardsJsonPath => _loadedCardsJsonPath;
 
         public static UcgExternalCardDatabase Instance { get; private set; }
 
@@ -65,9 +78,19 @@ namespace UCG
             _cardsBySku.Clear();
 
             string resolvedPath = ResolveCardsJsonPath();
-            if (string.IsNullOrWhiteSpace(resolvedPath) || !File.Exists(resolvedPath))
+            bool cardsJsonExists = !string.IsNullOrWhiteSpace(resolvedPath) && File.Exists(resolvedPath);
+            if (!cardsJsonExists)
             {
-                Debug.LogWarning($"UCG external cards.json not found: {cardsJsonPath}");
+                if (!_loggedMissingCardsJson)
+                {
+                    Debug.LogWarning(
+                        "[UCG Data] external cards.json not found, using fallback\n" +
+                        $"cardsJsonPath = {cardsJsonPath}\n" +
+                        $"resolvedPath = {resolvedPath}\n" +
+                        $"exists = {cardsJsonExists}\n" +
+                        FormatCardsJsonCandidateDiagnostics());
+                    _loggedMissingCardsJson = true;
+                }
                 return false;
             }
 
@@ -100,7 +123,8 @@ namespace UCG
                 }
 
                 _loaded = true;
-                Debug.Log($"UCG external card database loaded: count={_cards.Count}, path={resolvedPath}");
+                _loadedCardsJsonPath = resolvedPath;
+                LogCardsJsonStartupDiagnostics(resolvedPath, true);
                 return true;
             }
             catch (Exception exception)
@@ -157,22 +181,168 @@ namespace UCG
 
         public string ResolveImageFilePath(string imageLocal)
         {
+#if UNITY_WEBGL && !UNITY_EDITOR
+            return "";
+#else
             if (string.IsNullOrWhiteSpace(imageLocal)) return "";
 
-            string relativePath = imageLocal.Trim();
-            if (relativePath.StartsWith("/"))
+            string adjacentPath = ResolveAdjacentUcgToolPublicImagePath(imageLocal);
+            if (!string.IsNullOrWhiteSpace(adjacentPath) && File.Exists(adjacentPath))
             {
-                relativePath = relativePath.Substring(1);
+                return adjacentPath;
             }
 
+            string relativePath = NormalizeImageLocalToRelativePath(imageLocal);
+            if (string.IsNullOrWhiteSpace(relativePath)) return "";
             return Path.Combine(publicRootPath, relativePath);
+#endif
+        }
+
+        public string ResolveConfiguredImageFilePath(string imageLocal)
+        {
+#if UNITY_WEBGL && !UNITY_EDITOR
+            return "";
+#else
+            string relativePath = NormalizeImageLocalToRelativePath(imageLocal);
+            if (string.IsNullOrWhiteSpace(relativePath) || string.IsNullOrWhiteSpace(publicRootPath)) return "";
+            return Path.Combine(publicRootPath, relativePath);
+#endif
         }
 
         public string ResolveImageFileUrl(string imageLocal)
         {
+#if UNITY_WEBGL && !UNITY_EDITOR
+            return ResolvePublicImageUrl(imageLocal);
+#else
             string fullPath = ResolveImageFilePath(imageLocal);
             if (string.IsNullOrWhiteSpace(fullPath)) return "";
             return new Uri(fullPath).AbsoluteUri;
+#endif
+        }
+
+        public static bool CanUseLocalPublicFiles()
+        {
+#if UNITY_WEBGL && !UNITY_EDITOR
+            return false;
+#else
+            return true;
+#endif
+        }
+
+        public static string ResolveAdjacentUcgToolPublicImagePath(string imageLocal)
+        {
+            if (!CanUseLocalPublicFiles() || !IsCardsImageLocal(imageLocal)) return "";
+
+            string publicRoot = GetAdjacentUcgToolPublicRootPath();
+            string relativePath = NormalizeImageLocalToRelativePath(imageLocal);
+            if (string.IsNullOrWhiteSpace(publicRoot) || string.IsNullOrWhiteSpace(relativePath)) return "";
+            return Path.Combine(publicRoot, relativePath);
+        }
+
+        public static string GetAdjacentUcgToolPublicRootPath()
+        {
+            string projectRoot = GetProjectRootPath();
+            if (string.IsNullOrWhiteSpace(projectRoot)) return "";
+
+            try
+            {
+                return Path.GetFullPath(Path.Combine(projectRoot, "..", "UCG-tool", "public"));
+            }
+            catch
+            {
+                return "";
+            }
+        }
+
+        public static string GetAdjacentUcgToolCardsRootPath()
+        {
+            string publicRoot = GetAdjacentUcgToolPublicRootPath();
+            return string.IsNullOrWhiteSpace(publicRoot) ? "" : Path.Combine(publicRoot, "images", "cards");
+        }
+
+        public static string ResolveAdjacentUcgToolCardsJsonPath()
+        {
+            List<string> candidates = GetAdjacentUcgToolCardsJsonCandidatePaths();
+            for (int i = 0; i < candidates.Count; i++)
+            {
+                if (File.Exists(candidates[i])) return candidates[i];
+            }
+
+            return candidates.Count > 0 ? candidates[0] : "";
+        }
+
+        public static List<string> GetAdjacentUcgToolCardsJsonCandidatePaths()
+        {
+            var candidates = new List<string>();
+            if (!CanUseLocalPublicFiles()) return candidates;
+
+            string projectRoot = GetProjectRootPath();
+            if (string.IsNullOrWhiteSpace(projectRoot)) return candidates;
+
+            string ucgToolRoot;
+            try
+            {
+                ucgToolRoot = Path.GetFullPath(Path.Combine(projectRoot, "..", UcgToolProjectFolderName));
+            }
+            catch
+            {
+                return candidates;
+            }
+
+            for (int i = 0; i < AdjacentCardsJsonRelativePaths.Length; i++)
+            {
+                candidates.Add(Path.Combine(ucgToolRoot, AdjacentCardsJsonRelativePaths[i]));
+            }
+
+            return candidates;
+        }
+
+        public static string ResolvePublicImageUrl(string imageLocal)
+        {
+            if (!string.IsNullOrWhiteSpace(imageLocal) &&
+                (imageLocal.StartsWith("http://", StringComparison.OrdinalIgnoreCase) ||
+                 imageLocal.StartsWith("https://", StringComparison.OrdinalIgnoreCase)))
+            {
+                return imageLocal.Trim();
+            }
+
+            string relativePath = NormalizeImageLocalToRelativePath(imageLocal);
+            if (string.IsNullOrWhiteSpace(relativePath)) return "";
+            return "/" + relativePath.Replace('\\', '/').TrimStart('/');
+        }
+
+        public static string NormalizeImageLocalToRelativePath(string imageLocal)
+        {
+            if (string.IsNullOrWhiteSpace(imageLocal)) return "";
+
+            string relativePath = imageLocal.Trim();
+            if (relativePath.StartsWith("http://", StringComparison.OrdinalIgnoreCase) ||
+                relativePath.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
+            {
+                return "";
+            }
+
+            return relativePath.TrimStart('/', '\\');
+        }
+
+        public static bool IsCardsImageLocal(string imageLocal)
+        {
+            string relativePath = NormalizeImageLocalToRelativePath(imageLocal).Replace('\\', '/');
+            return relativePath.StartsWith(PublicCardsRelativeRoot + "/", StringComparison.OrdinalIgnoreCase);
+        }
+
+        static string GetProjectRootPath()
+        {
+            try
+            {
+                if (string.IsNullOrWhiteSpace(Application.dataPath)) return "";
+                DirectoryInfo assetsDirectory = new DirectoryInfo(Application.dataPath);
+                return assetsDirectory.Parent != null ? assetsDirectory.Parent.FullName : "";
+            }
+            catch
+            {
+                return "";
+            }
         }
 
         [ContextMenu("Debug Load External Cards")]
@@ -234,20 +404,95 @@ namespace UCG
 
         string ResolveCardsJsonPath()
         {
-            if (string.IsNullOrWhiteSpace(cardsJsonPath)) return "";
-            if (File.Exists(cardsJsonPath)) return cardsJsonPath;
-            if (Directory.Exists(cardsJsonPath))
+            string adjacentPath = ResolveAdjacentUcgToolCardsJsonPath();
+            if (!string.IsNullOrWhiteSpace(adjacentPath) && File.Exists(adjacentPath))
             {
-                if (Path.GetExtension(cardsJsonPath).Equals(".json", StringComparison.OrdinalIgnoreCase))
+                return adjacentPath;
+            }
+
+            string configuredPath = ResolveConfiguredCardsJsonPath(cardsJsonPath);
+            if (!string.IsNullOrWhiteSpace(configuredPath) && File.Exists(configuredPath))
+            {
+                return configuredPath;
+            }
+
+            return !string.IsNullOrWhiteSpace(adjacentPath) ? adjacentPath : configuredPath;
+        }
+
+        static string ResolveConfiguredCardsJsonPath(string configuredPath)
+        {
+            if (string.IsNullOrWhiteSpace(configuredPath)) return "";
+
+            string path = configuredPath.Trim();
+            if (!Path.IsPathRooted(path))
+            {
+                string projectRoot = GetProjectRootPath();
+                if (!string.IsNullOrWhiteSpace(projectRoot))
                 {
-                    Debug.LogWarning($"UCG cardsJsonPath points to a directory named like a JSON file: {cardsJsonPath}");
+                    path = Path.GetFullPath(Path.Combine(projectRoot, path));
+                }
+            }
+
+            if (File.Exists(path)) return path;
+            if (Directory.Exists(path))
+            {
+                if (Path.GetExtension(path).Equals(".json", StringComparison.OrdinalIgnoreCase))
+                {
+                    Debug.LogWarning($"UCG cardsJsonPath points to a directory named like a JSON file: {path}");
                 }
 
-                string nestedPath = Path.Combine(cardsJsonPath, "cards.json");
+                string nestedPath = Path.Combine(path, "cards.json");
                 if (File.Exists(nestedPath)) return nestedPath;
             }
 
-            return cardsJsonPath;
+            return path;
+        }
+
+        string FormatCardsJsonCandidateDiagnostics()
+        {
+            var builder = new System.Text.StringBuilder();
+            builder.AppendLine("cards.json candidate paths:");
+
+            List<string> adjacentCandidates = GetAdjacentUcgToolCardsJsonCandidatePaths();
+            for (int i = 0; i < adjacentCandidates.Count; i++)
+            {
+                string candidate = adjacentCandidates[i];
+                builder.AppendLine($"adjacent[{i}] = {candidate}, exists={File.Exists(candidate)}");
+            }
+
+            string configuredPath = ResolveConfiguredCardsJsonPath(cardsJsonPath);
+            if (!string.IsNullOrWhiteSpace(configuredPath))
+            {
+                builder.AppendLine($"configured = {configuredPath}, exists={File.Exists(configuredPath)}");
+            }
+
+            return builder.ToString();
+        }
+
+        void LogCardsJsonStartupDiagnostics(string resolvedPath, bool exists)
+        {
+            var builder = new System.Text.StringBuilder();
+            builder.AppendLine("[UCG Data] external cards.json loaded");
+            builder.AppendLine($"cards.json path = {resolvedPath}");
+            builder.AppendLine($"exists = {exists}");
+            builder.AppendLine($"cardCount = {_cards.Count}");
+            AppendCardStartupDiagnostics(builder, "BP01-105", true);
+            AppendCardStartupDiagnostics(builder, "BP01-037", false);
+            AppendCardStartupDiagnostics(builder, "BP05-002", false);
+            Debug.Log(builder.ToString());
+        }
+
+        void AppendCardStartupDiagnostics(System.Text.StringBuilder builder, string cardId, bool includeSceneLight)
+        {
+            _cardsById.TryGetValue(cardId, out UcgCardData card);
+            if (card == null)
+            {
+                builder.AppendLine($"{cardId} = <missing>");
+                return;
+            }
+
+            string sceneLight = includeSceneLight ? $", sceneLight={card.sceneTurnCost}" : "";
+            builder.AppendLine($"{cardId} = name={card.cardName}, imageLocal={card.imageLocal}{sceneLight}");
         }
 
         static void AddCardKey(Dictionary<string, UcgCardData> dictionary, string key, UcgCardData cardData)

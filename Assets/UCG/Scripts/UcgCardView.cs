@@ -178,7 +178,7 @@ namespace UCG
                 if (_playableHighlight == null) _playableHighlight = gameObject.AddComponent<Outline>();
             }
 
-            _playableHighlight.effectColor = new Color(0.22f, 0.9f, 0.48f, 0.95f);
+            _playableHighlight.effectColor = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.FocusCyan, 0.9f);
             _playableHighlight.effectDistance = new Vector2(5f, -5f);
             _playableHighlight.enabled = active;
             if (_playableHighlightPulse == null)
@@ -205,8 +205,8 @@ namespace UCG
             StartOperationFeedback(
                 0.12f,
                 1.025f,
-                new Color(0.72f, 0.96f, 1f, 0.18f),
-                new Color(0.5f, 0.95f, 1f, 0.34f),
+                UcgToolUiPalette.WithAlpha(UcgToolUiPalette.FocusCyan, 0.14f),
+                UcgToolUiPalette.WithAlpha(UcgToolUiPalette.FocusCyan, 0.3f),
                 true);
         }
 
@@ -215,8 +215,8 @@ namespace UCG
             StartOperationFeedback(
                 isUpgrade ? 0.2f : 0.16f,
                 isUpgrade ? 1.07f : 1.045f,
-                isUpgrade ? new Color(1f, 0.82f, 0.32f, 0.2f) : new Color(0.42f, 0.95f, 1f, 0.18f),
-                isUpgrade ? new Color(1f, 0.78f, 0.22f, 0.42f) : new Color(0.46f, 0.96f, 1f, 0.34f),
+                isUpgrade ? UcgToolUiPalette.WithAlpha(UcgToolUiPalette.WarningGold, 0.2f) : UcgToolUiPalette.WithAlpha(UcgToolUiPalette.FocusCyan, 0.18f),
+                isUpgrade ? UcgToolUiPalette.WithAlpha(UcgToolUiPalette.WarningGold, 0.42f) : UcgToolUiPalette.WithAlpha(UcgToolUiPalette.FocusCyan, 0.34f),
                 true);
         }
 
@@ -225,8 +225,8 @@ namespace UCG
             StartOperationFeedback(
                 0.22f,
                 1f,
-                isWinner ? new Color(0.25f, 1f, 0.48f, 0.16f) : new Color(1f, 0.35f, 0.28f, 0.13f),
-                isWinner ? new Color(0.32f, 1f, 0.58f, 0.36f) : new Color(1f, 0.38f, 0.32f, 0.28f),
+                isWinner ? UcgToolUiPalette.WithAlpha(UcgToolUiPalette.FocusCyan, 0.16f) : new Color(1f, 0.35f, 0.28f, 0.13f),
+                isWinner ? UcgToolUiPalette.WithAlpha(UcgToolUiPalette.FocusCyan, 0.36f) : new Color(1f, 0.38f, 0.32f, 0.28f),
                 false);
         }
 
@@ -235,8 +235,8 @@ namespace UCG
             StartOperationFeedback(
                 0.56f,
                 1.035f,
-                new Color(1f, 0.74f, 0.18f, 0.14f),
-                new Color(1f, 0.78f, 0.24f, 0.42f),
+                UcgToolUiPalette.WithAlpha(UcgToolUiPalette.BrandPink, 0.14f),
+                UcgToolUiPalette.WithAlpha(UcgToolUiPalette.BrandPinkLight, 0.44f),
                 true);
         }
 
@@ -279,13 +279,13 @@ namespace UCG
 
                 if (_effectSourceHighlightImage != null)
                 {
-                    _effectSourceHighlightImage.color = new Color(1f, 0.74f, 0.18f, Mathf.Lerp(0.055f, 0.13f, pulse));
+                    _effectSourceHighlightImage.color = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.BrandPink, Mathf.Lerp(0.055f, 0.13f, pulse));
                 }
 
                 if (_effectSourceHighlightOutline != null)
                 {
                     _effectSourceHighlightOutline.enabled = true;
-                    _effectSourceHighlightOutline.effectColor = new Color(1f, 0.78f, 0.24f, Mathf.Lerp(0.34f, 0.58f, pulse));
+                    _effectSourceHighlightOutline.effectColor = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.BrandPinkLight, Mathf.Lerp(0.34f, 0.58f, pulse));
                     _effectSourceHighlightOutline.effectDistance = new Vector2(4.6f, -4.6f);
                 }
 

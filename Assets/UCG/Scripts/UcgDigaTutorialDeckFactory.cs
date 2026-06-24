@@ -117,10 +117,12 @@ namespace UCG
                 }
 
                 Debug.LogWarning($"Fallback reason: {fallbackReason}");
+                Debug.LogWarning($"[UCG Data] external deck profile unavailable, using fallback deck data: {fallbackReason}");
             }
             else
             {
                 Debug.LogWarning("Fallback reason: external database unavailable");
+                Debug.LogWarning("[UCG Data] external cards.json not found, using fallback");
             }
 
             Debug.Log("Diga tutorial deck source: Fallback");

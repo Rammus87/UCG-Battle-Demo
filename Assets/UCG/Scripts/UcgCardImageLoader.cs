@@ -10,6 +10,8 @@ namespace UCG
     [DisallowMultipleComponent]
     public class UcgCardImageLoader : MonoBehaviour
     {
+        const string ProjectSpritesFolder = "UCG/Sprites";
+
         public UcgExternalCardDatabase database;
         public string unityPngRootPath = "/Users/xiaoma/UCGShared/ucg-tool-unity-images";
         public bool debugImageLoading;
@@ -25,6 +27,22 @@ namespace UCG
             public string fullPath;
             public string url;
             public bool exists;
+        }
+
+        public class ImageLoadAttempt
+        {
+            public string imageLocal;
+            public string url;
+            public string finalPath;
+            public bool exists;
+            public string extension;
+            public string unityWebRequestResult;
+            public string error;
+            public bool textureNull;
+            public int textureWidth;
+            public int textureHeight;
+            public string decodeResult;
+            public string fallbackUsed;
         }
 
         public int CacheCount => _spriteCache.Count;
@@ -123,41 +141,57 @@ namespace UCG
             Sprite sprite = null;
             string triedCandidates = "";
             string cardId = GetCardId(cardData);
+            bool anyExistingCandidate = false;
+            var loadAttempts = new List<ImageLoadAttempt>();
 
-            UcgCardImageIndex imageIndex = UcgCardImageIndex.GetOrCreate();
-            imageIndex.BuildIndex(
-                cardDatabase != null ? cardDatabase.publicRootPath : "",
-                unityPngRootPath);
-            if (imageIndex.TryResolve(cardId, out UcgCardImageIndex.ImageIndexEntry indexEntry))
+            if (CanUseLocalImageFiles())
             {
-                triedCandidates = "ImageIndex:\n" + imageIndex.FormatEntry(indexEntry);
-                if (debugImageLoading) Debug.Log($"ImageIndex resolved {cardId} {GetCardName(cardData)}:\n{imageIndex.FormatEntry(indexEntry)}");
-                yield return StartCoroutine(LoadSpriteFromUrl(indexEntry.selectedUrl, cardData, indexEntry.selectedPath, loadedSprite => sprite = loadedSprite));
-                if (debugImageLoading)
+                UcgCardImageIndex imageIndex = UcgCardImageIndex.GetOrCreate();
+                imageIndex.BuildIndex(
+                    cardDatabase != null ? cardDatabase.publicRootPath : "",
+                    unityPngRootPath);
+                if (imageIndex.TryResolve(cardId, out UcgCardImageIndex.ImageIndexEntry indexEntry))
                 {
-                    Debug.Log(
-                        "ImageIndex load result:\n" +
-                        $"card={cardId} {GetCardName(cardData)}\n" +
-                        $"selectedPath={indexEntry.selectedPath}\n" +
-                        $"fileExists={File.Exists(indexEntry.selectedPath)}\n" +
-                        $"result={(sprite != null ? "success" : "failed")}");
+                    triedCandidates = "ImageIndex:\n" + imageIndex.FormatEntry(indexEntry);
+                    if (debugImageLoading) Debug.Log($"ImageIndex resolved {cardId} {GetCardName(cardData)}:\n{imageIndex.FormatEntry(indexEntry)}");
+                    anyExistingCandidate = anyExistingCandidate || File.Exists(indexEntry.selectedPath);
+                    yield return StartCoroutine(LoadSpriteFromUrl(indexEntry.selectedUrl, cardData, indexEntry.selectedPath, (loadedSprite, attempt) =>
+                    {
+                        sprite = loadedSprite;
+                        AddLoadAttempt(loadAttempts, attempt);
+                    }));
+                    if (debugImageLoading)
+                    {
+                        Debug.Log(
+                            "ImageIndex load result:\n" +
+                            $"card={cardId} {GetCardName(cardData)}\n" +
+                            $"selectedPath={indexEntry.selectedPath}\n" +
+                            $"fileExists={File.Exists(indexEntry.selectedPath)}\n" +
+                            $"result={(sprite != null ? "success" : "failed")}");
+                    }
+                }
+                else
+                {
+                    triedCandidates = $"ImageIndex: no entry for cardId={cardId}\n{imageIndex.FormatRootDiagnostics()}\n";
+                    if (debugImageLoading)
+                    {
+                        Debug.LogWarning(
+                            "ImageIndex missing card image entry:\n" +
+                            $"card={cardId} {GetCardName(cardData)}\n" +
+                            $"imageLocal={imageLocal}\n" +
+                            imageIndex.FormatRootDiagnostics());
+                    }
                 }
             }
             else
             {
-                triedCandidates = $"ImageIndex: no entry for cardId={cardId}\n";
-                if (debugImageLoading)
-                {
-                    Debug.LogWarning(
-                        "ImageIndex missing card image entry:\n" +
-                        $"card={cardId} {GetCardName(cardData)}\n" +
-                        $"imageLocal={imageLocal}");
-                }
+                triedCandidates = "ImageIndex: skipped because local file image scan is disabled for this platform.\n";
             }
 
             if (sprite == null && cardDatabase != null)
             {
                 List<ImageCandidate> candidates = BuildImageCandidates(cardDatabase, cardData, imageLocal);
+                anyExistingCandidate = anyExistingCandidate || HasExistingCandidate(candidates);
                 triedCandidates += "Fallback candidates:\n" + FormatCandidates(candidates);
                 if (debugImageLoading) Debug.Log($"Resolve image candidates for {GetCardId(cardData)} {GetCardName(cardData)}:\n{triedCandidates}");
 
@@ -176,7 +210,11 @@ namespace UCG
                             $"exists = {candidate.exists}");
                     }
 
-                    yield return StartCoroutine(LoadSpriteFromUrl(candidate.url, cardData, candidate.imageLocal, loadedSprite => sprite = loadedSprite));
+                    yield return StartCoroutine(LoadSpriteFromUrl(candidate.url, cardData, candidate.imageLocal, (loadedSprite, attempt) =>
+                    {
+                        sprite = loadedSprite;
+                        AddLoadAttempt(loadAttempts, attempt);
+                    }));
                     if (debugImageLoading) Debug.Log($"Try load image candidate result: card={GetCardId(cardData)}, label={candidate.label}, imageLocal={candidate.imageLocal}, result={(sprite != null ? "success" : "failed")}");
 
                     if (sprite != null)
@@ -196,12 +234,15 @@ namespace UCG
             {
                 _failedImages.Add(cacheKey);
                 Debug.LogWarning(
-                    "Card image fallback to placeholder:\n" +
-                    $"card = {GetCardId(cardData)} {GetCardName(cardData)}\n" +
-                    $"cacheKey = {cacheKey}\n" +
-                    $"imageLocal = {imageLocal}\n" +
-                    $"triedCandidates =\n{triedCandidates}\n" +
-                    "reason = all image candidates failed or image database unavailable");
+                    "[UCG CardImage Missing]\n" +
+                    $"cardId={GetCardId(cardData)}\n" +
+                    $"cardName={GetCardName(cardData)}\n" +
+                    $"imageLocal={imageLocal}\n" +
+                    $"triedPaths=\n{FormatAttemptPaths(loadAttempts, triedCandidates)}" +
+                    $"exists={anyExistingCandidate}\n" +
+                    $"decodeResult={FormatDecodeResult(loadAttempts, anyExistingCandidate)}\n" +
+                    "fallbackUsed=placeholder sprite expected\n" +
+                    $"cacheKey={cacheKey}");
             }
 
             if (_pendingCallbacks.TryGetValue(cacheKey, out List<Action<Sprite>> callbacks))
@@ -223,8 +264,17 @@ namespace UCG
             var imageLocals = BuildImageLocalVariants(cardData, imageLocal);
             for (int i = 0; i < imageLocals.Count; i++)
             {
-                AddCandidate(candidates, seenPaths, $"public {Path.GetExtension(imageLocals[i])}", imageLocals[i], cardDatabase.ResolveImageFilePath(imageLocals[i]));
-                AddCandidate(candidates, seenPaths, $"unity mirror {Path.GetExtension(imageLocals[i])}", imageLocals[i], ResolveUnityMirrorPath(imageLocals[i]));
+                string extension = Path.GetExtension(imageLocals[i]);
+                if (!CanUseLocalImageFiles())
+                {
+                    AddUrlCandidate(candidates, seenPaths, $"public url {extension}", imageLocals[i], UcgExternalCardDatabase.ResolvePublicImageUrl(imageLocals[i]));
+                    continue;
+                }
+
+                AddCandidate(candidates, seenPaths, $"adjacent public {extension}", imageLocals[i], UcgExternalCardDatabase.ResolveAdjacentUcgToolPublicImagePath(imageLocals[i]));
+                AddCandidate(candidates, seenPaths, "project sprite .png", imageLocals[i], ResolveProjectSpritePath(imageLocals[i]));
+                AddCandidate(candidates, seenPaths, $"public {extension}", imageLocals[i], cardDatabase.ResolveConfiguredImageFilePath(imageLocals[i]));
+                AddCandidate(candidates, seenPaths, $"unity mirror {extension}", imageLocals[i], ResolveUnityMirrorPath(imageLocals[i]));
             }
 
             candidates.Sort(CompareImageCandidates);
@@ -243,6 +293,8 @@ namespace UCG
 
             AddImageLocalVariant(variants, BuildImageLocalFromCardId(cardData != null ? cardData.id : "", ".webp"));
             AddImageLocalVariant(variants, BuildImageLocalFromCardId(cardData != null ? cardData.id : "", ".png"));
+            AddImageLocalVariant(variants, BuildImageLocalFromCardId(cardData != null ? cardData.id : "", ".jpg"));
+            AddImageLocalVariant(variants, BuildImageLocalFromCardId(cardData != null ? cardData.id : "", ".jpeg"));
             return variants;
         }
 
@@ -251,6 +303,8 @@ namespace UCG
             if (string.IsNullOrWhiteSpace(imageLocal)) return;
             AddImageLocalVariant(variants, Path.ChangeExtension(imageLocal, ".webp"));
             AddImageLocalVariant(variants, Path.ChangeExtension(imageLocal, ".png"));
+            AddImageLocalVariant(variants, Path.ChangeExtension(imageLocal, ".jpg"));
+            AddImageLocalVariant(variants, Path.ChangeExtension(imageLocal, ".jpeg"));
         }
 
         string ExtractImageLocalFromUrl(string imageUrl)
@@ -309,6 +363,21 @@ namespace UCG
             });
         }
 
+        void AddUrlCandidate(List<ImageCandidate> candidates, HashSet<string> seenPaths, string label, string imageLocal, string url)
+        {
+            if (candidates == null || seenPaths == null || string.IsNullOrWhiteSpace(url)) return;
+            if (!seenPaths.Add(url)) return;
+
+            candidates.Add(new ImageCandidate
+            {
+                label = label,
+                imageLocal = imageLocal,
+                fullPath = "",
+                url = url,
+                exists = false
+            });
+        }
+
         public string FormatCandidates(List<ImageCandidate> candidates)
         {
             if (candidates == null || candidates.Count == 0) return "<none>";
@@ -317,10 +386,36 @@ namespace UCG
             for (int i = 0; i < candidates.Count; i++)
             {
                 ImageCandidate candidate = candidates[i];
-                builder.AppendLine($"candidate {i + 1}: {candidate.label}, imageLocal={candidate.imageLocal}, path={candidate.fullPath}, exists={candidate.exists}");
+                builder.AppendLine($"candidate {i + 1}: {candidate.label}, imageLocal={candidate.imageLocal}, path={candidate.fullPath}, url={candidate.url}, exists={candidate.exists}");
             }
 
             return builder.ToString();
+        }
+
+        public string FormatCandidatePaths(List<ImageCandidate> candidates)
+        {
+            if (candidates == null || candidates.Count == 0) return "<none>\n";
+
+            var builder = new System.Text.StringBuilder();
+            for (int i = 0; i < candidates.Count; i++)
+            {
+                ImageCandidate candidate = candidates[i];
+                string path = !string.IsNullOrWhiteSpace(candidate.fullPath) ? candidate.fullPath : candidate.url;
+                builder.AppendLine($"{i + 1}. {path}, exists={candidate.exists}");
+            }
+
+            return builder.ToString();
+        }
+
+        static bool HasExistingCandidate(List<ImageCandidate> candidates)
+        {
+            if (candidates == null) return false;
+            for (int i = 0; i < candidates.Count; i++)
+            {
+                if (candidates[i] != null && candidates[i].exists) return true;
+            }
+
+            return false;
         }
 
         int CompareImageCandidates(ImageCandidate a, ImageCandidate b)
@@ -331,28 +426,91 @@ namespace UCG
         int GetCandidatePriority(ImageCandidate candidate)
         {
             if (candidate == null) return 999;
+            bool isAdjacentPublic = candidate.label != null && candidate.label.StartsWith("adjacent public", StringComparison.OrdinalIgnoreCase);
+            bool isProjectSprite = candidate.label != null && candidate.label.StartsWith("project sprite", StringComparison.OrdinalIgnoreCase);
             bool isPublic = candidate.label != null && candidate.label.StartsWith("public", StringComparison.OrdinalIgnoreCase);
             bool isUnity = candidate.label != null && candidate.label.StartsWith("unity", StringComparison.OrdinalIgnoreCase);
-            bool isWebp = candidate.fullPath != null && candidate.fullPath.EndsWith(".webp", StringComparison.OrdinalIgnoreCase);
-            bool isPng = candidate.fullPath != null && candidate.fullPath.EndsWith(".png", StringComparison.OrdinalIgnoreCase);
+            string pathOrUrl = GetCandidatePathOrUrl(candidate);
+            bool isWebp = pathOrUrl.EndsWith(".webp", StringComparison.OrdinalIgnoreCase);
+            bool isPng = pathOrUrl.EndsWith(".png", StringComparison.OrdinalIgnoreCase);
+            bool isJpg = pathOrUrl.EndsWith(".jpg", StringComparison.OrdinalIgnoreCase) ||
+                         pathOrUrl.EndsWith(".jpeg", StringComparison.OrdinalIgnoreCase);
 
-            if (candidate.exists && isUnity && isPng) return 0;
-            if (candidate.exists && isPublic && isPng) return 1;
-            if (candidate.exists && isPublic && isWebp) return 2;
-            if (candidate.exists && isUnity && isWebp) return 3;
-            if (candidate.exists) return 4;
-            if (isUnity && isPng) return 10;
-            if (isPublic && isPng) return 11;
-            if (isPublic && isWebp) return 12;
-            if (isUnity && isWebp) return 13;
+            if (candidate.exists && isAdjacentPublic && isPng) return 0;
+            if (candidate.exists && isAdjacentPublic && isJpg) return 1;
+            if (candidate.exists && isProjectSprite && isPng) return 2;
+            if (candidate.exists && isAdjacentPublic && isWebp) return 3;
+            if (candidate.exists && isUnity && isPng) return 4;
+            if (candidate.exists && isPublic && isPng) return 5;
+            if (candidate.exists && isPublic && isJpg) return 6;
+            if (candidate.exists && isPublic && isWebp) return 7;
+            if (candidate.exists && isUnity && isJpg) return 8;
+            if (candidate.exists && isUnity && isWebp) return 9;
+            if (candidate.exists) return 10;
+            if (isAdjacentPublic && isPng) return 11;
+            if (isAdjacentPublic && isJpg) return 12;
+            if (isProjectSprite && isPng) return 13;
+            if (isAdjacentPublic && isWebp) return 14;
+            if (isUnity && isPng) return 15;
+            if (isPublic && isPng) return 16;
+            if (isPublic && isJpg) return 17;
+            if (isPublic && isWebp) return 18;
+            if (isUnity && isJpg) return 19;
+            if (isUnity && isWebp) return 20;
             return 99;
         }
 
-        IEnumerator LoadSpriteFromUrl(string url, UcgCardData cardData, string imageLocal, Action<Sprite> onLoaded)
+        static string GetCandidatePathOrUrl(ImageCandidate candidate)
+        {
+            if (candidate == null) return "";
+            return !string.IsNullOrWhiteSpace(candidate.fullPath) ? candidate.fullPath : candidate.url ?? "";
+        }
+
+        static string FormatAttemptPaths(List<ImageLoadAttempt> attempts, string fallbackCandidates)
+        {
+            if (attempts == null || attempts.Count == 0)
+            {
+                return string.IsNullOrWhiteSpace(fallbackCandidates) ? "<none>\n" : fallbackCandidates + "\n";
+            }
+
+            var builder = new System.Text.StringBuilder();
+            for (int i = 0; i < attempts.Count; i++)
+            {
+                ImageLoadAttempt attempt = attempts[i];
+                builder.AppendLine($"{i + 1}. {attempt.finalPath}, exists={attempt.exists}, extension={attempt.extension}, decodeResult={attempt.decodeResult}");
+            }
+
+            return builder.ToString();
+        }
+
+        static string FormatDecodeResult(List<ImageLoadAttempt> attempts, bool anyExistingCandidate)
+        {
+            if (attempts == null || attempts.Count == 0)
+            {
+                return anyExistingCandidate ? "Decode failed" : "Missing file";
+            }
+
+            for (int i = attempts.Count - 1; i >= 0; i--)
+            {
+                if (!string.IsNullOrWhiteSpace(attempts[i].decodeResult)) return attempts[i].decodeResult;
+            }
+
+            return anyExistingCandidate ? "Decode failed" : "Missing file";
+        }
+
+        IEnumerator LoadSpriteFromUrl(string url, UcgCardData cardData, string imageLocal, Action<Sprite, ImageLoadAttempt> onLoaded)
         {
             if (string.IsNullOrWhiteSpace(url))
             {
-                onLoaded?.Invoke(null);
+                onLoaded?.Invoke(null, new ImageLoadAttempt
+                {
+                    imageLocal = imageLocal,
+                    url = url,
+                    finalPath = "",
+                    exists = false,
+                    decodeResult = "Missing file: empty URL",
+                    fallbackUsed = "none"
+                });
                 yield return null;
                 yield break;
             }
@@ -363,48 +521,202 @@ namespace UCG
             {
                 yield return request.SendWebRequest();
 
+                string localPath = GetLocalFilePath(url);
+                string extension = Path.GetExtension(localPath);
+                bool isLocalFile = CanUseLocalImageFiles() && !string.IsNullOrWhiteSpace(localPath);
+                bool fileExists = isLocalFile && File.Exists(localPath);
+                long fileSize = fileExists ? new FileInfo(localPath).Length : -1;
+                string webpNote = string.Equals(extension, ".webp", StringComparison.OrdinalIgnoreCase)
+                    ? "candidate extension is .webp; Unity may not decode WebP on this platform"
+                    : "";
+                var attempt = new ImageLoadAttempt
+                {
+                    imageLocal = imageLocal,
+                    url = url,
+                    finalPath = localPath,
+                    exists = fileExists,
+                    extension = extension,
+                    unityWebRequestResult = request.result.ToString(),
+                    error = request.error,
+                    textureNull = true,
+                    textureWidth = 0,
+                    textureHeight = 0,
+                    fallbackUsed = "none"
+                };
+
                 if (request.result != UnityWebRequest.Result.Success)
                 {
                     string cardId = cardData != null ? cardData.id : "";
                     string cardName = GetCardName(cardData);
-                    string localPath = GetLocalFilePath(url);
-                    long fileSize = !string.IsNullOrWhiteSpace(localPath) && File.Exists(localPath)
-                        ? new FileInfo(localPath).Length
-                        : -1;
                     Debug.LogWarning(
-                        "Image load failed:\n" +
+                        "[UCG CardImage] UnityWebRequest failed:\n" +
                         $"card = {cardName} ({cardId})\n" +
                         $"imageLocal = {imageLocal}\n" +
+                        $"finalCandidatePath = {localPath}\n" +
                         $"fileUrl = {url}\n" +
-                        $"localPath = {localPath}\n" +
-                        $"extension = {Path.GetExtension(localPath)}\n" +
-                        $"fileExists = {File.Exists(localPath)}\n" +
+                        $"fileExists = {fileExists}\n" +
+                        $"extension = {extension}\n" +
+                        $"unityWebRequestResult = {request.result}\n" +
                         $"fileSizeBytes = {fileSize}\n" +
                         $"error = {request.error}\n" +
-                        $"responseCode = {request.responseCode}");
-                    onLoaded?.Invoke(null);
+                        $"responseCode = {request.responseCode}\n" +
+                        $"textureNull = true\n" +
+                        $"textureWidth = 0\n" +
+                        $"textureHeight = 0\n" +
+                        $"{webpNote}");
+                    if (TryLoadSpriteFromLocalFile(localPath, cardData, imageLocal, out Sprite localSprite))
+                    {
+                        attempt.decodeResult = "UnityWebRequest failed; local byte decode OK";
+                        attempt.fallbackUsed = "local byte decode";
+                        onLoaded?.Invoke(localSprite, attempt);
+                    }
+                    else
+                    {
+                        attempt.decodeResult = fileExists
+                            ? "Decode failed: UnityWebRequest failed and local byte decode failed"
+                            : "Missing file";
+                        if (fileExists)
+                        {
+                            Debug.LogWarning($"[UCG CardImage] failed: file exists but decode failed, imageLocal={imageLocal}, finalCandidatePath={localPath}, extension={extension}");
+                        }
+
+                        onLoaded?.Invoke(null, attempt);
+                    }
+
                     yield return null;
                     yield break;
                 }
 
                 Texture2D texture = DownloadHandlerTexture.GetContent(request);
-                if (texture == null)
+                bool textureIsNull = texture == null;
+                int textureWidth = texture != null ? texture.width : 0;
+                int textureHeight = texture != null ? texture.height : 0;
+                attempt.textureNull = textureIsNull;
+                attempt.textureWidth = textureWidth;
+                attempt.textureHeight = textureHeight;
+                if (debugImageLoading)
                 {
-                    Debug.LogWarning($"UCG card image returned empty texture: imageLocal={imageLocal}, url={url}");
-                    onLoaded?.Invoke(null);
+                    Debug.Log(
+                        "[UCG CardImage] UnityWebRequest texture result:\n" +
+                        $"imageLocal = {imageLocal}\n" +
+                        $"finalCandidatePath = {localPath}\n" +
+                        $"fileExists = {fileExists}\n" +
+                        $"extension = {extension}\n" +
+                        $"unityWebRequestResult = {request.result}\n" +
+                        $"error = {request.error}\n" +
+                        $"textureNull = {textureIsNull}\n" +
+                        $"textureWidth = {textureWidth}\n" +
+                        $"textureHeight = {textureHeight}\n" +
+                        $"{webpNote}");
+                }
+
+                if (texture == null || texture.width <= 0 || texture.height <= 0)
+                {
+                    Debug.LogWarning(
+                        "[UCG CardImage] UnityWebRequest returned invalid texture:\n" +
+                        $"imageLocal = {imageLocal}\n" +
+                        $"finalCandidatePath = {localPath}\n" +
+                        $"fileExists = {fileExists}\n" +
+                        $"extension = {extension}\n" +
+                        $"unityWebRequestResult = {request.result}\n" +
+                        $"error = {request.error}\n" +
+                        $"textureNull = {textureIsNull}\n" +
+                        $"textureWidth = {textureWidth}\n" +
+                        $"textureHeight = {textureHeight}\n" +
+                        $"{webpNote}");
+                    if (TryLoadSpriteFromLocalFile(localPath, cardData, imageLocal, out Sprite localSprite))
+                    {
+                        attempt.decodeResult = "UnityWebRequest invalid texture; local byte decode OK";
+                        attempt.fallbackUsed = "local byte decode";
+                        onLoaded?.Invoke(localSprite, attempt);
+                    }
+                    else
+                    {
+                        attempt.decodeResult = fileExists
+                            ? "Decode failed: UnityWebRequest invalid texture and local byte decode failed"
+                            : "Missing file";
+                        if (fileExists)
+                        {
+                            Debug.LogWarning($"[UCG CardImage] failed: file exists but decode failed, imageLocal={imageLocal}, finalCandidatePath={localPath}, extension={extension}");
+                        }
+
+                        onLoaded?.Invoke(null, attempt);
+                    }
+
                     yield return null;
                     yield break;
                 }
 
-                texture.name = cardData != null && !string.IsNullOrWhiteSpace(cardData.id)
-                    ? cardData.id
-                    : Path.GetFileNameWithoutExtension(imageLocal);
-
-                Rect rect = new Rect(0f, 0f, texture.width, texture.height);
-                Sprite sprite = Sprite.Create(texture, rect, new Vector2(0.5f, 0.5f), 100f);
-                sprite.name = texture.name;
-                onLoaded?.Invoke(sprite);
+                attempt.decodeResult = $"UnityWebRequestTexture OK {textureWidth}x{textureHeight}";
+                onLoaded?.Invoke(CreateSpriteFromTexture(texture, cardData, imageLocal), attempt);
             }
+        }
+
+        static void AddLoadAttempt(List<ImageLoadAttempt> attempts, ImageLoadAttempt attempt)
+        {
+            if (attempts == null || attempt == null) return;
+            attempts.Add(attempt);
+        }
+
+        bool TryLoadSpriteFromLocalFile(string localPath, UcgCardData cardData, string imageLocal, out Sprite sprite)
+        {
+            sprite = null;
+            if (!CanUseLocalImageFiles() || string.IsNullOrWhiteSpace(localPath) || !File.Exists(localPath)) return false;
+
+            string extension = Path.GetExtension(localPath);
+            try
+            {
+                byte[] bytes = File.ReadAllBytes(localPath);
+                var texture = new Texture2D(2, 2, TextureFormat.RGBA32, false);
+                bool decoded = texture.LoadImage(bytes);
+                bool textureIsNull = texture == null;
+                int textureWidth = texture != null ? texture.width : 0;
+                int textureHeight = texture != null ? texture.height : 0;
+                if (debugImageLoading || !decoded || textureWidth <= 0 || textureHeight <= 0)
+                {
+                    Debug.Log(
+                        "[UCG CardImage] local byte decode result:\n" +
+                        $"imageLocal = {imageLocal}\n" +
+                        $"finalCandidatePath = {localPath}\n" +
+                        $"fileExists = True\n" +
+                        $"extension = {extension}\n" +
+                        $"decoded = {decoded}\n" +
+                        $"textureNull = {textureIsNull}\n" +
+                        $"textureWidth = {textureWidth}\n" +
+                        $"textureHeight = {textureHeight}");
+                }
+
+                if (!decoded || texture == null || texture.width <= 0 || texture.height <= 0)
+                {
+                    return false;
+                }
+
+                sprite = CreateSpriteFromTexture(texture, cardData, imageLocal);
+                return true;
+            }
+            catch (Exception exception)
+            {
+                Debug.LogWarning(
+                    "[UCG CardImage] local byte decode exception:\n" +
+                    $"imageLocal = {imageLocal}\n" +
+                    $"finalCandidatePath = {localPath}\n" +
+                    $"fileExists = True\n" +
+                    $"extension = {extension}\n" +
+                    $"error = {exception.Message}");
+                return false;
+            }
+        }
+
+        static Sprite CreateSpriteFromTexture(Texture2D texture, UcgCardData cardData, string imageLocal)
+        {
+            texture.name = cardData != null && !string.IsNullOrWhiteSpace(cardData.id)
+                ? cardData.id
+                : Path.GetFileNameWithoutExtension(imageLocal);
+
+            Rect rect = new Rect(0f, 0f, texture.width, texture.height);
+            Sprite sprite = Sprite.Create(texture, rect, new Vector2(0.5f, 0.5f), 100f);
+            sprite.name = texture.name;
+            return sprite;
         }
 
         UcgExternalCardDatabase GetDatabase()
@@ -444,10 +756,26 @@ namespace UCG
             return Path.Combine(unityPngRootPath, relativePath);
         }
 
+        static string ResolveProjectSpritePath(string imageLocal)
+        {
+            if (string.IsNullOrWhiteSpace(imageLocal) || string.IsNullOrWhiteSpace(Application.dataPath)) return "";
+
+            string fileName = Path.GetFileNameWithoutExtension(imageLocal.Trim());
+            if (string.IsNullOrWhiteSpace(fileName)) return "";
+
+            string relativeFolder = ProjectSpritesFolder.Replace('/', Path.DirectorySeparatorChar);
+            return Path.Combine(Application.dataPath, relativeFolder, fileName + ".png");
+        }
+
         static string ResolveFileUrl(string fullPath)
         {
             if (string.IsNullOrWhiteSpace(fullPath)) return "";
             return new Uri(fullPath).AbsoluteUri;
+        }
+
+        static bool CanUseLocalImageFiles()
+        {
+            return UcgExternalCardDatabase.CanUseLocalPublicFiles();
         }
 
         static string GetLocalFilePath(string fileUrl)

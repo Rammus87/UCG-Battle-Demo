@@ -29,7 +29,7 @@ namespace UCG
         Coroutine _promptFadeRoutine;
         string _lastPromptText;
         const float PromptFadeDuration = 0.18f;
-        const string MissionGold = "#FFD66B";
+        const string MissionGold = UcgToolUiPalette.BrandPinkLightHex;
 
         public void ResetForMode(UcgTestMode mode)
         {
@@ -305,7 +305,7 @@ namespace UCG
 
         string MissionPrompt(string title, string subtitle)
         {
-            return $"<color={MissionGold}><size=26>{title}</size></color>\n<size=18>{subtitle}</size>";
+            return $"<color={MissionGold}><size=26>{title}</size></color>\n<color={UcgToolUiPalette.MutedWhiteHex}><size=18>{subtitle}</size></color>";
         }
 
         string GetUpgradeGoalText()

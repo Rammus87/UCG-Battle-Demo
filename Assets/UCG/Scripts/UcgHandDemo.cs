@@ -1,6 +1,5 @@
 using System.Collections;
 using System.Collections.Generic;
-using System.IO;
 using CardFanUI;
 using UnityEngine;
 using UnityEngine.EventSystems;
@@ -31,6 +30,7 @@ namespace UCG
     {
         const int DemoCardCount = 6;
         const string BattleBackgroundAssetPath = "Assets/UCG/Art/Backgrounds/battle_bg_mobile_symmetry.png";
+        const string BattleBackgroundResourcePath = "UCG/Backgrounds/battle_bg_mobile_symmetry";
         static readonly string[] EffectTestCardIds =
         {
             "BP05-002",
@@ -44,6 +44,7 @@ namespace UCG
         [Header("Optional Scene References")]
         public Canvas canvas;
         public RectTransform cardHolder;
+        public Sprite battleBackgroundSprite;
         public RectTransform dragLayer;
         public RectTransform playerPlayArea;
         public Text playResultText;
@@ -280,6 +281,10 @@ namespace UCG
         string _topPromptActionText = "";
         RectTransform _topPromptProgressTrackRect;
         RectTransform _topPromptProgressFillRect;
+        RectTransform _effectFeedbackToastPanel;
+        Image _effectFeedbackToastImage;
+        RectTransform _effectFeedbackToastAccent;
+        Image _effectFeedbackToastAccentImage;
         RectTransform _turnStartBannerRoot;
         CanvasGroup _turnStartBannerCanvasGroup;
         Text _turnStartBannerTurnText;
@@ -664,6 +669,8 @@ namespace UCG
 
         Sprite LoadBattleBackgroundSprite()
         {
+            if (battleBackgroundSprite != null) return battleBackgroundSprite;
+
 #if UNITY_EDITOR
             Sprite editorSprite = AssetDatabase.LoadAssetAtPath<Sprite>(BattleBackgroundAssetPath);
             if (editorSprite != null) return editorSprite;
@@ -678,23 +685,14 @@ namespace UCG
             }
 #endif
 
-            string fullPath = Path.Combine(Application.dataPath, "UCG/Art/Backgrounds/battle_bg_mobile_symmetry.png");
-            if (!File.Exists(fullPath))
-            {
-                Debug.LogWarning($"UCG battle background missing: {BattleBackgroundAssetPath}");
-                return null;
-            }
+            Sprite resourceSprite = Resources.Load<Sprite>(BattleBackgroundResourcePath);
+            if (resourceSprite != null) return resourceSprite;
 
-            byte[] bytes = File.ReadAllBytes(fullPath);
-            var texture = new Texture2D(2, 2, TextureFormat.RGBA32, false);
-            if (!texture.LoadImage(bytes))
-            {
-                Debug.LogWarning($"UCG battle background failed to load: {fullPath}");
-                return null;
-            }
+            Sprite[] resourceSprites = Resources.LoadAll<Sprite>(BattleBackgroundResourcePath);
+            if (resourceSprites != null && resourceSprites.Length > 0) return resourceSprites[0];
 
-            texture.name = "battle_bg_mobile_symmetry";
-            return Sprite.Create(texture, new Rect(0f, 0f, texture.width, texture.height), new Vector2(0.5f, 0.5f), 100f);
+            Debug.LogWarning($"UCG battle background missing: assign battleBackgroundSprite or add Resources/{BattleBackgroundResourcePath}");
+            return null;
         }
 
         void EnsureHudDecorBar(RectTransform parent, string objectName, Vector2 anchorMin, Vector2 anchorMax, Vector2 anchoredPosition, Vector2 size, float rotationZ, Color color)
@@ -768,7 +766,7 @@ namespace UCG
             outline.useGraphicAlpha = true;
 
             var shadow = EnsureUiShadow(plateRect.gameObject);
-            shadow.effectColor = new Color(0f, 0.08f, 0.16f, 0.22f);
+            shadow.effectColor = new Color(15f / 255f, 23f / 255f, 42f / 255f, 0.24f);
             shadow.effectDistance = new Vector2(0f, -5f);
             shadow.useGraphicAlpha = true;
 
@@ -858,7 +856,7 @@ namespace UCG
 
             playResultText.text = "";
             playResultText.alignment = TextAnchor.MiddleCenter;
-            playResultText.color = new Color(1f, 1f, 1f, 0.94f);
+            playResultText.color = UcgToolUiPalette.SoftWhite;
             playResultText.supportRichText = true;
             Font placeholderFont = LoadPlaceholderFont();
             if (placeholderFont != null)
@@ -874,8 +872,8 @@ namespace UCG
             Image panelImage = EnsureHudBackplate(
                 "Play Result HUD Panel",
                 resultRect,
-                new Color(0.006f, 0.022f, 0.052f, 0.72f),
-                new Color(0.30f, 0.72f, 1f, 0.26f),
+                UcgToolUiPalette.DeepGlass,
+                UcgToolUiPalette.GlassBorder,
                 new Vector2(24f, 14f));
             RectTransform panelRect = panelImage != null ? panelImage.transform as RectTransform : null;
             EnsureTopPromptProgress(panelRect);
@@ -913,7 +911,7 @@ namespace UCG
             _topPromptProgressTrackRect.sizeDelta = new Vector2(0f, 4f);
             _topPromptProgressTrackRect.localScale = Vector3.one;
             _topPromptProgressTrackRect.localEulerAngles = Vector3.zero;
-            trackImage.color = new Color(0.22f, 0.58f, 0.72f, 0.16f);
+            trackImage.color = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.BrandPink, 0.16f);
             trackImage.raycastTarget = false;
 
             const string fillName = "Top Prompt Countdown Fill";
@@ -939,11 +937,11 @@ namespace UCG
             _topPromptProgressFillRect.offsetMax = Vector2.zero;
             _topPromptProgressFillRect.localScale = Vector3.one;
             _topPromptProgressFillRect.localEulerAngles = Vector3.zero;
-            fillImage.color = new Color(0.44f, 0.95f, 1f, 0.48f);
+            fillImage.color = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.BrandPinkLight, 0.78f);
             fillImage.raycastTarget = false;
 
             Shadow fillGlow = EnsureUiShadow(_topPromptProgressFillRect.gameObject);
-            fillGlow.effectColor = new Color(0.22f, 0.92f, 1f, 0.22f);
+            fillGlow.effectColor = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.FocusCyan, 0.24f);
             fillGlow.effectDistance = new Vector2(0f, -1f);
             fillGlow.useGraphicAlpha = true;
 
@@ -1002,12 +1000,12 @@ namespace UCG
             _turnStartBannerRoot.localScale = Vector3.one;
             _turnStartBannerRoot.localEulerAngles = Vector3.zero;
 
-            panelImage.color = new Color(0.006f, 0.018f, 0.042f, 0.76f);
+            panelImage.color = UcgToolUiPalette.DeepGlass;
             panelImage.raycastTarget = false;
             ApplyRoundedPanelImage(panelImage);
 
             var outline = _turnStartBannerRoot.GetComponent<Outline>();
-            outline.effectColor = new Color(0.42f, 0.86f, 1f, 0.24f);
+            outline.effectColor = UcgToolUiPalette.GlassBorder;
             outline.effectDistance = new Vector2(2f, -2f);
             outline.useGraphicAlpha = true;
 
@@ -1025,13 +1023,13 @@ namespace UCG
                 new Vector2(0.06f, 0.58f),
                 new Vector2(0.94f, 0.86f),
                 18,
-                new Color(0.78f, 0.94f, 1f, 0.96f));
+                UcgToolUiPalette.SoftWhite);
             _turnStartBannerInitiativeText = EnsureTurnStartBannerText(
                 "Initiative Text",
                 new Vector2(0.06f, 0.15f),
                 new Vector2(0.94f, 0.62f),
                 36,
-                new Color(1f, 0.82f, 0.38f, 1f));
+                UcgToolUiPalette.WarningGold);
 
             ApplyHudCanvasLayer(_turnStartBannerRoot, 27985);
             _turnStartBannerRoot.gameObject.SetActive(false);
@@ -1138,8 +1136,8 @@ namespace UCG
             {
                 _turnStartBannerInitiativeText.text = playerFirst ? "你是先攻" : "你是後攻";
                 _turnStartBannerInitiativeText.color = playerFirst
-                    ? new Color(1f, 0.82f, 0.38f, 1f)
-                    : new Color(0.9f, 0.98f, 1f, 1f);
+                    ? UcgToolUiPalette.WarningGold
+                    : UcgToolUiPalette.SoftWhite;
             }
 
             _turnStartBannerRoot.gameObject.SetActive(true);
@@ -1233,22 +1231,96 @@ namespace UCG
 
             effectFeedbackText.text = "";
             effectFeedbackText.alignment = TextAnchor.MiddleCenter;
-            effectFeedbackText.color = new Color(0.92f, 1f, 1f, 0f);
+            effectFeedbackText.color = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.SoftWhite, 0f);
             Font placeholderFont = LoadPlaceholderFont();
             if (placeholderFont != null)
             {
                 effectFeedbackText.font = placeholderFont;
             }
-            effectFeedbackText.fontSize = 22;
+            effectFeedbackText.fontSize = 16;
             effectFeedbackText.resizeTextForBestFit = true;
-            effectFeedbackText.resizeTextMinSize = 13;
-            effectFeedbackText.resizeTextMaxSize = 22;
+            effectFeedbackText.resizeTextMinSize = 12;
+            effectFeedbackText.resizeTextMaxSize = 16;
             effectFeedbackText.raycastTarget = false;
 
             var outline = effectFeedbackText.GetComponent<Outline>();
-            outline.effectColor = new Color(0.02f, 0.08f, 0.1f, 0.72f);
-            outline.effectDistance = new Vector2(1.5f, -1.5f);
+            outline.effectColor = new Color(0f, 0f, 0f, 0.58f);
+            outline.effectDistance = new Vector2(1f, -1f);
+            EnsureEffectFeedbackToastVisual(feedbackRect);
             return effectFeedbackText;
+        }
+
+        void EnsureEffectFeedbackToastVisual(RectTransform textRect)
+        {
+            if (canvas == null || textRect == null) return;
+
+            const string panelName = "Effect Feedback Toast Panel";
+            Transform existingPanel = canvas.transform.Find(panelName);
+            if (existingPanel == null)
+            {
+                var panelObject = new GameObject(panelName, typeof(RectTransform), typeof(Image));
+                panelObject.transform.SetParent(canvas.transform, false);
+                _effectFeedbackToastPanel = panelObject.GetComponent<RectTransform>();
+                _effectFeedbackToastImage = panelObject.GetComponent<Image>();
+            }
+            else
+            {
+                _effectFeedbackToastPanel = existingPanel as RectTransform;
+                _effectFeedbackToastImage = existingPanel.GetComponent<Image>();
+                if (_effectFeedbackToastImage == null) _effectFeedbackToastImage = existingPanel.gameObject.AddComponent<Image>();
+            }
+
+            _effectFeedbackToastPanel.anchorMin = textRect.anchorMin;
+            _effectFeedbackToastPanel.anchorMax = textRect.anchorMax;
+            _effectFeedbackToastPanel.pivot = textRect.pivot;
+            _effectFeedbackToastPanel.anchoredPosition = textRect.anchoredPosition;
+            _effectFeedbackToastPanel.sizeDelta = textRect.sizeDelta + new Vector2(22f, 12f);
+            _effectFeedbackToastPanel.localScale = Vector3.one;
+            _effectFeedbackToastPanel.localEulerAngles = Vector3.zero;
+            _effectFeedbackToastPanel.SetSiblingIndex(Mathf.Max(0, textRect.GetSiblingIndex()));
+
+            ApplyRoundedPanelImage(_effectFeedbackToastImage);
+            _effectFeedbackToastImage.color = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.ToastGlass, 0f);
+            _effectFeedbackToastImage.raycastTarget = false;
+
+            const string accentName = "Effect Feedback Toast Accent";
+            Transform existingAccent = _effectFeedbackToastPanel.Find(accentName);
+            if (existingAccent == null)
+            {
+                var accentObject = new GameObject(accentName, typeof(RectTransform), typeof(Image));
+                accentObject.transform.SetParent(_effectFeedbackToastPanel, false);
+                _effectFeedbackToastAccent = accentObject.GetComponent<RectTransform>();
+                _effectFeedbackToastAccentImage = accentObject.GetComponent<Image>();
+            }
+            else
+            {
+                _effectFeedbackToastAccent = existingAccent as RectTransform;
+                _effectFeedbackToastAccentImage = existingAccent.GetComponent<Image>();
+                if (_effectFeedbackToastAccentImage == null) _effectFeedbackToastAccentImage = existingAccent.gameObject.AddComponent<Image>();
+            }
+
+            _effectFeedbackToastAccent.anchorMin = new Vector2(0f, 0f);
+            _effectFeedbackToastAccent.anchorMax = new Vector2(0f, 1f);
+            _effectFeedbackToastAccent.pivot = new Vector2(0f, 0.5f);
+            _effectFeedbackToastAccent.anchoredPosition = Vector2.zero;
+            _effectFeedbackToastAccent.sizeDelta = new Vector2(5f, 0f);
+            _effectFeedbackToastAccent.localScale = Vector3.one;
+            _effectFeedbackToastAccent.localEulerAngles = Vector3.zero;
+            _effectFeedbackToastAccentImage.color = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.BrandPink, 0f);
+            _effectFeedbackToastAccentImage.raycastTarget = false;
+            SetEffectFeedbackToastAlpha(0f);
+        }
+
+        void SetEffectFeedbackToastAlpha(float alpha)
+        {
+            if (_effectFeedbackToastImage != null)
+            {
+                _effectFeedbackToastImage.color = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.DeepGlass, 0.78f * alpha);
+            }
+            if (_effectFeedbackToastAccentImage != null)
+            {
+                _effectFeedbackToastAccentImage.color = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.BrandPink, 0.92f * alpha);
+            }
         }
 
         void EnsureBattlefieldManager()
@@ -2207,9 +2279,9 @@ namespace UCG
 
             sceneSlot.backgroundImage = slotImage;
             sceneSlot.normalColor = color;
-            sceneSlot.hoverColor = new Color(0.08f, 0.18f, 0.22f, 0.18f);
-            sceneSlot.validColor = new Color(0.22f, 0.78f, 1f, 0.52f);
-            sceneSlot.invalidColor = new Color(1f, 0.78f, 0.32f, 0.42f);
+            sceneSlot.hoverColor = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.FocusCyan, 0.16f);
+            sceneSlot.validColor = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.FocusCyan, 0.52f);
+            sceneSlot.invalidColor = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.WarningGold, 0.42f);
             sceneSlot.sceneCardSize = GetSceneCardBoardSize();
             sceneSlot.debugSceneSlotVerbose = debugSceneSlotVerbose;
             sceneSlot.debugSceneDiagnostics = debugSceneSlotVerbose || debugLayoutDiagnostics;
@@ -2276,13 +2348,13 @@ namespace UCG
 
             frameImage.color = debugBoardZones
                 ? new Color(0.025f, 0.16f, 0.22f, 0.24f)
-                : new Color(0.012f, 0.08f, 0.12f, sceneAreaAlpha);
+                : UcgToolUiPalette.WithAlpha(UcgToolUiPalette.DeepGlass, sceneAreaAlpha);
             frameImage.raycastTarget = false;
 
             Outline outline = frameRect.GetComponent<Outline>();
             outline.effectColor = debugBoardZones
                 ? new Color(0.72f, 1f, 1f, 0.9f)
-                : new Color(0.58f, 0.94f, 1f, sceneAreaOutlineAlpha);
+                : UcgToolUiPalette.WithAlpha(UcgToolUiPalette.GlassBorder, sceneAreaOutlineAlpha);
             outline.effectDistance = new Vector2(1.3f, -1.3f);
 
             EnsureSceneZoneInnerFrame(frameRect);
@@ -2319,13 +2391,13 @@ namespace UCG
             frameRect.SetAsFirstSibling();
             frameImage.color = debugBoardZones
                 ? new Color(0.04f, 0.24f, 0.28f, 0.24f)
-                : new Color(0.02f, 0.12f, 0.15f, 0.055f);
+                : UcgToolUiPalette.WithAlpha(UcgToolUiPalette.DeepGlass, 0.055f);
             frameImage.raycastTarget = false;
 
             Outline outline = frameRect.GetComponent<Outline>();
             outline.effectColor = debugBoardZones
                 ? new Color(0.78f, 1f, 1f, 0.82f)
-                : new Color(0.72f, 0.98f, 1f, 0.22f);
+                : UcgToolUiPalette.WithAlpha(UcgToolUiPalette.GlassBorder, 0.22f);
             outline.effectDistance = new Vector2(1.1f, -1.1f);
         }
 
@@ -3790,7 +3862,7 @@ namespace UCG
             {
                 image.color = debugBoardZones
                     ? new Color(0.18f, 0.06f, 0.30f, 0.86f)
-                    : new Color(0.006f, 0.045f, 0.08f, Mathf.Max(sidePileBackgroundAlpha, 0.34f));
+                    : UcgToolUiPalette.WithAlpha(UcgToolUiPalette.DeepGlass, Mathf.Max(sidePileBackgroundAlpha, 0.28f));
                 image.raycastTarget = false;
             }
 
@@ -3800,8 +3872,8 @@ namespace UCG
                 outline.enabled = true;
                 outline.effectColor = debugBoardZones
                     ? new Color(1f, 0.92f, 0.12f, 1f)
-                    : new Color(0.45f, 0.82f, 1f, Mathf.Max(sidePileOutlineAlpha, 0.46f));
-                outline.effectDistance = debugBoardZones ? new Vector2(3.2f, -3.2f) : new Vector2(1.9f, -1.9f);
+                    : UcgToolUiPalette.WithAlpha(UcgToolUiPalette.GlassBorder, Mathf.Min(Mathf.Max(sidePileOutlineAlpha, 0.26f), 0.34f));
+                outline.effectDistance = debugBoardZones ? new Vector2(3.2f, -3.2f) : new Vector2(1.2f, -1.2f);
             }
 
             Transform frameTransform = zone.Find("Card Frame");
@@ -3810,7 +3882,7 @@ namespace UCG
             {
                 frameImage.color = debugBoardZones
                     ? new Color(0.95f, 0.82f, 0.06f, 0.46f)
-                    : new Color(0.012f, 0.08f, 0.13f, 0.18f);
+                    : UcgToolUiPalette.WithAlpha(UcgToolUiPalette.DeepGlass, 0.12f);
                 frameImage.raycastTarget = false;
             }
 
@@ -3820,8 +3892,8 @@ namespace UCG
                 frameOutline.enabled = true;
                 frameOutline.effectColor = debugBoardZones
                     ? new Color(1f, 0.96f, 0.18f, 1f)
-                    : new Color(0.48f, 0.84f, 1f, 0.42f);
-                frameOutline.effectDistance = debugBoardZones ? new Vector2(2f, -2f) : new Vector2(1.1f, -1.1f);
+                    : UcgToolUiPalette.WithAlpha(UcgToolUiPalette.GlassBorder, 0.24f);
+                frameOutline.effectDistance = debugBoardZones ? new Vector2(2f, -2f) : new Vector2(0.9f, -0.9f);
             }
 
             Text label = zone.Find("Zone Label") != null ? zone.Find("Zone Label").GetComponent<Text>() : null;
@@ -3840,7 +3912,7 @@ namespace UCG
                     label.gameObject.SetActive(true);
                     label.fontSize = 16;
                     label.resizeTextMaxSize = 16;
-                    label.color = new Color(0.84f, 0.96f, 1f, 0.82f);
+                    label.color = UcgToolUiPalette.MutedWhite;
                 }
                 else if (zone == playerDeckAnchor)
                 {
@@ -3848,7 +3920,7 @@ namespace UCG
                     label.gameObject.SetActive(true);
                     label.fontSize = 16;
                     label.resizeTextMaxSize = 16;
-                    label.color = new Color(0.84f, 0.96f, 1f, 0.82f);
+                    label.color = UcgToolUiPalette.MutedWhite;
                 }
                 else if (zone == playerDiscardAnchor)
                 {
@@ -3856,7 +3928,7 @@ namespace UCG
                     label.gameObject.SetActive(true);
                     label.fontSize = 16;
                     label.resizeTextMaxSize = 16;
-                    label.color = new Color(0.84f, 0.96f, 1f, 0.82f);
+                    label.color = UcgToolUiPalette.MutedWhite;
                 }
             }
 
@@ -3869,7 +3941,7 @@ namespace UCG
                 count.resizeTextMaxSize = debugBoardZones ? 20 : 36;
                 count.color = debugBoardZones
                     ? new Color(1f, 1f, 1f, 1f)
-                    : new Color(0.98f, 1f, 1f, 1f);
+                    : UcgToolUiPalette.BrandPinkLight;
             }
 
             UpdateBoardZoneDebugText(zone);
@@ -4016,8 +4088,10 @@ namespace UCG
             {
                 image.color = debugBoardZones
                     ? new Color(0.26f, 0.78f, 1f, 0.26f)
-                    : new Color(0.08f, 0.45f, 0.72f, 0.08f);
-                outline.effectColor = new Color(0.45f, 0.95f, 1f, debugBoardZones ? 0.85f : 0.18f);
+                    : UcgToolUiPalette.WithAlpha(UcgToolUiPalette.DeepGlass, 0.08f);
+                outline.effectColor = debugBoardZones
+                    ? new Color(0.45f, 0.95f, 1f, 0.85f)
+                    : UcgToolUiPalette.WithAlpha(UcgToolUiPalette.GlassBorder, 0.16f);
                 EnsureBoardRegionLabel(rect, "COMBAT BOARD REGION");
             }
             else
@@ -4221,15 +4295,15 @@ namespace UCG
             ApplyRoundedPanelImage(image);
             image.color = debugBoardZones
                 ? new Color(0.025f, 0.18f, 0.24f, 0.74f)
-                : new Color(0.006f, 0.045f, 0.08f, Mathf.Max(sidePileBackgroundAlpha, 0.34f));
+                : UcgToolUiPalette.WithAlpha(UcgToolUiPalette.DeepGlass, Mathf.Max(sidePileBackgroundAlpha, 0.28f));
             image.raycastTarget = false;
 
             Outline outline = rect.GetComponent<Outline>();
             outline.enabled = true;
             outline.effectColor = debugBoardZones
                 ? new Color(0.85f, 1f, 1f, 1f)
-                : new Color(0.45f, 0.82f, 1f, Mathf.Max(sidePileOutlineAlpha, 0.46f));
-            outline.effectDistance = new Vector2(1.9f, -1.9f);
+                : UcgToolUiPalette.WithAlpha(UcgToolUiPalette.GlassBorder, Mathf.Min(Mathf.Max(sidePileOutlineAlpha, 0.26f), 0.34f));
+            outline.effectDistance = debugBoardZones ? new Vector2(1.9f, -1.9f) : new Vector2(1.2f, -1.2f);
 
             Shadow shadow = EnsureUiShadow(rect.gameObject);
             shadow.effectColor = new Color(0f, 0.08f, 0.16f, 0.16f);
@@ -4238,12 +4312,12 @@ namespace UCG
 
             EnsureZoneInnerFrame(rect);
             bool hasLabel = !string.IsNullOrWhiteSpace(label);
-            Text titleText = EnsureZoneText(rect, "Zone Label", new Vector2(0.1f, 0.67f), new Vector2(0.9f, 0.87f), font, 16, new Color(0.84f, 0.96f, 1f, 0.82f));
+            Text titleText = EnsureZoneText(rect, "Zone Label", new Vector2(0.1f, 0.67f), new Vector2(0.9f, 0.87f), font, 16, UcgToolUiPalette.MutedWhite);
             titleText.text = label;
             titleText.gameObject.SetActive(hasLabel || debugBoardZones);
             countText = hasLabel
-                ? EnsureZoneText(rect, "Zone Count", new Vector2(0.12f, 0.25f), new Vector2(0.88f, 0.57f), font, 36, new Color(1f, 1f, 1f, 0.98f))
-                : EnsureZoneText(rect, "Zone Count", new Vector2(0.18f, 0.33f), new Vector2(0.82f, 0.63f), font, 36, new Color(1f, 1f, 1f, 0.98f));
+                ? EnsureZoneText(rect, "Zone Count", new Vector2(0.12f, 0.25f), new Vector2(0.88f, 0.57f), font, 36, UcgToolUiPalette.BrandPinkLight)
+                : EnsureZoneText(rect, "Zone Count", new Vector2(0.18f, 0.33f), new Vector2(0.82f, 0.63f), font, 36, UcgToolUiPalette.BrandPinkLight);
             EnsureBoardZoneDebugText(rect, font);
             return rect;
         }
@@ -4350,15 +4424,15 @@ namespace UCG
             ApplyRoundedPanelImage(frameImage);
             frameImage.color = debugBoardZones
                 ? new Color(0.04f, 0.26f, 0.32f, 0.32f)
-                : new Color(0.012f, 0.08f, 0.13f, 0.18f);
+                : UcgToolUiPalette.WithAlpha(UcgToolUiPalette.DeepGlass, 0.12f);
             frameImage.raycastTarget = false;
 
             Outline outline = frameRect.GetComponent<Outline>();
             outline.enabled = true;
             outline.effectColor = debugBoardZones
                 ? new Color(0.85f, 1f, 1f, 0.95f)
-                : new Color(0.48f, 0.84f, 1f, 0.42f);
-            outline.effectDistance = new Vector2(1.1f, -1.1f);
+                : UcgToolUiPalette.WithAlpha(UcgToolUiPalette.GlassBorder, 0.24f);
+            outline.effectDistance = debugBoardZones ? new Vector2(1.1f, -1.1f) : new Vector2(0.9f, -0.9f);
         }
 
         void EnsureBoardZoneDebugText(RectTransform parent, Font font)
@@ -4683,8 +4757,8 @@ namespace UCG
             EnsureHudBackplate(
                 "Game Result HUD Panel",
                 textRect,
-                new Color(0.025f, 0.055f, 0.08f, 0.24f),
-                new Color(0.58f, 0.9f, 1f, 0.055f),
+                UcgToolUiPalette.WithAlpha(UcgToolUiPalette.DeepGlass, 0.24f),
+                UcgToolUiPalette.WithAlpha(UcgToolUiPalette.GlassBorder, 0.12f),
                 new Vector2(14f, 6f));
             ResetGameResultText();
 
@@ -4767,9 +4841,9 @@ namespace UCG
                 : _topPromptActionText;
             string helperText = GetTopPromptHelperText(actionText);
 
-            return $"<size=17><color=#EAF7FF>{phaseText}</color></size>\n"
-                + $"<size=24><color=#FFD66B>{actionText}</color></size>\n"
-                + $"<size=13><color=#DCEAF2>{helperText}</color></size>";
+            return $"<size=17><color={UcgToolUiPalette.SoftWhiteHex}>{phaseText}</color></size>\n"
+                + $"<size=24><color={UcgToolUiPalette.BrandPinkLightHex}>{actionText}</color></size>\n"
+                + $"<size=13><color={UcgToolUiPalette.MutedWhiteHex}>{helperText}</color></size>";
         }
 
         void SetTopPromptProgress(float progress, bool visible)
@@ -5158,14 +5232,20 @@ namespace UCG
             Image panelImage = tutorialGuide.GetComponent<Image>();
             if (panelImage != null)
             {
-                panelImage.color = new Color(0.018f, 0.04f, 0.065f, 0.94f);
+                ApplyRoundedPanelImage(panelImage);
+                panelImage.color = UcgToolUiPalette.DeepGlass;
                 panelImage.raycastTarget = false;
             }
 
             Outline panelOutline = tutorialGuide.GetComponent<Outline>();
             if (panelOutline == null) panelOutline = tutorialGuide.gameObject.AddComponent<Outline>();
-            panelOutline.effectColor = new Color(0.58f, 0.92f, 1f, 0.42f);
-            panelOutline.effectDistance = new Vector2(4f, -4f);
+            panelOutline.effectColor = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.BrandPink, 0.34f);
+            panelOutline.effectDistance = new Vector2(2f, -2f);
+
+            Shadow panelShadow = EnsureUiShadow(tutorialGuide.gameObject);
+            panelShadow.effectColor = new Color(15f / 255f, 23f / 255f, 42f / 255f, 0.28f);
+            panelShadow.effectDistance = new Vector2(0f, -8f);
+            panelShadow.useGraphicAlpha = true;
 
             CanvasGroup panelGroup = tutorialGuide.GetComponent<CanvasGroup>();
             if (panelGroup == null) panelGroup = tutorialGuide.gameObject.AddComponent<CanvasGroup>();
@@ -5188,6 +5268,7 @@ namespace UCG
                 text.resizeTextMaxSize = 30;
                 text.alignment = TextAnchor.MiddleCenter;
                 text.lineSpacing = 1.18f;
+                text.color = UcgToolUiPalette.SoftWhite;
                 text.raycastTarget = false;
             }
         }
@@ -5266,11 +5347,11 @@ namespace UCG
             iconFrameRect.localEulerAngles = Vector3.zero;
             iconFrameRect.SetAsLastSibling();
             ApplyRoundedPanelImage(iconFrameImage);
-            iconFrameImage.color = new Color(1f, 0.72f, 0.18f, 0.16f);
+            iconFrameImage.color = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.BrandPink, 0.16f);
             iconFrameImage.raycastTarget = false;
 
             Outline iconFrameOutline = iconFrameRect.GetComponent<Outline>();
-            iconFrameOutline.effectColor = new Color(1f, 0.78f, 0.24f, 0.68f);
+            iconFrameOutline.effectColor = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.BrandPinkLight, 0.68f);
             iconFrameOutline.effectDistance = new Vector2(1.5f, -1.5f);
             iconFrameOutline.useGraphicAlpha = true;
 
@@ -5299,7 +5380,7 @@ namespace UCG
             iconRect.offsetMax = Vector2.zero;
             iconText.text = "!";
             iconText.alignment = TextAnchor.MiddleCenter;
-            iconText.color = new Color(1f, 0.82f, 0.28f, 1f);
+            iconText.color = UcgToolUiPalette.BrandPinkLight;
             Font placeholderFont = LoadPlaceholderFont();
             if (placeholderFont != null) iconText.font = placeholderFont;
             iconText.fontSize = 24;
@@ -6102,7 +6183,7 @@ namespace UCG
             _deckOperationSelectionRoot.localEulerAngles = Vector3.zero;
 
             var rootImage = _deckOperationSelectionRoot.GetComponent<Image>();
-            rootImage.color = new Color(0f, 0f, 0f, 0.22f);
+            rootImage.color = new Color(15f / 255f, 23f / 255f, 42f / 255f, 0.46f);
             rootImage.raycastTarget = true;
 
             Canvas overlayCanvas = _deckOperationSelectionRoot.GetComponent<Canvas>();
@@ -6148,11 +6229,11 @@ namespace UCG
             panelRect.pivot = new Vector2(0.5f, 0.5f);
             panelRect.anchoredPosition = new Vector2(GetRevealSelectionOffsetX(), -40f);
             panelRect.sizeDelta = new Vector2(900f, 420f);
-            panelImage.color = new Color(0.015f, 0.035f, 0.055f, 0.12f);
+            panelImage.color = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.DeepGlass, 0.24f);
             panelImage.raycastTarget = true;
 
             var outline = panelRect.GetComponent<Outline>();
-            outline.effectColor = new Color(0.42f, 0.86f, 1f, 0.08f);
+            outline.effectColor = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.GlassBorder, 0.24f);
             outline.effectDistance = new Vector2(1f, -1f);
             return panelRect;
         }
@@ -6185,7 +6266,7 @@ namespace UCG
             titleRect.sizeDelta = new Vector2(800f, 58f);
             titleText.text = "選擇 1 張牌";
             titleText.alignment = TextAnchor.MiddleCenter;
-            titleText.color = new Color(0.92f, 0.98f, 1f, 0.96f);
+            titleText.color = UcgToolUiPalette.SoftWhite;
             titleText.fontSize = 23;
             titleText.resizeTextForBestFit = true;
             titleText.resizeTextMinSize = 16;
@@ -6249,7 +6330,7 @@ namespace UCG
             buttonRect.anchoredPosition = new Vector2(0f, 18f);
             buttonRect.sizeDelta = new Vector2(180f, 52f);
 
-            ApplyHudButtonStyle(button, new Color(0.06f, 0.18f, 0.28f, 0.78f), new Color(0.14f, 0.4f, 0.6f, 0.92f));
+            ApplyPrimaryHudButtonStyle(button);
             button.onClick.RemoveListener(CompleteDeckOperationNoSelection);
             button.onClick.AddListener(CompleteDeckOperationNoSelection);
             EnsureButtonLabel(buttonRect, "確認");
@@ -6335,7 +6416,7 @@ namespace UCG
 
             var image = nextTurnButton.GetComponent<Image>();
             image.raycastTarget = true;
-            ApplyHudButtonStyle(nextTurnButton, new Color(0.08f, 0.13f, 0.26f, 0.74f), new Color(0.2f, 0.28f, 0.52f, 0.9f));
+            ApplyPrimaryHudButtonStyle(nextTurnButton);
             nextTurnButton.onClick.RemoveListener(NextTurn);
             nextTurnButton.onClick.AddListener(NextTurn);
             nextTurnButton.gameObject.SetActive(false);
@@ -6531,7 +6612,7 @@ namespace UCG
             trackRect.sizeDelta = new Vector2(0f, 6f);
             trackRect.localScale = Vector3.one;
             trackRect.localEulerAngles = Vector3.zero;
-            trackImage.color = new Color(0.16f, 0.32f, 0.38f, 0.58f);
+            trackImage.color = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.GlassBorder, 0.22f);
             trackImage.raycastTarget = false;
 
             Transform existingFill = trackRect.Find("Countdown Progress Fill");
@@ -6556,7 +6637,7 @@ namespace UCG
             _advancePromptProgressFillRect.offsetMax = Vector2.zero;
             _advancePromptProgressFillRect.localScale = Vector3.one;
             _advancePromptProgressFillRect.localEulerAngles = Vector3.zero;
-            fillImage.color = new Color(0.36f, 0.96f, 1f, 0.86f);
+            fillImage.color = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.BrandPinkLight, 0.86f);
             fillImage.raycastTarget = false;
         }
 
@@ -6611,9 +6692,9 @@ namespace UCG
         {
             if (button == null) return;
 
-            Color normalColor = new Color(0.012f, 0.06f, 0.11f, 0.68f);
-            Color highlightedColor = new Color(0.03f, 0.17f, 0.28f, 0.92f);
-            Color pressedColor = new Color(0.09f, 0.38f, 0.58f, 0.96f);
+            Color normalColor = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.DeepGlass, 0.72f);
+            Color highlightedColor = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.DeepGlass, 0.9f);
+            Color pressedColor = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.BrandPink, 0.82f);
 
             var image = button.GetComponent<Image>();
             if (image != null)
@@ -6626,12 +6707,52 @@ namespace UCG
 
             var outline = button.GetComponent<Outline>();
             if (outline == null) outline = button.gameObject.AddComponent<Outline>();
-            outline.effectColor = new Color(0.44f, 0.9f, 1f, 0.62f);
-            outline.effectDistance = new Vector2(2.4f, -2.4f);
+            outline.effectColor = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.BrandPink, 0.34f);
+            outline.effectDistance = new Vector2(1.6f, -1.6f);
             outline.useGraphicAlpha = true;
 
             var shadow = EnsureUiShadow(button.gameObject);
-            shadow.effectColor = new Color(0f, 0.08f, 0.18f, 0.34f);
+            shadow.effectColor = new Color(15f / 255f, 23f / 255f, 42f / 255f, 0.22f);
+            shadow.effectDistance = new Vector2(0f, -3f);
+            shadow.useGraphicAlpha = true;
+
+            ColorBlock colors = button.colors;
+            colors.normalColor = normalColor;
+            colors.highlightedColor = highlightedColor;
+            colors.pressedColor = pressedColor;
+            colors.selectedColor = highlightedColor;
+            colors.disabledColor = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.DeepGlass, 0.38f);
+            colors.colorMultiplier = 1.08f;
+            colors.fadeDuration = 0.08f;
+            button.transition = Selectable.Transition.ColorTint;
+            button.colors = colors;
+        }
+
+        void ApplyPrimaryHudButtonStyle(Button button)
+        {
+            if (button == null) return;
+
+            Color normalColor = UcgToolUiPalette.BrandPink;
+            Color highlightedColor = UcgToolUiPalette.BrandPinkLight;
+            Color pressedColor = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.BrandPink, 0.78f);
+
+            var image = button.GetComponent<Image>();
+            if (image != null)
+            {
+                ApplyRoundedPanelImage(image);
+                image.color = normalColor;
+                image.raycastTarget = true;
+                button.targetGraphic = image;
+            }
+
+            var outline = button.GetComponent<Outline>();
+            if (outline == null) outline = button.gameObject.AddComponent<Outline>();
+            outline.effectColor = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.BrandPinkLight, 0.28f);
+            outline.effectDistance = new Vector2(1.4f, -1.4f);
+            outline.useGraphicAlpha = true;
+
+            var shadow = EnsureUiShadow(button.gameObject);
+            shadow.effectColor = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.BrandPink, 0.22f);
             shadow.effectDistance = new Vector2(0f, -4f);
             shadow.useGraphicAlpha = true;
 
@@ -6640,8 +6761,8 @@ namespace UCG
             colors.highlightedColor = highlightedColor;
             colors.pressedColor = pressedColor;
             colors.selectedColor = highlightedColor;
-            colors.disabledColor = new Color(0.04f, 0.06f, 0.08f, 0.42f);
-            colors.colorMultiplier = 1.18f;
+            colors.disabledColor = new Color(148f / 255f, 163f / 255f, 184f / 255f, 0.54f);
+            colors.colorMultiplier = 1f;
             colors.fadeDuration = 0.08f;
             button.transition = Selectable.Transition.ColorTint;
             button.colors = colors;
@@ -6651,17 +6772,17 @@ namespace UCG
         {
             Text iconText = EnsureButtonChildText(parent, "Icon", new Vector2(0.06f, 0f), new Vector2(0.30f, 1f));
             iconText.text = icon;
-            iconText.fontSize = 23;
-            iconText.resizeTextMinSize = 15;
-            iconText.resizeTextMaxSize = 23;
-            iconText.color = new Color(0.62f, 0.94f, 1f, 1f);
+            iconText.fontSize = 18;
+            iconText.resizeTextMinSize = 13;
+            iconText.resizeTextMaxSize = 18;
+            iconText.color = UcgToolUiPalette.BrandPinkLight;
 
             Text label = EnsureButtonChildText(parent, "Text", new Vector2(0.30f, 0f), new Vector2(0.94f, 1f));
             label.text = text;
-            label.fontSize = 20;
-            label.resizeTextMinSize = 13;
-            label.resizeTextMaxSize = 20;
-            label.color = new Color(0.94f, 0.99f, 1f, 1f);
+            label.fontSize = 16;
+            label.resizeTextMinSize = 12;
+            label.resizeTextMaxSize = 16;
+            label.color = UcgToolUiPalette.SoftWhite;
         }
 
         Text EnsureButtonChildText(RectTransform parent, string objectName, Vector2 anchorMin, Vector2 anchorMax)
@@ -7891,6 +8012,7 @@ namespace UCG
                 effectFeedbackText.color = color;
                 effectFeedbackText.text = "";
             }
+            SetEffectFeedbackToastAlpha(0f);
             _queuedEffectFeedbackMessages.Clear();
             _effectFeedbackRoutine = null;
         }
@@ -7907,11 +8029,13 @@ namespace UCG
                 float t = duration <= 0f ? 1f : Mathf.Clamp01(elapsed / duration);
                 color.a = Mathf.Lerp(fromAlpha, toAlpha, t);
                 effectFeedbackText.color = color;
+                SetEffectFeedbackToastAlpha(color.a);
                 yield return null;
             }
 
             color.a = toAlpha;
             effectFeedbackText.color = color;
+            SetEffectFeedbackToastAlpha(toAlpha);
         }
 
         void TryAutoAdvanceAfterTutorialEffectResolved(string message)
@@ -15440,7 +15564,7 @@ namespace UCG
             Image rootImage = _deckOperationSelectionRoot.GetComponent<Image>();
             if (rootImage != null)
             {
-                rootImage.color = new Color(0f, 0f, 0f, 0.22f);
+                rootImage.color = new Color(15f / 255f, 23f / 255f, 42f / 255f, 0.46f);
                 rootImage.raycastTarget = true;
             }
 
@@ -15453,7 +15577,7 @@ namespace UCG
                 Image panelImage = panelRect.GetComponent<Image>();
                 if (panelImage != null)
                 {
-                    panelImage.color = new Color(0.015f, 0.035f, 0.055f, 0.12f);
+                    panelImage.color = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.DeepGlass, 0.24f);
                     panelImage.raycastTarget = true;
                 }
             }
@@ -15533,7 +15657,7 @@ namespace UCG
                 Image panelImage = panelRect.GetComponent<Image>();
                 if (panelImage != null)
                 {
-                    panelImage.color = new Color(0.015f, 0.035f, 0.055f, 0.58f);
+                    panelImage.color = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.DeepGlass, 0.72f);
                     panelImage.raycastTarget = false;
                 }
             }
@@ -15700,8 +15824,12 @@ namespace UCG
             var button = cardObject.GetComponent<Button>();
             ColorBlock buttonColors = button.colors;
             buttonColors.normalColor = Color.white;
-            buttonColors.highlightedColor = canSelect ? new Color(0.84f, 1f, 0.88f, 1f) : Color.white;
-            buttonColors.pressedColor = canSelect ? new Color(0.66f, 0.94f, 0.72f, 1f) : Color.white;
+            buttonColors.highlightedColor = canSelect
+                ? UcgToolUiPalette.WithAlpha(UcgToolUiPalette.FocusCyan, 0.18f)
+                : Color.white;
+            buttonColors.pressedColor = canSelect
+                ? UcgToolUiPalette.WithAlpha(UcgToolUiPalette.BrandPinkLight, 0.2f)
+                : Color.white;
             buttonColors.selectedColor = buttonColors.highlightedColor;
             buttonColors.disabledColor = new Color(0.86f, 0.86f, 0.86f, 0.94f);
             buttonColors.colorMultiplier = 1f;
@@ -15732,8 +15860,8 @@ namespace UCG
             var outline = cardObject.GetComponent<Outline>();
             if (outline == null) outline = cardObject.AddComponent<Outline>();
             outline.effectColor = canSelect
-                ? new Color(0.24f, 1f, 0.44f, 0.88f)
-                : new Color(1f, 0.24f, 0.24f, 0.82f);
+                ? UcgToolUiPalette.WithAlpha(UcgToolUiPalette.FocusCyan, 0.86f)
+                : new Color(1f, 0.38f, 0.48f, 0.62f);
             outline.effectDistance = canSelect ? new Vector2(3.2f, -3.2f) : new Vector2(2.8f, -2.8f);
             outline.useGraphicAlpha = false;
 
@@ -15753,8 +15881,8 @@ namespace UCG
                     ? canSelect ? "可升級" : "無合法升級目標"
                     : canSelect ? "可選" : GetDeckOperationInvalidSelectionReason(filter);
             Color labelColor = canSelect
-                ? new Color(0.58f, 1f, 0.66f, 0.98f)
-                : new Color(1f, 0.48f, 0.48f, 0.98f);
+                ? UcgToolUiPalette.FocusCyan
+                : new Color(1f, 0.58f, 0.62f, 0.96f);
             CreateDeckOperationCardStatusLabel(cardObject.transform, labelText, labelColor);
         }
 

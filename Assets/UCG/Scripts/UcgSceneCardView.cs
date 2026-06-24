@@ -233,11 +233,11 @@ namespace UCG
 
             _glowImage.raycastTarget = false;
             _glowImage.enabled = true;
-            _glowImage.color = new Color(0.32f, 0.88f, 1f, 0.026f);
+            _glowImage.color = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.FocusCyan, 0.026f);
 
             var outline = _glowImage.GetComponent<Outline>();
             if (outline == null) outline = _glowImage.gameObject.AddComponent<Outline>();
-            outline.effectColor = new Color(0.62f, 0.96f, 1f, 0.2f);
+            outline.effectColor = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.FocusCyan, 0.2f);
             outline.effectDistance = new Vector2(9f, -9f);
             outline.useGraphicAlpha = true;
 
@@ -344,13 +344,13 @@ namespace UCG
                 rect.localScale = Vector3.one * Mathf.Lerp(1.004f, 1.028f, pulse);
                 if (_effectSourceHighlightImage != null)
                 {
-                    _effectSourceHighlightImage.color = new Color(0.32f, 0.92f, 1f, Mathf.Lerp(0.045f, 0.105f, pulse));
+                    _effectSourceHighlightImage.color = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.BrandPink, Mathf.Lerp(0.045f, 0.105f, pulse));
                 }
 
                 if (_effectSourceHighlightOutline != null)
                 {
                     _effectSourceHighlightOutline.enabled = true;
-                    _effectSourceHighlightOutline.effectColor = new Color(1f, 0.76f, 0.22f, Mathf.Lerp(0.28f, 0.5f, pulse));
+                    _effectSourceHighlightOutline.effectColor = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.BrandPinkLight, Mathf.Lerp(0.28f, 0.5f, pulse));
                     _effectSourceHighlightOutline.effectDistance = new Vector2(4.5f, -4.5f);
                 }
 
@@ -449,8 +449,8 @@ namespace UCG
                 _glowImage.enabled = glowActive;
                 _glowImage.raycastTarget = false;
                 _glowImage.color = boosted
-                    ? new Color(0.45f, 0.95f, 1f, 0.055f)
-                    : new Color(0.32f, 0.88f, 1f, 0.026f);
+                    ? UcgToolUiPalette.WithAlpha(UcgToolUiPalette.FocusCyan, 0.055f)
+                    : UcgToolUiPalette.WithAlpha(UcgToolUiPalette.FocusCyan, 0.026f);
             }
 
             Outline glowOutline = _glowImage != null ? _glowImage.GetComponent<Outline>() : null;
@@ -458,8 +458,8 @@ namespace UCG
             {
                 glowOutline.enabled = glowActive;
                 glowOutline.effectColor = boosted
-                    ? new Color(0.7f, 0.98f, 1f, 0.36f)
-                    : new Color(0.62f, 0.96f, 1f, 0.2f);
+                    ? UcgToolUiPalette.WithAlpha(UcgToolUiPalette.FocusCyan, 0.36f)
+                    : UcgToolUiPalette.WithAlpha(UcgToolUiPalette.FocusCyan, 0.2f);
                 glowOutline.effectDistance = boosted
                     ? new Vector2(12f, -12f)
                     : new Vector2(9f, -9f);

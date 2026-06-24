@@ -371,6 +371,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::UCG.UcgHandDemo
   canvas: {fileID: 0}
   cardHolder: {fileID: 0}
+  battleBackgroundSprite: {fileID: 2572905338340671149, guid: 0e9ef502e849247afb91b075472bb7b5, type: 3}
   testCardSprites:
   - {fileID: 21300000, guid: 9e8c39aeb9e3948778861842a4f23488, type: 3}
   - {fileID: 21300000, guid: e13899642c23c4688952cf165d1365ca, type: 3}

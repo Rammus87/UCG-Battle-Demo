@@ -24,14 +24,14 @@ namespace UCG
 
         [Header("Feedback")]
         public Image highlightImage;
-        public Color defaultColor = new Color(0.018f, 0.07f, 0.105f, 0.26f);
-        public Color hoverColor = new Color(0.08f, 0.28f, 0.40f, 0.36f);
-        public Color occupiedColor = new Color(0.018f, 0.04f, 0.075f, 0.30f);
-        public Color activeSetupColor = new Color(1f, 0.66f, 0.18f, 0.22f);
-        public Color upgradeAvailableColor = new Color(1f, 0.76f, 0.22f, 0.24f);
-        public Color validDropColor = new Color(1f, 0.70f, 0.20f, 0.26f);
-        public Color invalidDropColor = new Color(0.32f, 0.08f, 0.10f, 0.22f);
-        public Color lockedColor = new Color(0.06f, 0.06f, 0.075f, 0.1f);
+        public Color defaultColor = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.DeepGlass, 0.2f);
+        public Color hoverColor = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.FocusCyan, 0.18f);
+        public Color occupiedColor = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.DeepGlass, 0.24f);
+        public Color activeSetupColor = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.BrandPink, 0.2f);
+        public Color upgradeAvailableColor = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.WarningGold, 0.24f);
+        public Color validDropColor = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.FocusCyan, 0.24f);
+        public Color invalidDropColor = new Color(0.46f, 0.08f, 0.12f, 0.22f);
+        public Color lockedColor = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.DeepGlass, 0.1f);
 
         UcgLaneHighlightState _highlightState = UcgLaneHighlightState.Normal;
         UcgGuidancePulse _slotPulse;
@@ -329,8 +329,8 @@ namespace UCG
 
             Color baseColor = highlightImage.color;
             Color flashColor = isUpgrade
-                ? new Color(1f, 0.82f, 0.28f, 0.42f)
-                : new Color(0.36f, 0.96f, 1f, 0.36f);
+                ? UcgToolUiPalette.WithAlpha(UcgToolUiPalette.WarningGold, 0.42f)
+                : UcgToolUiPalette.WithAlpha(UcgToolUiPalette.FocusCyan, 0.36f);
             float duration = isUpgrade ? 0.22f : 0.18f;
             float elapsed = 0f;
 
@@ -571,9 +571,9 @@ namespace UCG
             _guideRingRect.localEulerAngles = Vector3.zero;
             _guideRingRect.SetAsLastSibling();
 
-            _guideRingImage.color = new Color(1f, 0.70f, 0.20f, 0.035f);
+            _guideRingImage.color = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.FocusCyan, 0.045f);
             _guideRingImage.raycastTarget = false;
-            _guideRingOutline.effectColor = new Color(1f, 0.76f, 0.22f, 0.42f);
+            _guideRingOutline.effectColor = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.FocusCyan, 0.42f);
             _guideRingOutline.effectDistance = new Vector2(2.4f, -2.4f);
             _guideRingOutline.useGraphicAlpha = true;
 
@@ -621,7 +621,7 @@ namespace UCG
 
             _guideArrowText.text = "▼";
             _guideArrowText.alignment = TextAnchor.MiddleCenter;
-            _guideArrowText.color = new Color(1f, 0.76f, 0.22f, 0.72f);
+            _guideArrowText.color = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.FocusCyan, 0.72f);
             _guideArrowText.fontSize = 28;
             _guideArrowText.resizeTextForBestFit = true;
             _guideArrowText.resizeTextMinSize = 22;

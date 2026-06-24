@@ -217,6 +217,12 @@ namespace UCG
             DebugValidateDeckImages();
         }
 
+        [ContextMenu("Debug Validate Tutorial Deck Images")]
+        public void DebugValidateTutorialDeckImages()
+        {
+            DebugValidateDeckImages();
+        }
+
         IEnumerator DebugValidateDeckImagesRoutine()
         {
             var cards = CollectUniqueDeckCards();
@@ -227,8 +233,11 @@ namespace UCG
                 externalDatabase != null ? externalDatabase.publicRootPath : "",
                 loader != null ? loader.unityPngRootPath : "");
             var missingReports = new List<string>();
+            var statusReports = new List<string>();
             int resolvedCount = 0;
             int missingCount = 0;
+            int decodeFailedCount = 0;
+            int fallbackSpriteCount = 0;
 
             if (debugImageValidation)
             {
@@ -259,14 +268,18 @@ namespace UCG
                 string selectedPath = indexResolvedPath;
                 var candidates = loader.BuildImageCandidates(externalDatabase, card, imageLocal);
                 string candidateReport = loader.FormatCandidates(candidates);
+                string triedPaths = loader.FormatCandidatePaths(candidates);
                 string resolvedPath = externalDatabase != null ? externalDatabase.ResolveImageFilePath(imageLocal) : "";
                 bool fileExists = !string.IsNullOrWhiteSpace(resolvedPath) && File.Exists(resolvedPath);
+                bool anyCandidateExists = fileExists || (indexResolved && File.Exists(indexResolvedPath)) || HasExistingImageCandidate(candidates);
                 bool done = false;
                 Sprite loadedSprite = null;
 
                 if (!indexResolved && string.IsNullOrWhiteSpace(imageLocal) && string.IsNullOrWhiteSpace(card.imageUrl))
                 {
                     missingCount++;
+                    fallbackSpriteCount++;
+                    statusReports.Add($"Fallback sprite used | {card.id} | {card.cardName} | imageLocal=<empty>");
                     missingReports.Add(
                         $"{card.id} {card.cardName}\n" +
                         $"imageLocal=<empty>\n" +
@@ -304,6 +317,10 @@ namespace UCG
                 if (loadedSprite == null)
                 {
                     missingCount++;
+                    fallbackSpriteCount++;
+                    string status = anyCandidateExists ? "Decode failed" : "Missing file";
+                    if (anyCandidateExists) decodeFailedCount++;
+                    statusReports.Add($"{status} | {card.id} | {card.cardName} | imageLocal={imageLocal}");
                     missingReports.Add(
                         $"{card.id} {card.cardName}\n" +
                         $"imageLocal={imageLocal}\n" +
@@ -311,27 +328,28 @@ namespace UCG
                         $"indexResolvedPath={indexResolvedPath}\n" +
                         $"selectedSourceType={selectedSourceType}\n" +
                         $"selectedPath={selectedPath}\n" +
+                        $"exists={anyCandidateExists}\n" +
+                        $"decodeResult={status}\n" +
+                        "fallbackUsed=placeholder sprite expected\n" +
                         $"indexReport:\n{indexReport}\n" +
                         $"fallbackTried:\n{candidateReport}");
                     if (debugImageValidation)
                     {
                         Debug.LogWarning(
-                            "Deck image validation placeholder fallback:\n" +
-                            $"card={card.id} {card.cardName}\n" +
+                            "[UCG CardImage Missing]\n" +
+                            $"cardId={card.id}\n" +
+                            $"cardName={card.cardName}\n" +
                             $"imageLocal={imageLocal}\n" +
-                            $"imageUrl={card.imageUrl}\n" +
-                            $"indexResolved={indexResolved}\n" +
-                            $"indexResolvedPath={indexResolvedPath}\n" +
-                            $"selectedSourceType={selectedSourceType}\n" +
-                            $"resolvedLocalPath={resolvedPath}\n" +
-                            $"fileExists={fileExists}\n" +
-                            $"indexReport=\n{indexReport}\n" +
-                            $"fallbackCandidates=\n{candidateReport}");
+                            $"triedPaths=\n{triedPaths}" +
+                            $"exists={anyCandidateExists}\n" +
+                            $"decodeResult={status}\n" +
+                            "fallbackUsed=placeholder sprite expected");
                     }
                 }
                 else
                 {
                     resolvedCount++;
+                    statusReports.Add($"OK | {card.id} | {card.cardName} | imageLocal={imageLocal} | sprite={loadedSprite.name}");
                     if (debugImageValidation)
                     {
                         Debug.Log(
@@ -354,7 +372,21 @@ namespace UCG
                 $"unique cards = {cards.Count}\n" +
                 $"resolved = {resolvedCount}\n" +
                 $"missing = {missingCount}\n" +
+                $"decode failed = {decodeFailedCount}\n" +
+                $"fallback sprite used = {fallbackSpriteCount}\n" +
                 $"failed load count = {missingCount}");
+            if (statusReports.Count > 0)
+            {
+                var statusBuilder = new System.Text.StringBuilder();
+                statusBuilder.AppendLine("[UCG DeckImage Diagnostics]");
+                for (int i = 0; i < statusReports.Count; i++)
+                {
+                    statusBuilder.AppendLine(statusReports[i]);
+                }
+
+                Debug.Log(statusBuilder.ToString());
+            }
+
             if (missingReports.Count > 0)
             {
                 var missingBuilder = new System.Text.StringBuilder();
@@ -370,13 +402,60 @@ namespace UCG
             Debug.Log("DebugValidateDeckImages complete.");
         }
 
+        static bool HasExistingImageCandidate(List<UcgCardImageLoader.ImageCandidate> candidates)
+        {
+            if (candidates == null) return false;
+            for (int i = 0; i < candidates.Count; i++)
+            {
+                if (candidates[i] != null && candidates[i].exists) return true;
+            }
+
+            return false;
+        }
+
         List<UcgCardData> CollectUniqueDeckCards()
         {
             var cards = new List<UcgCardData>();
             var seen = new HashSet<string>();
             AddUniqueProfileCards(cards, seen, _activeProfile);
             AddUniqueProfileCards(cards, seen, _opponentProfile);
+            if (cards.Count == 0)
+            {
+                UcgExternalCardDatabase externalDatabase = UcgExternalCardDatabase.GetOrCreate();
+                AddUniqueDefinitionCards(cards, seen, UcgDigaTutorialDeckFactory.CreatePlayerDeckDefinition(), externalDatabase);
+                AddUniqueDefinitionCards(cards, seen, UcgDigaTutorialDeckFactory.CreateOpponentDeckDefinition(), externalDatabase);
+            }
+
             return cards;
+        }
+
+        void AddUniqueDefinitionCards(
+            List<UcgCardData> cards,
+            HashSet<string> seen,
+            UcgDeckDefinition definition,
+            UcgExternalCardDatabase externalDatabase)
+        {
+            if (cards == null || seen == null || definition == null || definition.cards == null || externalDatabase == null) return;
+            externalDatabase.LoadDatabase();
+
+            for (int i = 0; i < definition.cards.Count; i++)
+            {
+                UcgDeckDefinitionEntry entry = definition.cards[i];
+                if (entry == null || string.IsNullOrWhiteSpace(entry.id) || !seen.Add(entry.id)) continue;
+
+                UcgCardData sourceCard = externalDatabase.GetCardById(entry.id);
+                if (sourceCard == null)
+                {
+                    cards.Add(new UcgCardData
+                    {
+                        id = entry.id,
+                        cardName = "<missing card data>"
+                    });
+                    continue;
+                }
+
+                cards.Add(UcgDeckDefinitionResolver.CloneCard(sourceCard));
+            }
         }
 
         void AddUniqueProfileCards(List<UcgCardData> cards, HashSet<string> seen, UcgDeckProfile profile)
