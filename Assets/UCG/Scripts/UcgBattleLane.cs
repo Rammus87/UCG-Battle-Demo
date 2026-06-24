@@ -43,7 +43,7 @@ namespace UCG
         UcgCardData _fixedOpponentCardData;
         Sprite _fixedOpponentCardSprite;
         Vector2 _fixedOpponentCardSize;
-        Color _opponentSlotDefaultColor = new Color(0.32f, 0.12f, 0.14f, 0.28f);
+        Color _opponentSlotDefaultColor = new Color(0.12f, 0.08f, 0.14f, 0.30f);
         Color _effectTargetColor = new Color(0.25f, 0.95f, 0.58f, 0.7f);
         Image _laneFocusImage;
         Outline _laneFocusOutline;
@@ -78,7 +78,7 @@ namespace UCG
 
             resultLabel = EnsureResultLabel();
 
-            playerSlot = EnsureSlot("Player Slot", new Vector2(0f, -310f), playerSlotSize, new Color(0.08f, 0.16f, 0.22f, 0.35f), true);
+            playerSlot = EnsureSlot("Player Slot", new Vector2(0f, -310f), playerSlotSize, new Color(0.018f, 0.07f, 0.105f, 0.26f), true);
             playerPlayArea = playerSlot.GetComponent<UcgPlayArea>();
             if (playerPlayArea == null) playerPlayArea = playerSlot.gameObject.AddComponent<UcgPlayArea>();
 
@@ -91,9 +91,13 @@ namespace UCG
             playerPlayArea.phaseManager = phaseManager;
             playerPlayArea.placedCardSize = placedCardSize;
             playerPlayArea.upgradeStackOffset = new Vector2(10f, 6f);
-            playerPlayArea.defaultColor = new Color(0.055f, 0.11f, 0.15f, 0.22f);
-            playerPlayArea.hoverColor = new Color(0.12f, 0.34f, 0.45f, 0.32f);
-            playerPlayArea.occupiedColor = new Color(0.08f, 0.08f, 0.11f, 0.24f);
+            playerPlayArea.defaultColor = new Color(0.018f, 0.07f, 0.105f, 0.26f);
+            playerPlayArea.hoverColor = new Color(0.08f, 0.28f, 0.40f, 0.36f);
+            playerPlayArea.occupiedColor = new Color(0.018f, 0.04f, 0.075f, 0.30f);
+            playerPlayArea.activeSetupColor = new Color(1f, 0.66f, 0.18f, 0.22f);
+            playerPlayArea.upgradeAvailableColor = new Color(1f, 0.76f, 0.22f, 0.24f);
+            playerPlayArea.validDropColor = new Color(1f, 0.70f, 0.20f, 0.26f);
+            playerPlayArea.invalidDropColor = new Color(0.32f, 0.08f, 0.10f, 0.22f);
             ResetLaneState();
             SetActiveLaneFocus(false);
         }
@@ -984,19 +988,56 @@ namespace UCG
 
             _laneFocusImage.enabled = true;
             _laneFocusImage.color = active
-                ? new Color(0.08f, 0.2f, 0.25f, 0.04f)
-                : new Color(0.02f, 0.035f, 0.05f, 0.018f);
+                ? new Color(0.025f, 0.12f, 0.18f, 0.045f)
+                : new Color(0.012f, 0.055f, 0.085f, 0.028f);
 
             if (_laneFocusOutline != null)
             {
-                _laneFocusOutline.enabled = active;
-                _laneFocusOutline.effectColor = new Color(0.48f, 0.9f, 1f, 0.08f);
+                _laneFocusOutline.enabled = true;
+                _laneFocusOutline.effectColor = active
+                    ? new Color(0.30f, 0.82f, 1f, 0.20f)
+                    : new Color(0.24f, 0.62f, 0.92f, 0.10f);
+                _laneFocusOutline.effectDistance = active
+                    ? new Vector2(2.2f, -2.2f)
+                    : new Vector2(1.7f, -1.7f);
             }
+
+            ApplySlotFocusState(playerSlot, active, false);
+            ApplySlotFocusState(opponentSlot, false, true);
 
             if (_laneFocusPulse != null)
             {
+                _laneFocusPulse.alphaAmplitude = active ? 0.018f : 0.025f;
                 _laneFocusPulse.CaptureBaseState();
                 _laneFocusPulse.enabled = active;
+            }
+        }
+
+        void ApplySlotFocusState(RectTransform slot, bool active, bool opponent)
+        {
+            if (slot == null) return;
+
+            Image image = slot.GetComponent<Image>();
+            if (image != null)
+            {
+                image.color = active
+                    ? opponent
+                        ? new Color(0.045f, 0.035f, 0.055f, 0.17f)
+                        : new Color(1f, 0.68f, 0.18f, 0.18f)
+                    : opponent
+                        ? new Color(0.045f, 0.035f, 0.055f, 0.17f)
+                        : new Color(0.015f, 0.055f, 0.085f, 0.18f);
+            }
+
+            Outline outline = slot.GetComponent<Outline>();
+            if (outline != null)
+            {
+                outline.effectColor = active
+                    ? new Color(1f, 0.76f, 0.22f, 0.72f)
+                    : new Color(0.34f, 0.72f, 1f, 0.16f);
+                outline.effectDistance = active
+                    ? new Vector2(3.2f, -3.2f)
+                    : new Vector2(1.5f, -1.5f);
             }
         }
 
@@ -1174,15 +1215,20 @@ namespace UCG
             backdropRect.SetAsFirstSibling();
 
             _laneFocusImage.raycastTarget = false;
-            _laneFocusOutline.effectDistance = new Vector2(1.5f, -1.5f);
+            _laneFocusOutline.effectDistance = new Vector2(2.4f, -2.4f);
             _laneFocusOutline.useGraphicAlpha = true;
+
+            Shadow backdropShadow = EnsureUiShadow(backdropRect.gameObject);
+            backdropShadow.effectColor = new Color(0f, 0.14f, 0.26f, 0.22f);
+            backdropShadow.effectDistance = new Vector2(0f, -5f);
+            backdropShadow.useGraphicAlpha = true;
 
             _laneFocusPulse = backdropRect.GetComponent<UcgGuidancePulse>();
             if (_laneFocusPulse == null) _laneFocusPulse = backdropRect.gameObject.AddComponent<UcgGuidancePulse>();
             _laneFocusPulse.targetImage = _laneFocusImage;
             _laneFocusPulse.targetRect = backdropRect;
             _laneFocusPulse.pulseAlpha = true;
-            _laneFocusPulse.alphaAmplitude = 0.018f;
+            _laneFocusPulse.alphaAmplitude = 0.055f;
             _laneFocusPulse.pulseScale = false;
             _laneFocusPulse.speed = 1.8f;
             _laneFocusPulse.enabled = false;
@@ -1214,18 +1260,52 @@ namespace UCG
             slotRect.anchoredPosition = anchoredPosition;
             slotRect.sizeDelta = size;
 
+            ApplySlicedUiSprite(slotImage);
             slotImage.color = color;
             slotImage.raycastTarget = raycastTarget;
 
             var outline = slotRect.GetComponent<Outline>();
             if (outline == null) outline = slotRect.gameObject.AddComponent<Outline>();
             outline.effectColor = slotName.Contains("Player")
-                ? new Color(0.58f, 0.85f, 1f, 0.24f)
-                : new Color(1f, 0.58f, 0.58f, 0.16f);
-            outline.effectDistance = new Vector2(2f, -2f);
+                ? new Color(0.46f, 0.9f, 1f, 0.54f)
+                : new Color(0.54f, 0.82f, 1f, 0.38f);
+            outline.effectDistance = new Vector2(3f, -3f);
             outline.useGraphicAlpha = true;
 
+            var shadow = EnsureUiShadow(slotRect.gameObject);
+            shadow.effectColor = new Color(0f, 0.12f, 0.24f, 0.32f);
+            shadow.effectDistance = new Vector2(0f, -5f);
+            shadow.useGraphicAlpha = true;
+
             return slotRect;
+        }
+
+        static void ApplySlicedUiSprite(Image image)
+        {
+            if (image == null) return;
+
+            Sprite roundedSprite = Resources.GetBuiltinResource<Sprite>("UI/Skin/UISprite.psd");
+            if (roundedSprite == null) return;
+
+            image.sprite = roundedSprite;
+            image.type = Image.Type.Sliced;
+            image.pixelsPerUnitMultiplier = 1f;
+        }
+
+        static Shadow EnsureUiShadow(GameObject target)
+        {
+            if (target == null) return null;
+
+            Shadow[] shadows = target.GetComponents<Shadow>();
+            for (int i = 0; i < shadows.Length; i++)
+            {
+                if (shadows[i] != null && shadows[i].GetType() == typeof(Shadow))
+                {
+                    return shadows[i];
+                }
+            }
+
+            return target.AddComponent<Shadow>();
         }
 
         Text EnsureResultLabel()
@@ -1296,12 +1376,12 @@ namespace UCG
 
             label.text = text;
             label.alignment = TextAnchor.MiddleCenter;
-            label.color = new Color(1f, 1f, 1f, 0.45f);
+            label.color = new Color(0.82f, 0.96f, 1f, 0.70f);
             if (_uiFont != null) label.font = _uiFont;
-            label.fontSize = 22;
+            label.fontSize = 24;
             label.resizeTextForBestFit = true;
             label.resizeTextMinSize = 12;
-            label.resizeTextMaxSize = 22;
+            label.resizeTextMaxSize = 24;
             label.raycastTarget = false;
         }
     }

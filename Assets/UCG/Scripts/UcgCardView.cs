@@ -45,6 +45,11 @@ namespace UCG
         RectTransform _operationFeedbackRect;
         Image _operationFeedbackImage;
         Outline _operationFeedbackOutline;
+        Coroutine _effectSourceHighlightRoutine;
+        bool _effectSourceHighlightActive;
+        RectTransform _effectSourceHighlightRect;
+        Image _effectSourceHighlightImage;
+        Outline _effectSourceHighlightOutline;
         string _requestedImageLocal;
         string _boundCardId;
         string _boundImageLocal;
@@ -223,6 +228,159 @@ namespace UCG
                 isWinner ? new Color(0.25f, 1f, 0.48f, 0.16f) : new Color(1f, 0.35f, 0.28f, 0.13f),
                 isWinner ? new Color(0.32f, 1f, 0.58f, 0.36f) : new Color(1f, 0.38f, 0.32f, 0.28f),
                 false);
+        }
+
+        public void PlayEffectSourcePulse()
+        {
+            StartOperationFeedback(
+                0.56f,
+                1.035f,
+                new Color(1f, 0.74f, 0.18f, 0.14f),
+                new Color(1f, 0.78f, 0.24f, 0.42f),
+                true);
+        }
+
+        public void StartEffectSourceHighlight()
+        {
+            if (!Application.isPlaying || !gameObject.activeInHierarchy) return;
+
+            EnsureEffectSourceHighlightOverlay();
+            _effectSourceHighlightActive = true;
+            if (_effectSourceHighlightRoutine != null)
+            {
+                StopCoroutine(_effectSourceHighlightRoutine);
+                _effectSourceHighlightRoutine = null;
+            }
+
+            _effectSourceHighlightRoutine = StartCoroutine(EffectSourceHighlightRoutine());
+        }
+
+        public void StopEffectSourceHighlight()
+        {
+            _effectSourceHighlightActive = false;
+            if (!Application.isPlaying || !gameObject.activeInHierarchy || _effectSourceHighlightRoutine == null)
+            {
+                HideEffectSourceHighlightOverlay();
+            }
+        }
+
+        IEnumerator EffectSourceHighlightRoutine()
+        {
+            RectTransform rect = _effectSourceHighlightRect;
+            if (rect == null) yield break;
+
+            rect.SetAsLastSibling();
+            rect.gameObject.SetActive(true);
+
+            while (_effectSourceHighlightActive && rect != null)
+            {
+                float pulse = 0.5f + Mathf.Sin(Time.unscaledTime * 6.2f) * 0.5f;
+                rect.localScale = Vector3.one * Mathf.Lerp(1.006f, 1.026f, pulse);
+
+                if (_effectSourceHighlightImage != null)
+                {
+                    _effectSourceHighlightImage.color = new Color(1f, 0.74f, 0.18f, Mathf.Lerp(0.055f, 0.13f, pulse));
+                }
+
+                if (_effectSourceHighlightOutline != null)
+                {
+                    _effectSourceHighlightOutline.enabled = true;
+                    _effectSourceHighlightOutline.effectColor = new Color(1f, 0.78f, 0.24f, Mathf.Lerp(0.34f, 0.58f, pulse));
+                    _effectSourceHighlightOutline.effectDistance = new Vector2(4.6f, -4.6f);
+                }
+
+                yield return null;
+            }
+
+            float fadeDuration = 0.16f;
+            float elapsed = 0f;
+            float startFillAlpha = _effectSourceHighlightImage != null ? _effectSourceHighlightImage.color.a : 0f;
+            float startOutlineAlpha = _effectSourceHighlightOutline != null ? _effectSourceHighlightOutline.effectColor.a : 0f;
+            while (elapsed < fadeDuration && rect != null)
+            {
+                elapsed += Time.unscaledDeltaTime;
+                float alpha = 1f - Mathf.Clamp01(elapsed / fadeDuration);
+                rect.localScale = Vector3.one;
+
+                if (_effectSourceHighlightImage != null)
+                {
+                    Color color = _effectSourceHighlightImage.color;
+                    color.a = startFillAlpha * alpha;
+                    _effectSourceHighlightImage.color = color;
+                }
+
+                if (_effectSourceHighlightOutline != null)
+                {
+                    Color color = _effectSourceHighlightOutline.effectColor;
+                    color.a = startOutlineAlpha * alpha;
+                    _effectSourceHighlightOutline.effectColor = color;
+                }
+
+                yield return null;
+            }
+
+            HideEffectSourceHighlightOverlay();
+            _effectSourceHighlightRoutine = null;
+        }
+
+        void EnsureEffectSourceHighlightOverlay()
+        {
+            const string overlayName = "Effect Source Highlight";
+            if (_effectSourceHighlightRect != null && _effectSourceHighlightImage != null && _effectSourceHighlightOutline != null) return;
+
+            Transform existingOverlay = transform.Find(overlayName);
+            if (existingOverlay == null)
+            {
+                var overlayObject = new GameObject(overlayName, typeof(RectTransform), typeof(Image), typeof(Outline));
+                overlayObject.transform.SetParent(transform, false);
+                existingOverlay = overlayObject.transform;
+            }
+
+            _effectSourceHighlightRect = existingOverlay as RectTransform;
+            _effectSourceHighlightImage = existingOverlay.GetComponent<Image>();
+            if (_effectSourceHighlightImage == null) _effectSourceHighlightImage = existingOverlay.gameObject.AddComponent<Image>();
+            _effectSourceHighlightOutline = existingOverlay.GetComponent<Outline>();
+            if (_effectSourceHighlightOutline == null) _effectSourceHighlightOutline = existingOverlay.gameObject.AddComponent<Outline>();
+
+            _effectSourceHighlightRect.anchorMin = Vector2.zero;
+            _effectSourceHighlightRect.anchorMax = Vector2.one;
+            _effectSourceHighlightRect.pivot = new Vector2(0.5f, 0.5f);
+            _effectSourceHighlightRect.offsetMin = Vector2.zero;
+            _effectSourceHighlightRect.offsetMax = Vector2.zero;
+            _effectSourceHighlightRect.localScale = Vector3.one;
+            _effectSourceHighlightRect.localEulerAngles = Vector3.zero;
+            _effectSourceHighlightRect.SetAsLastSibling();
+
+            if (_effectSourceHighlightImage.sprite == null)
+            {
+                try
+                {
+                    _effectSourceHighlightImage.sprite = Resources.GetBuiltinResource<Sprite>("UI/Skin/UISprite.psd");
+                    _effectSourceHighlightImage.type = Image.Type.Sliced;
+                }
+                catch
+                {
+                    // Keep the simple image fallback if the built-in UI sprite is unavailable.
+                }
+            }
+
+            _effectSourceHighlightImage.color = Color.clear;
+            _effectSourceHighlightImage.raycastTarget = false;
+            _effectSourceHighlightOutline.enabled = false;
+            _effectSourceHighlightOutline.effectDistance = new Vector2(4.6f, -4.6f);
+            _effectSourceHighlightOutline.useGraphicAlpha = true;
+            _effectSourceHighlightRect.gameObject.SetActive(false);
+        }
+
+        void HideEffectSourceHighlightOverlay()
+        {
+            if (_effectSourceHighlightRect != null)
+            {
+                _effectSourceHighlightRect.localScale = Vector3.one;
+                _effectSourceHighlightRect.gameObject.SetActive(false);
+            }
+            if (_effectSourceHighlightImage != null) _effectSourceHighlightImage.color = Color.clear;
+            if (_effectSourceHighlightOutline != null) _effectSourceHighlightOutline.enabled = false;
         }
 
         void StartOperationFeedback(float duration, float peakScale, Color fillColor, Color outlineColor, bool pulseScale)
@@ -505,6 +663,9 @@ namespace UCG
             _cardArtImage.raycastTarget = false;
             _cardArtImage.enabled = false;
             _cardArtRect.SetAsLastSibling();
+
+            Transform softCornerFrame = transform.Find("Hand Card Soft Corners");
+            if (softCornerFrame != null) softCornerFrame.SetAsLastSibling();
         }
 
         void TryLoadExternalImage(Sprite currentSprite)

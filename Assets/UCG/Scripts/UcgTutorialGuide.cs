@@ -29,6 +29,7 @@ namespace UCG
         Coroutine _promptFadeRoutine;
         string _lastPromptText;
         const float PromptFadeDuration = 0.18f;
+        const string MissionGold = "#FFD66B";
 
         public void ResetForMode(UcgTestMode mode)
         {
@@ -101,7 +102,28 @@ namespace UCG
                 return;
             }
 
-            SetTutorialText(isTutorialMode ? ComposeTutorialPrompt(message) : message, true);
+            string actionPrompt = ExtractActionPrompt(message);
+            if (!string.IsNullOrWhiteSpace(actionPrompt))
+            {
+                SetTutorialText(FormatActionPrompt(actionPrompt), true);
+                return;
+            }
+
+            SetTutorialText(isTutorialMode ? GetGoalText() : "", true);
+        }
+
+        public void ShowActionPrompt(string message)
+        {
+            if (tutorialText == null) return;
+            if (tutorialCompleted)
+            {
+                SetTutorialText("", false);
+                return;
+            }
+
+            string actionPrompt = ExtractActionPrompt(message);
+            if (string.IsNullOrWhiteSpace(actionPrompt)) return;
+            SetTutorialText(FormatActionPrompt(actionPrompt), true);
         }
 
         public void ShowCurrentGoal()
@@ -121,6 +143,69 @@ namespace UCG
             }
 
             return $"{goal}\n{status}";
+        }
+
+        string FormatActionPrompt(string message)
+        {
+            message = message != null ? message.Trim() : "";
+            if (string.IsNullOrWhiteSpace(message)) return GetGoalText();
+            if (message.Contains("<color=") || message.Contains("<size=")) return message;
+
+            return $"<color={MissionGold}><size=26>{message}</size></color>";
+        }
+
+        string ExtractActionPrompt(string message)
+        {
+            if (string.IsNullOrWhiteSpace(message)) return "";
+
+            string[] lines = message.Replace('\r', '\n').Split('\n');
+            for (int i = lines.Length - 1; i >= 0; i--)
+            {
+                string line = CleanActionPromptLine(lines[i]);
+                if (IsActionPromptLine(line)) return line;
+            }
+
+            return "";
+        }
+
+        string CleanActionPromptLine(string line)
+        {
+            if (string.IsNullOrWhiteSpace(line)) return "";
+
+            line = line.Trim();
+            int dividerIndex = line.LastIndexOf('｜');
+            if (dividerIndex >= 0 && dividerIndex < line.Length - 1)
+            {
+                string tail = line.Substring(dividerIndex + 1).Trim();
+                if (IsActionPromptLine(tail)) return tail;
+            }
+
+            int colonIndex = line.IndexOf('：');
+            if (colonIndex >= 0 && colonIndex < line.Length - 1)
+            {
+                string tail = line.Substring(colonIndex + 1).Trim();
+                if (IsActionPromptLine(tail)) return tail;
+            }
+
+            return line;
+        }
+
+        bool IsActionPromptLine(string line)
+        {
+            if (string.IsNullOrWhiteSpace(line)) return false;
+            if (line.Contains("本回合先攻") || line.Contains("勝利路數") || line.Contains("遊戲結束")) return false;
+            if (line.StartsWith("對手") && !line.Contains("請選擇對手")) return false;
+            if (line.Contains("準備進入") || line.Contains("正在比較") || line.Contains("已完成")) return false;
+
+            return line.Contains("請選擇")
+                || line.Contains("請先選擇")
+                || line.Contains("請依序選擇")
+                || line.Contains("可以升級")
+                || line.Contains("可以設置")
+                || line.Contains("點擊完成")
+                || line.Contains("放回牌庫")
+                || line.Contains("放到底")
+                || line.Contains("選擇目標");
         }
 
         string GetCompactStatusText(string message)
@@ -196,41 +281,46 @@ namespace UCG
             switch (currentStep)
             {
                 case UcgTutorialStep.SceneSetup:
-                    return "可以設置場景時，把合適的場景卡放到中央場景區。";
+                    return MissionPrompt("請選擇場景卡", "將其放到中央場景區");
                 case UcgTutorialStep.WaitOpponentSetup:
-                    return "對手正在行動，先觀察這一路的對戰狀況。";
+                    return $"<color={MissionGold}><size=26>請觀察對手行動</size></color>";
                 case UcgTutorialStep.Upgrade:
                     return GetUpgradeGoalText();
                 case UcgTutorialStep.Open:
-                    return "開放階段會翻開雙方卡牌，接著處理登場效果。";
+                    return $"<color={MissionGold}><size=26>請確認翻開的卡牌</size></color>";
                 case UcgTutorialStep.Effect:
-                    return "處理效果時，依照高亮提示選擇目標。";
+                    return $"<color={MissionGold}><size=26>請依照高亮提示選擇目標</size></color>";
                 case UcgTutorialStep.BattleJudgement:
-                    return "比較雙方 BP，較高的一方會贏下這一路。";
+                    return $"<color={MissionGold}><size=26>請確認 BP 判定</size></color>";
                 case UcgTutorialStep.SetupLane2:
-                    return "第 2 路開放了，選一張角色卡放上場吧！";
+                    return MissionPrompt("請選擇一張角色卡", "將其放上場地");
                 case UcgTutorialStep.WinCondition:
-                    return "繼續贏下三條不同路線，就能完成模擬對戰。";
+                    return $"<color={MissionGold}><size=26>請繼續贏下三條路線</size></color>";
                 case UcgTutorialStep.Complete:
-                    return "模擬對戰完成！";
+                    return $"<color={MissionGold}>模擬對戰完成！</color>";
                 default:
-                    return "先從第 1 路開始，選擇一張角色卡放上場吧！";
+                    return MissionPrompt("請選擇一張角色卡", "將其放上場地");
             }
+        }
+
+        string MissionPrompt(string title, string subtitle)
+        {
+            return $"<color={MissionGold}><size=26>{title}</size></color>\n<size=18>{subtitle}</size>";
         }
 
         string GetUpgradeGoalText()
         {
             if (currentMode == UcgTestMode.MonsterAlienTest)
             {
-                return "現在可以把同名高等級角色疊上去，讓這一路變得更強。";
+                return MissionPrompt("請選擇升級卡", "疊到同名角色上");
             }
 
             if (currentMode == UcgTestMode.TeamTest)
             {
-                return "可以用高等級卡升級三人突擊隊，也可以直接結束升級。";
+                return MissionPrompt("請選擇升級卡", "也可以直接結束升級");
             }
 
-            return "現在可以把角色升級，讓這一路變得更強！";
+            return MissionPrompt("請選擇升級卡", "疊到場上角色上");
         }
     }
 }

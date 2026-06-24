@@ -376,7 +376,8 @@ namespace UCG
             rootRect.anchorMax = new Vector2(0.5f, 0f);
             rootRect.pivot = new Vector2(0.5f, 0.5f);
             rootRect.anchoredPosition = new Vector2(0f, 940f);
-            rootRect.sizeDelta = new Vector2(1040f, 820f);
+            float viewportHeight = Mathf.Clamp(laneSize.y > 0f ? laneSize.y : 820f, 820f, 1040f);
+            rootRect.sizeDelta = new Vector2(1040f, viewportHeight);
 
             scrollRect = GetComponent<ScrollRect>();
             if (scrollRect == null) scrollRect = gameObject.AddComponent<ScrollRect>();

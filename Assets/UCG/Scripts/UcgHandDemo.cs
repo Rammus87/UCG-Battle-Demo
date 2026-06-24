@@ -126,13 +126,16 @@ namespace UCG
         public float autoPhaseDelaySeconds = 1f;
         public float opponentActionDelaySeconds = 0.75f;
         public float noValidSelectionAutoCloseDelay = 1.75f;
+        public float openingOverviewHoldSeconds = 0.75f;
+        public float openingFocusTransitionSeconds = 0.42f;
         public float advanceButtonCountdownSeconds = 30f;
         public float upgradeAdvanceCountdownSeconds = 30f;
         public float characterPlayAnimationSeconds = 0.3f;
         public float characterUpgradeAnimationSeconds = 0.36f;
         public float judgementResultAnimationSeconds = 0.85f;
         public float combatAreaOffsetX = 0f;
-        public float combatFocusViewportPosition = 0.5f;
+        public float combatFocusViewportPosition = 0.44f;
+        public float debugCombatViewportOffset = 0f;
         public float rightAuxiliaryColumnGutterWidth = 450f;
         public float sceneAreaOffsetRatio = 0.55f;
         public float rightSidePileColumnDownShift = 0f;
@@ -170,8 +173,8 @@ namespace UCG
         public Vector2 referencePlayerPileGroupPos = new Vector2(0f, -226f);
         public float referenceDeckLocalY = 112f;
         public float referenceDiscardLocalY = -112f;
-        public float sidePileScale = 0.68f;
-        public float sidePileFocusedScale = 0.68f;
+        public float sidePileScale = 0.78f;
+        public float sidePileFocusedScale = 0.78f;
         public float sidePileGap = 22f;
         public float pileGroupVerticalSeparation = 16f;
         public float sidePileColumnMargin = 32f;
@@ -181,14 +184,14 @@ namespace UCG
         public float sidePileTooFarGap = 160f;
         public float sidePileMinGapFromLane = 12f;
         public float combatToPileGapX = 42f;
-        public float sidePileColumnNudgeX = 0f;
+        public float sidePileColumnNudgeX = 40f;
         public float sidePanelWidth = 260f;
         public float sidePanelRightMargin = 96f;
         public float deckDiscardGroupGap = 16f;
         public float debugSidePileExtremeOffsetX = -300f;
         public float sidePileRightMargin = 4f;
         public float sidePileBackgroundAlpha = 0.32f;
-        public float sidePileOutlineAlpha = 0.42f;
+        public float sidePileOutlineAlpha = 0.46f;
         public float sceneAreaScale = 0.9f;
         public float sceneAreaAlpha = 0.07f;
         public float sceneAreaOutlineAlpha = 0.3f;
@@ -218,12 +221,17 @@ namespace UCG
         bool _isSelectingDeckOperationCard;
         bool _isEffectAutoAdvancing;
         bool _isOpeningFirstPlayerSequence;
+        bool _isOpeningCameraIntro;
+        bool _openingCameraOverrodeScrollDuration;
         bool _isResolvingVisualAnimation;
         bool _boardZoneDebugPrinted;
         bool _debugBoardZonesStateLogged;
+        bool _layoutDebugBoundsLogged;
         bool _hasInitializedBattlefieldView;
         float _initialBattlefieldContentOffsetX;
         bool _hasInitialBattlefieldContentOffset;
+        float _lastAppliedCombatFocusViewportPosition = float.MinValue;
+        float _lastSeenDebugCombatViewportOffset = float.MinValue;
         float _lastBattlefieldFocusOffsetX;
         float _lastBaseSidePileColumnX;
         float _lastFinalSidePileColumnX;
@@ -239,6 +247,7 @@ namespace UCG
         float _lastClampMinX;
         float _lastClampMaxX;
         float _lastClampedSidePileColumnX;
+        float _openingCameraPreviousScrollDuration;
         float _lastSidePileColumnBeforeX;
         float _lastSidePileColumnAfterX;
         float _lastBoardZoneRootAnchoredX;
@@ -251,11 +260,34 @@ namespace UCG
         bool _lastSidePileOverlapWithRevealArea;
         bool _lastSidePileTooFar;
         string _lastSidePileClampReason = "None";
+        string _lastPileRegionNudgeMethod = "NotApplied";
+        float _lastPileRegionXBeforeMethod = float.MinValue;
+        float _lastPileRegionXBeforeNudge = float.MinValue;
+        float _lastPileRegionXNudgeValue = float.MinValue;
+        float _lastPileRegionXAfterNudge = float.MinValue;
+        float _lastPileRegionXMaxSafeClamp = float.MinValue;
+        float _lastPileRegionXAfterClamp = float.MinValue;
+        float _lastPileRegionXAfterApply = float.MinValue;
+        float _lastPileRegionVisibleRight = float.MinValue;
+        float _lastPileRegionViewportRight = float.MinValue;
+        bool _lastPileRegionClampApplied;
+        int _lastPileRegionLayoutFrame = -1;
         bool _advanceToUpgradeAfterOpponentSetup;
         bool _showRestoredCardsMessageOnStart;
         bool _enterEffectPhaseHadPendingEffects;
         bool _battleEffectPhaseHadPendingEffects;
         string _openingFirstPlayerMessage = "";
+        string _topPromptActionText = "";
+        RectTransform _topPromptProgressTrackRect;
+        RectTransform _topPromptProgressFillRect;
+        RectTransform _turnStartBannerRoot;
+        CanvasGroup _turnStartBannerCanvasGroup;
+        Text _turnStartBannerTurnText;
+        Text _turnStartBannerInitiativeText;
+        Coroutine _turnStartBannerRoutine;
+        UcgGamePhase _lastTopPromptPhase = UcgGamePhase.Start;
+        int _lastTurnStartBannerShownTurn;
+        UcgEffectInstance _activeEffectSourceHighlight;
         int _opponentUpgradeExecutedTurn = -1;
         int _lastPlayerWinCount;
         int _lastOpponentWinCount;
@@ -348,6 +380,7 @@ namespace UCG
             EnsureTutorialGuide();
             EnsurePlayResultText();
             EnsureEffectFeedbackText();
+            EnsureTurnStartBanner();
             EnsureTurnManager();
             EnsurePhaseManager();
             EnsureDeckManager();
@@ -391,7 +424,11 @@ namespace UCG
         void Update()
         {
             UpdateDebugBoardZonesActivePanel();
+            UpdateLayoutDebugBounds();
+            UpdateDebugCombatViewportOffset();
             UpdateEffectTestToolPanelVisibility();
+            UpdateTopPhaseHud();
+            EnsureTutorialPanelTopLayer();
         }
 
         void EnsureDebugBoardZonesActivePanel()
@@ -723,11 +760,17 @@ namespace UCG
             plateRect.localEulerAngles = Vector3.zero;
             plateImage.color = fillColor;
             plateImage.raycastTarget = false;
+            ApplyRoundedPanelImage(plateImage);
 
             var outline = plateRect.GetComponent<Outline>();
             outline.effectColor = outlineColor;
             outline.effectDistance = new Vector2(1.5f, -1.5f);
             outline.useGraphicAlpha = true;
+
+            var shadow = EnsureUiShadow(plateRect.gameObject);
+            shadow.effectColor = new Color(0f, 0.08f, 0.16f, 0.22f);
+            shadow.effectDistance = new Vector2(0f, -5f);
+            shadow.useGraphicAlpha = true;
 
             plateRect.SetSiblingIndex(Mathf.Max(0, targetRect.GetSiblingIndex()));
             return plateImage;
@@ -771,6 +814,22 @@ namespace UCG
             image.pixelsPerUnitMultiplier = 1f;
         }
 
+        Shadow EnsureUiShadow(GameObject target)
+        {
+            if (target == null) return null;
+
+            Shadow[] shadows = target.GetComponents<Shadow>();
+            for (int i = 0; i < shadows.Length; i++)
+            {
+                if (shadows[i] != null && shadows[i].GetType() == typeof(Shadow))
+                {
+                    return shadows[i];
+                }
+            }
+
+            return target.AddComponent<Shadow>();
+        }
+
         Text EnsurePlayResultText()
         {
             const string resultName = "Play Result Text";
@@ -791,15 +850,16 @@ namespace UCG
                 if (playResultText == null) playResultText = existingResult.gameObject.AddComponent<Text>();
             }
 
-            resultRect.anchorMin = new Vector2(0.5f, 0f);
-            resultRect.anchorMax = new Vector2(0.5f, 0f);
-            resultRect.pivot = new Vector2(0.5f, 0.5f);
-            resultRect.anchoredPosition = new Vector2(0f, 392f);
-            resultRect.sizeDelta = new Vector2(620f, 34f);
+            resultRect.anchorMin = new Vector2(0.5f, 1f);
+            resultRect.anchorMax = new Vector2(0.5f, 1f);
+            resultRect.pivot = new Vector2(0.5f, 1f);
+            resultRect.anchoredPosition = new Vector2(0f, -56f);
+            resultRect.sizeDelta = new Vector2(680f, 94f);
 
             playResultText.text = "";
             playResultText.alignment = TextAnchor.MiddleCenter;
             playResultText.color = new Color(1f, 1f, 1f, 0.94f);
+            playResultText.supportRichText = true;
             Font placeholderFont = LoadPlaceholderFont();
             if (placeholderFont != null)
             {
@@ -807,17 +867,340 @@ namespace UCG
             }
             playResultText.fontSize = 18;
             playResultText.resizeTextForBestFit = true;
-            playResultText.resizeTextMinSize = 12;
-            playResultText.resizeTextMaxSize = 18;
+            playResultText.resizeTextMinSize = 11;
+            playResultText.resizeTextMaxSize = 23;
+            playResultText.lineSpacing = 0.86f;
             playResultText.raycastTarget = false;
-            EnsureHudBackplate(
+            Image panelImage = EnsureHudBackplate(
                 "Play Result HUD Panel",
                 resultRect,
-                new Color(0.02f, 0.05f, 0.075f, 0.14f),
-                new Color(0.48f, 0.86f, 1f, 0.025f),
-                new Vector2(8f, 4f));
+                new Color(0.006f, 0.022f, 0.052f, 0.72f),
+                new Color(0.30f, 0.72f, 1f, 0.26f),
+                new Vector2(24f, 14f));
+            RectTransform panelRect = panelImage != null ? panelImage.transform as RectTransform : null;
+            EnsureTopPromptProgress(panelRect);
+            ApplyTopPromptLayer(resultRect, panelRect);
+            UpdateTopPhaseHud();
 
             return playResultText;
+        }
+
+        void EnsureTopPromptProgress(RectTransform panelRect)
+        {
+            if (panelRect == null) return;
+
+            const string trackName = "Top Prompt Countdown Track";
+            Transform existingTrack = panelRect.Find(trackName);
+            Image trackImage;
+            if (existingTrack == null)
+            {
+                var trackObject = new GameObject(trackName, typeof(RectTransform), typeof(Image));
+                trackObject.transform.SetParent(panelRect, false);
+                _topPromptProgressTrackRect = trackObject.GetComponent<RectTransform>();
+                trackImage = trackObject.GetComponent<Image>();
+            }
+            else
+            {
+                _topPromptProgressTrackRect = existingTrack as RectTransform;
+                trackImage = existingTrack.GetComponent<Image>();
+                if (trackImage == null) trackImage = existingTrack.gameObject.AddComponent<Image>();
+            }
+
+            _topPromptProgressTrackRect.anchorMin = new Vector2(0.1f, 0f);
+            _topPromptProgressTrackRect.anchorMax = new Vector2(0.9f, 0f);
+            _topPromptProgressTrackRect.pivot = new Vector2(0.5f, 0f);
+            _topPromptProgressTrackRect.anchoredPosition = new Vector2(0f, 10f);
+            _topPromptProgressTrackRect.sizeDelta = new Vector2(0f, 4f);
+            _topPromptProgressTrackRect.localScale = Vector3.one;
+            _topPromptProgressTrackRect.localEulerAngles = Vector3.zero;
+            trackImage.color = new Color(0.22f, 0.58f, 0.72f, 0.16f);
+            trackImage.raycastTarget = false;
+
+            const string fillName = "Top Prompt Countdown Fill";
+            Transform existingFill = _topPromptProgressTrackRect.Find(fillName);
+            Image fillImage;
+            if (existingFill == null)
+            {
+                var fillObject = new GameObject(fillName, typeof(RectTransform), typeof(Image));
+                fillObject.transform.SetParent(_topPromptProgressTrackRect, false);
+                _topPromptProgressFillRect = fillObject.GetComponent<RectTransform>();
+                fillImage = fillObject.GetComponent<Image>();
+            }
+            else
+            {
+                _topPromptProgressFillRect = existingFill as RectTransform;
+                fillImage = existingFill.GetComponent<Image>();
+                if (fillImage == null) fillImage = existingFill.gameObject.AddComponent<Image>();
+            }
+
+            _topPromptProgressFillRect.anchorMin = Vector2.zero;
+            _topPromptProgressFillRect.anchorMax = Vector2.one;
+            _topPromptProgressFillRect.offsetMin = Vector2.zero;
+            _topPromptProgressFillRect.offsetMax = Vector2.zero;
+            _topPromptProgressFillRect.localScale = Vector3.one;
+            _topPromptProgressFillRect.localEulerAngles = Vector3.zero;
+            fillImage.color = new Color(0.44f, 0.95f, 1f, 0.48f);
+            fillImage.raycastTarget = false;
+
+            Shadow fillGlow = EnsureUiShadow(_topPromptProgressFillRect.gameObject);
+            fillGlow.effectColor = new Color(0.22f, 0.92f, 1f, 0.22f);
+            fillGlow.effectDistance = new Vector2(0f, -1f);
+            fillGlow.useGraphicAlpha = true;
+
+            SetTopPromptProgress(0f, false);
+        }
+
+        void ApplyTopPromptLayer(RectTransform textRect, RectTransform panelRect)
+        {
+            ApplyHudCanvasLayer(panelRect, 27990);
+            ApplyHudCanvasLayer(textRect, 28000);
+            if (panelRect != null) panelRect.SetAsLastSibling();
+            if (textRect != null) textRect.SetAsLastSibling();
+        }
+
+        void ApplyHudCanvasLayer(RectTransform rect, int sortingOrder)
+        {
+            if (rect == null) return;
+
+            Canvas layerCanvas = rect.GetComponent<Canvas>();
+            if (layerCanvas == null) layerCanvas = rect.gameObject.AddComponent<Canvas>();
+            layerCanvas.overrideSorting = true;
+            layerCanvas.sortingOrder = sortingOrder;
+        }
+
+        void EnsureTurnStartBanner()
+        {
+            if (canvas == null) return;
+
+            const string bannerName = "Turn Start Battle Prompt";
+            Transform existingBanner = canvas.transform.Find(bannerName);
+            Image panelImage;
+
+            if (existingBanner == null)
+            {
+                var bannerObject = new GameObject(bannerName, typeof(RectTransform), typeof(Image), typeof(Outline), typeof(CanvasGroup));
+                bannerObject.transform.SetParent(canvas.transform, false);
+                _turnStartBannerRoot = bannerObject.GetComponent<RectTransform>();
+                panelImage = bannerObject.GetComponent<Image>();
+                _turnStartBannerCanvasGroup = bannerObject.GetComponent<CanvasGroup>();
+            }
+            else
+            {
+                _turnStartBannerRoot = existingBanner as RectTransform;
+                panelImage = existingBanner.GetComponent<Image>();
+                if (panelImage == null) panelImage = existingBanner.gameObject.AddComponent<Image>();
+                if (existingBanner.GetComponent<Outline>() == null) existingBanner.gameObject.AddComponent<Outline>();
+                _turnStartBannerCanvasGroup = existingBanner.GetComponent<CanvasGroup>();
+                if (_turnStartBannerCanvasGroup == null) _turnStartBannerCanvasGroup = existingBanner.gameObject.AddComponent<CanvasGroup>();
+            }
+
+            _turnStartBannerRoot.anchorMin = new Vector2(0.5f, 0.5f);
+            _turnStartBannerRoot.anchorMax = new Vector2(0.5f, 0.5f);
+            _turnStartBannerRoot.pivot = new Vector2(0.5f, 0.5f);
+            _turnStartBannerRoot.anchoredPosition = new Vector2(0f, 36f);
+            _turnStartBannerRoot.sizeDelta = new Vector2(430f, 128f);
+            _turnStartBannerRoot.localScale = Vector3.one;
+            _turnStartBannerRoot.localEulerAngles = Vector3.zero;
+
+            panelImage.color = new Color(0.006f, 0.018f, 0.042f, 0.76f);
+            panelImage.raycastTarget = false;
+            ApplyRoundedPanelImage(panelImage);
+
+            var outline = _turnStartBannerRoot.GetComponent<Outline>();
+            outline.effectColor = new Color(0.42f, 0.86f, 1f, 0.24f);
+            outline.effectDistance = new Vector2(2f, -2f);
+            outline.useGraphicAlpha = true;
+
+            var shadow = EnsureUiShadow(_turnStartBannerRoot.gameObject);
+            shadow.effectColor = new Color(0f, 0.06f, 0.16f, 0.38f);
+            shadow.effectDistance = new Vector2(0f, -8f);
+            shadow.useGraphicAlpha = true;
+
+            _turnStartBannerCanvasGroup.alpha = 0f;
+            _turnStartBannerCanvasGroup.interactable = false;
+            _turnStartBannerCanvasGroup.blocksRaycasts = false;
+
+            _turnStartBannerTurnText = EnsureTurnStartBannerText(
+                "Turn Text",
+                new Vector2(0.06f, 0.58f),
+                new Vector2(0.94f, 0.86f),
+                18,
+                new Color(0.78f, 0.94f, 1f, 0.96f));
+            _turnStartBannerInitiativeText = EnsureTurnStartBannerText(
+                "Initiative Text",
+                new Vector2(0.06f, 0.15f),
+                new Vector2(0.94f, 0.62f),
+                36,
+                new Color(1f, 0.82f, 0.38f, 1f));
+
+            ApplyHudCanvasLayer(_turnStartBannerRoot, 27985);
+            _turnStartBannerRoot.gameObject.SetActive(false);
+        }
+
+        Text EnsureTurnStartBannerText(string objectName, Vector2 anchorMin, Vector2 anchorMax, int fontSize, Color color)
+        {
+            if (_turnStartBannerRoot == null) return null;
+
+            Transform existingText = _turnStartBannerRoot.Find(objectName);
+            RectTransform textRect;
+            Text text;
+
+            if (existingText == null)
+            {
+                var textObject = new GameObject(objectName, typeof(RectTransform), typeof(Text), typeof(Outline));
+                textObject.transform.SetParent(_turnStartBannerRoot, false);
+                textRect = textObject.GetComponent<RectTransform>();
+                text = textObject.GetComponent<Text>();
+            }
+            else
+            {
+                textRect = existingText as RectTransform;
+                text = existingText.GetComponent<Text>();
+                if (text == null) text = existingText.gameObject.AddComponent<Text>();
+                if (existingText.GetComponent<Outline>() == null) existingText.gameObject.AddComponent<Outline>();
+            }
+
+            textRect.anchorMin = anchorMin;
+            textRect.anchorMax = anchorMax;
+            textRect.offsetMin = Vector2.zero;
+            textRect.offsetMax = Vector2.zero;
+            textRect.localScale = Vector3.one;
+            textRect.localEulerAngles = Vector3.zero;
+
+            Font placeholderFont = LoadPlaceholderFont();
+            if (placeholderFont != null) text.font = placeholderFont;
+            text.text = "";
+            text.alignment = TextAnchor.MiddleCenter;
+            text.color = color;
+            text.fontStyle = FontStyle.Bold;
+            text.fontSize = fontSize;
+            text.resizeTextForBestFit = true;
+            text.resizeTextMinSize = Mathf.Max(11, fontSize - 10);
+            text.resizeTextMaxSize = fontSize;
+            text.horizontalOverflow = HorizontalWrapMode.Wrap;
+            text.verticalOverflow = VerticalWrapMode.Truncate;
+            text.raycastTarget = false;
+
+            var outline = text.GetComponent<Outline>();
+            outline.effectColor = new Color(0f, 0.04f, 0.09f, 0.72f);
+            outline.effectDistance = new Vector2(1.5f, -1.5f);
+            outline.useGraphicAlpha = true;
+            return text;
+        }
+
+        bool ShouldPlayTurnStartBannerForCurrentTurn()
+        {
+            int turnNumber = GetCurrentTurnStartBannerNumber();
+            return turnNumber > 0 && _lastTurnStartBannerShownTurn != turnNumber;
+        }
+
+        int GetCurrentTurnStartBannerNumber()
+        {
+            return Mathf.Max(1, turnManager != null ? turnManager.currentTurn : 1);
+        }
+
+        void BeginTurnStartBannerThenAutoPhase()
+        {
+            if (_turnStartBannerRoutine != null) return;
+            _turnStartBannerRoutine = StartCoroutine(TurnStartBannerThenAutoPhaseRoutine());
+        }
+
+        IEnumerator TurnStartBannerThenAutoPhaseRoutine()
+        {
+            HideAdvanceButton();
+            yield return PlayTurnStartBannerForCurrentTurn();
+            _turnStartBannerRoutine = null;
+
+            if (IsGameOver || phaseManager == null || phaseManager.CurrentPhase != UcgGamePhase.Start) yield break;
+            BeginAutoPhaseRoutine(phaseManager.CurrentPhase);
+        }
+
+        IEnumerator PlayTurnStartBannerForCurrentTurn()
+        {
+            int turnNumber = GetCurrentTurnStartBannerNumber();
+            if (turnNumber <= 0 || _lastTurnStartBannerShownTurn == turnNumber) yield break;
+
+            _lastTurnStartBannerShownTurn = turnNumber;
+            yield return PlayTurnStartBannerAnimation(turnNumber);
+        }
+
+        IEnumerator PlayTurnStartBannerAnimation(int turnNumber)
+        {
+            EnsureTurnStartBanner();
+            if (_turnStartBannerRoot == null || _turnStartBannerCanvasGroup == null) yield break;
+
+            bool playerFirst = turnOrderManager == null || turnOrderManager.GetCurrentFirstPlayer() == UcgPlayerSide.Player;
+            if (_turnStartBannerTurnText != null)
+            {
+                _turnStartBannerTurnText.text = $"第 {turnNumber} 回合";
+            }
+            if (_turnStartBannerInitiativeText != null)
+            {
+                _turnStartBannerInitiativeText.text = playerFirst ? "你是先攻" : "你是後攻";
+                _turnStartBannerInitiativeText.color = playerFirst
+                    ? new Color(1f, 0.82f, 0.38f, 1f)
+                    : new Color(0.9f, 0.98f, 1f, 1f);
+            }
+
+            _turnStartBannerRoot.gameObject.SetActive(true);
+            _turnStartBannerRoot.SetAsLastSibling();
+            ApplyHudCanvasLayer(_turnStartBannerRoot, 27985);
+            yield return AnimateTurnStartBanner(0f, 1f, 0.2f, 0.96f, 1.03f);
+            _turnStartBannerCanvasGroup.alpha = 1f;
+            _turnStartBannerRoot.localScale = Vector3.one;
+            yield return new WaitForSecondsRealtime(0.75f);
+            yield return AnimateTurnStartBanner(1f, 0f, 0.28f, 1f, 0.98f);
+            HideTurnStartBannerImmediate();
+        }
+
+        IEnumerator AnimateTurnStartBanner(float fromAlpha, float toAlpha, float durationSeconds, float fromScale, float toScale)
+        {
+            float duration = Mathf.Max(0.01f, durationSeconds);
+            float elapsed = 0f;
+
+            while (elapsed < duration)
+            {
+                elapsed += Time.unscaledDeltaTime;
+                float t = Mathf.Clamp01(elapsed / duration);
+                float eased = Mathf.SmoothStep(0f, 1f, t);
+
+                if (_turnStartBannerCanvasGroup != null)
+                {
+                    _turnStartBannerCanvasGroup.alpha = Mathf.Lerp(fromAlpha, toAlpha, eased);
+                }
+                if (_turnStartBannerRoot != null)
+                {
+                    _turnStartBannerRoot.localScale = Vector3.one * Mathf.Lerp(fromScale, toScale, eased);
+                }
+
+                yield return null;
+            }
+        }
+
+        void StopTurnStartBannerRoutine()
+        {
+            if (_turnStartBannerRoutine != null)
+            {
+                StopCoroutine(_turnStartBannerRoutine);
+                _turnStartBannerRoutine = null;
+            }
+
+            HideTurnStartBannerImmediate();
+        }
+
+        void HideTurnStartBannerImmediate()
+        {
+            if (_turnStartBannerCanvasGroup != null)
+            {
+                _turnStartBannerCanvasGroup.alpha = 0f;
+                _turnStartBannerCanvasGroup.interactable = false;
+                _turnStartBannerCanvasGroup.blocksRaycasts = false;
+            }
+            if (_turnStartBannerRoot != null)
+            {
+                _turnStartBannerRoot.localScale = Vector3.one;
+                _turnStartBannerRoot.gameObject.SetActive(false);
+            }
         }
 
         Text EnsureEffectFeedbackText()
@@ -904,7 +1287,7 @@ namespace UCG
             battlefieldManager.laneSpacing = GetBattleLaneSpacing();
             battlefieldManager.opponentCardSize = GetOpponentCardBoardSize();
             battlefieldManager.combatAreaOffsetX = GetCombatAreaOffsetX();
-            battlefieldManager.focusViewportPosition = combatFocusViewportPosition;
+            ApplyCombatFocusViewportPosition("EnsureBattlefieldManager");
             battlefieldManager.rightAuxiliaryColumnGutterWidth = rightAuxiliaryColumnGutterWidth;
             battlefieldManager.debugBattlefieldLayout = debugBattlefieldLayout || debugLayoutDiagnostics;
             battlefieldManager.hasInitializedBattlefieldView = _hasInitializedBattlefieldView;
@@ -924,8 +1307,10 @@ namespace UCG
 
             battlefieldManager.debugBattlefieldLayout = debugBattlefieldLayout || debugLayoutDiagnostics;
             battlefieldManager.hasInitializedBattlefieldView = _hasInitializedBattlefieldView;
+            ApplyCombatFocusViewportPosition("ApplyInitialBattlefieldView");
             battlefieldManager.RefreshOpenedLaneVisibility(turnManager != null ? turnManager.currentTurn : 1);
             battlefieldManager.JumpToActiveLane("ApplyInitialBattlefieldView");
+            LogCombatViewportDiagnostic("ApplyInitialBattlefieldView", "FocusLane", GetCurrentActiveLaneIndex());
             CaptureInitialBattlefieldContentOffset();
             _hasInitializedBattlefieldView = true;
             battlefieldManager.hasInitializedBattlefieldView = true;
@@ -1086,7 +1471,7 @@ namespace UCG
             if (battlefieldManager != null)
             {
                 battlefieldManager.combatAreaOffsetX = GetCombatAreaOffsetX();
-                battlefieldManager.focusViewportPosition = combatFocusViewportPosition;
+                ApplyCombatFocusViewportPosition("ApplyPortraitBattlefieldLayout");
                 battlefieldManager.rightAuxiliaryColumnGutterWidth = rightAuxiliaryColumnGutterWidth;
                 battlefieldManager.debugBattlefieldLayout = debugBattlefieldLayout || debugLayoutDiagnostics;
                 battlefieldManager.hasInitializedBattlefieldView = _hasInitializedBattlefieldView;
@@ -1105,6 +1490,234 @@ namespace UCG
             }
 
             RefreshBoardZoneLayout();
+        }
+
+        float GetEffectiveCombatFocusViewportPosition()
+        {
+            float formalFocus = Mathf.Clamp01(combatFocusViewportPosition);
+            return debugCombatViewportOffset > 0f
+                ? Mathf.Clamp01(debugCombatViewportOffset)
+                : formalFocus;
+        }
+
+        void ApplyCombatFocusViewportPosition(string source)
+        {
+            if (battlefieldManager == null) return;
+
+            float effectiveFocus = GetEffectiveCombatFocusViewportPosition();
+            battlefieldManager.focusViewportPosition = effectiveFocus;
+            _lastAppliedCombatFocusViewportPosition = effectiveFocus;
+            _lastSeenDebugCombatViewportOffset = debugCombatViewportOffset;
+        }
+
+        void UpdateDebugCombatViewportOffset()
+        {
+            if (battlefieldManager == null) return;
+
+            float effectiveFocus = GetEffectiveCombatFocusViewportPosition();
+            bool offsetChanged = Mathf.Abs(debugCombatViewportOffset - _lastSeenDebugCombatViewportOffset) > 0.0001f;
+            bool focusMismatch = Mathf.Abs(battlefieldManager.focusViewportPosition - effectiveFocus) > 0.0001f
+                || Mathf.Abs(_lastAppliedCombatFocusViewportPosition - effectiveFocus) > 0.0001f;
+
+            if (!offsetChanged && !focusMismatch) return;
+
+            ApplyCombatFocusViewportPosition("UpdateDebugCombatViewportOffset");
+
+            int activeLaneIndex = GetCurrentActiveLaneIndex();
+            if (IsCombatFocusPhase())
+            {
+                battlefieldManager.SmoothFocusActiveLane(activeLaneIndex);
+                LogCombatViewportDiagnostic("UpdateDebugCombatViewportOffset", "FocusLane", activeLaneIndex, true);
+            }
+            else
+            {
+                LogCombatViewportDiagnostic("UpdateDebugCombatViewportOffset", "OverviewAll", activeLaneIndex, true);
+            }
+        }
+
+        bool IsCombatFocusPhase()
+        {
+            if (phaseManager == null) return false;
+
+            return phaseManager.CurrentPhase == UcgGamePhase.SceneSetup
+                || phaseManager.CurrentPhase == UcgGamePhase.CharacterSetup
+                || phaseManager.CurrentPhase == UcgGamePhase.Upgrade;
+        }
+
+        int GetCurrentActiveLaneIndex()
+        {
+            int activeLaneIndex = turnManager != null ? turnManager.ActiveNewLaneIndex : 0;
+            return Mathf.Max(0, activeLaneIndex);
+        }
+
+        bool ShouldLogCombatViewportDiagnostic()
+        {
+            return debugBoardZones
+                || debugBattlefieldLayout
+                || debugCombatViewportOffset > 0f;
+        }
+
+        void LogCombatViewportDiagnostic(string source, string focusMode, int laneIndex, bool force = false)
+        {
+            if (!force && !ShouldLogCombatViewportDiagnostic()) return;
+            if (battlefieldManager == null) return;
+
+            RectTransform viewportRect = battlefieldManager.viewport;
+            RectTransform contentRect = battlefieldManager.content;
+            float formalFocus = Mathf.Clamp01(combatFocusViewportPosition);
+            float focusCenterFinal = GetEffectiveCombatFocusViewportPosition();
+            float managerFocus = battlefieldManager.focusViewportPosition;
+            float viewportWidth = viewportRect != null && viewportRect.rect.width > 0f ? viewportRect.rect.width : 1040f;
+            float contentScale = contentRect != null ? contentRect.localScale.x : 1f;
+            float contentX = contentRect != null ? contentRect.anchoredPosition.x : float.MinValue;
+            int clampedLaneIndex = Mathf.Clamp(laneIndex, 0, Mathf.Max(0, battlefieldManager.maxLaneCount - 1));
+            float focusTargetBeforeClamp = GetDiagnosticFocusTargetX(clampedLaneIndex, focusCenterFinal);
+            float focusTargetAfterClamp = GetDiagnosticClampedContentTargetX(focusTargetBeforeClamp, 1f);
+            float focusTargetContentX = focusTargetAfterClamp + battlefieldManager.combatAreaOffsetX;
+            int currentTurn = turnManager != null ? turnManager.currentTurn : 1;
+            int overviewLaneCount = battlefieldManager.GetOverviewTargetLaneCount(currentTurn);
+            float overviewScale = GetDiagnosticOverviewScale(overviewLaneCount);
+            float overviewTargetBeforeClamp = GetDiagnosticOverviewTargetX(overviewScale, overviewLaneCount);
+            float overviewTargetAfterClamp = GetDiagnosticClampedContentTargetX(overviewTargetBeforeClamp, overviewScale);
+            float overviewTargetContentX = overviewTargetAfterClamp + battlefieldManager.combatAreaOffsetX;
+
+            Debug.Log(
+                "[UCG Camera] Combat viewport diagnostic\n"
+                + $"source={source}\n"
+                + $"focusMode={focusMode}\n"
+                + $"phase={(phaseManager != null ? phaseManager.CurrentPhase.ToString() : "None")}\n"
+                + $"turn={currentTurn}\n"
+                + $"activeLaneIndex={clampedLaneIndex}\n"
+                + $"formalCombatFocusViewportPosition={formalFocus:0.00}\n"
+                + $"debugCombatViewportOffset={debugCombatViewportOffset:0.00}\n"
+                + $"focusCenterFinal={focusCenterFinal:0.00}\n"
+                + $"battlefieldManager.focusViewportPosition={managerFocus:0.00}\n"
+                + $"showOverviewUsesFocusCenter=False\n"
+                + $"viewportWidth={viewportWidth:0.#}\n"
+                + $"viewportX={FormatRectXDiagnostic(viewportRect)}\n"
+                + $"contentX={FormatDebugFloat(contentX)}\n"
+                + $"contentScale={contentScale:0.00}\n"
+                + $"contentWorldX={FormatWorldRect(contentRect)}\n"
+                + $"combatAreaOffsetX={battlefieldManager.combatAreaOffsetX:0.#}\n"
+                + $"focusTargetBeforeClamp={focusTargetBeforeClamp:0.#}\n"
+                + $"focusTargetAfterClamp={focusTargetAfterClamp:0.#}\n"
+                + $"focusTargetContentX={focusTargetContentX:0.#}\n"
+                + $"overviewLaneCount={overviewLaneCount}\n"
+                + $"overviewScale={overviewScale:0.00}\n"
+                + $"overviewTargetBeforeClamp={overviewTargetBeforeClamp:0.#}\n"
+                + $"overviewTargetAfterClamp={overviewTargetAfterClamp:0.#}\n"
+                + $"overviewTargetContentX={overviewTargetContentX:0.#}");
+        }
+
+        float GetDiagnosticFocusTargetX(int laneIndex, float focusViewportPosition)
+        {
+            if (battlefieldManager == null) return float.MinValue;
+
+            float viewportWidth = battlefieldManager.viewport != null && battlefieldManager.viewport.rect.width > 0f
+                ? battlefieldManager.viewport.rect.width
+                : 1040f;
+            float laneCenter = GetDiagnosticLaneLeftX(laneIndex) + battlefieldManager.laneSize.x * 0.5f;
+            return viewportWidth * (1f - Mathf.Clamp01(focusViewportPosition)) - laneCenter;
+        }
+
+        float GetDiagnosticOverviewScale(int laneCount)
+        {
+            if (battlefieldManager == null) return 1f;
+
+            float viewportWidth = battlefieldManager.viewport != null && battlefieldManager.viewport.rect.width > 0f
+                ? battlefieldManager.viewport.rect.width
+                : 1040f;
+            float targetWidth = GetDiagnosticContentWidth(Mathf.Clamp(laneCount, 1, Mathf.Max(1, battlefieldManager.maxLaneCount)));
+            if (targetWidth <= 0f) return 1f;
+
+            float fitScale = viewportWidth / targetWidth;
+            return Mathf.Clamp(fitScale, battlefieldManager.overviewScale, 1f);
+        }
+
+        float GetDiagnosticOverviewTargetX(float scale, int laneCount)
+        {
+            if (battlefieldManager == null) return float.MinValue;
+
+            float viewportWidth = battlefieldManager.viewport != null && battlefieldManager.viewport.rect.width > 0f
+                ? battlefieldManager.viewport.rect.width
+                : 1040f;
+            int clampedLaneCount = Mathf.Clamp(laneCount, 1, Mathf.Max(1, battlefieldManager.maxLaneCount));
+            float groupLeft = float.MaxValue;
+            float groupRight = float.MinValue;
+
+            for (int i = 0; i < clampedLaneCount; i++)
+            {
+                float left = GetDiagnosticLaneLeftX(i);
+                float right = left + battlefieldManager.laneSize.x;
+                groupLeft = Mathf.Min(groupLeft, left);
+                groupRight = Mathf.Max(groupRight, right);
+            }
+
+            if (groupLeft == float.MaxValue)
+            {
+                groupLeft = 0f;
+                groupRight = battlefieldManager.laneSize.x;
+            }
+
+            float groupCenter = (groupLeft + groupRight) * 0.5f * Mathf.Max(0.1f, scale);
+            return viewportWidth * 0.5f - groupCenter;
+        }
+
+        float GetDiagnosticLaneLeftX(int laneIndex)
+        {
+            if (battlefieldManager == null) return 0f;
+
+            int laneCount = Mathf.Max(1, battlefieldManager.maxLaneCount);
+            int visualOrder = Mathf.Clamp(laneCount - 1 - laneIndex, 0, laneCount - 1);
+            float laneStep = battlefieldManager.laneSize.x + battlefieldManager.laneSpacing;
+            return visualOrder * laneStep;
+        }
+
+        float GetDiagnosticClampedContentTargetX(float targetX, float scale)
+        {
+            if (battlefieldManager == null) return targetX;
+
+            float maxScrollX = GetDiagnosticMaxScrollX(scale);
+            return Mathf.Clamp(targetX, -maxScrollX, 0f);
+        }
+
+        float GetDiagnosticMaxScrollX(float scale)
+        {
+            if (battlefieldManager == null) return 0f;
+
+            float viewportWidth = battlefieldManager.viewport != null && battlefieldManager.viewport.rect.width > 0f
+                ? battlefieldManager.viewport.rect.width
+                : 1040f;
+            float contentWidth = battlefieldManager.content != null && battlefieldManager.content.rect.width > 0f
+                ? battlefieldManager.content.rect.width
+                : GetDiagnosticContentWidth(Mathf.Max(1, battlefieldManager.maxLaneCount));
+            return Mathf.Max(0f, contentWidth * Mathf.Max(0.1f, scale) - viewportWidth);
+        }
+
+        float GetDiagnosticContentWidth(int laneCount)
+        {
+            if (battlefieldManager == null || laneCount <= 0) return 0f;
+
+            return battlefieldManager.laneSize.x * laneCount
+                + battlefieldManager.laneSpacing * Mathf.Max(0, laneCount - 1)
+                + Mathf.Max(0f, battlefieldManager.rightAuxiliaryColumnGutterWidth);
+        }
+
+        string FormatRectXDiagnostic(RectTransform rect)
+        {
+            if (rect == null) return "missing";
+
+            Vector3[] corners = new Vector3[4];
+            rect.GetWorldCorners(corners);
+            float minX = corners[0].x;
+            float maxX = corners[0].x;
+            for (int i = 1; i < corners.Length; i++)
+            {
+                minX = Mathf.Min(minX, corners[i].x);
+                maxX = Mathf.Max(maxX, corners[i].x);
+            }
+
+            return $"anchoredX={rect.anchoredPosition.x:0.#}, worldX=({minX:0.#},{maxX:0.#})";
         }
 
         void DisableLegacySceneSlot(string slotName)
@@ -2029,7 +2642,7 @@ namespace UCG
                 playerSidePileGroup,
                 "Player Discard Zone",
                 zoneSize,
-                "棄牌",
+                "棄牌區",
                 font,
                 out playerDiscardZoneText);
             opponentDeckAnchor = EnsureBattlefieldZoneFrame(
@@ -2037,7 +2650,7 @@ namespace UCG
                 opponentSidePileGroup,
                 "Opponent Deck Zone",
                 zoneSize,
-                "",
+                "牌庫",
                 font,
                 out opponentDeckZoneText);
             opponentDiscardAnchor = EnsureBattlefieldZoneFrame(
@@ -2045,11 +2658,12 @@ namespace UCG
                 opponentSidePileGroup,
                 "Opponent Discard Zone",
                 zoneSize,
-                "",
+                "棄牌區",
                 font,
                 out opponentDiscardZoneText);
             ApplyBoardZoneRootLayout(root);
             ApplyBoardZoneLayoutForPortrait(root, zoneSize);
+            HideUnusedFixedBoardHudRoot();
             LogBoardZoneDebug("EnsureBattlefieldZoneAnchors", true);
 
             deckCountText = playerDeckZoneText;
@@ -2060,7 +2674,12 @@ namespace UCG
 
         Vector2 GetBoardZoneCardSize()
         {
-            return GetPortraitCardSlotSize();
+            Vector2 portraitSize = GetPortraitCardSlotSize();
+            float width = pileSlotWidth > 0f ? pileSlotWidth : portraitSize.x;
+            float height = pileSlotHeight > 0f ? pileSlotHeight : portraitSize.y;
+            return new Vector2(
+                Mathf.Clamp(width, 150f, 210f),
+                Mathf.Clamp(height, 206f, 286f));
         }
 
         float GetEffectiveSidePileScale()
@@ -2084,22 +2703,22 @@ namespace UCG
             float beforeX = playerSidePileGroup != null ? playerSidePileGroup.anchoredPosition.x : float.MinValue;
 
             ApplyPileSideRegionSafeVisibilityLayout(root, zoneSize);
-            ApplyPileSideInternalLayout(zoneSize, "ReferenceBoardLayout");
+            float groupNudgeX = ApplyPileSideInternalLayout(zoneSize, "ReferenceBoardLayout");
             ApplyBoardZoneDebugVisualState();
             ApplyDebugSidePileExtremeOffsetToVisibleGroups(debugForceSidePileExtremeOffset);
 
             float afterX = playerSidePileGroup != null ? playerSidePileGroup.anchoredPosition.x : float.MinValue;
-            float finalDebugGroupX = referencePlayerPileGroupPos.x
+            float finalDebugGroupX = groupNudgeX
                 + (debugForceSidePileExtremeOffset ? debugSidePileExtremeOffsetX : 0f);
             UpdateSidePileLayoutDebugValues(
                 root,
                 zoneSize,
-                referencePlayerPileGroupPos.x,
-                referencePlayerPileGroupPos.x,
-                referencePlayerPileGroupPos.x,
-                referencePlayerPileGroupPos.x,
-                referencePlayerPileGroupPos.x,
-                referencePlayerPileGroupPos.x,
+                0f,
+                groupNudgeX,
+                -groupNudgeX,
+                groupNudgeX,
+                groupNudgeX,
+                groupNudgeX,
                 finalDebugGroupX,
                 beforeX,
                 afterX,
@@ -2109,9 +2728,9 @@ namespace UCG
                 "FixedReference");
         }
 
-        void ApplyPileSideInternalLayout(Vector2 requestedZoneSize, string source)
+        float ApplyPileSideInternalLayout(Vector2 requestedZoneSize, string source)
         {
-            if (pileSideRegionRoot == null) return;
+            if (pileSideRegionRoot == null) return 0f;
 
             float regionWidth = pileSideRegionRoot.rect.width > 0f ? pileSideRegionRoot.rect.width : pileSideRegionRoot.sizeDelta.x;
             float regionHeight = pileSideRegionRoot.rect.height > 0f ? pileSideRegionRoot.rect.height : pileSideRegionRoot.sizeDelta.y;
@@ -2119,14 +2738,15 @@ namespace UCG
             if (regionHeight <= 0f) regionHeight = Mathf.Max(1f, requestedZoneSize.y * 4f + deckDiscardGroupGap * 3f + 24f);
 
             float horizontalPadding = 10f;
-            float desiredGap = Mathf.Clamp(deckDiscardGroupGap, 12f, 28f);
-            float minVerticalPadding = 6f;
+            float desiredGap = Mathf.Clamp(deckDiscardGroupGap, 8f, 22f);
+            float minVerticalPadding = 4f;
             float maxWidth = Mathf.Max(1f, regionWidth - horizontalPadding * 2f);
             float maxHeight = Mathf.Max(1f, (regionHeight - minVerticalPadding * 2f - desiredGap * 3f) / 4f);
             float scale = Mathf.Min(1f, maxWidth / Mathf.Max(1f, requestedZoneSize.x), maxHeight / Mathf.Max(1f, requestedZoneSize.y));
             Vector2 zoneSize = new Vector2(
                 Mathf.Max(1f, requestedZoneSize.x * scale),
                 Mathf.Max(1f, requestedZoneSize.y * scale));
+            float groupNudgeX = 0f;
 
             float freeHeight = Mathf.Max(0f, regionHeight - zoneSize.y * 4f - desiredGap * 3f);
             float topPadding = Mathf.Max(minVerticalPadding, freeHeight * 0.5f);
@@ -2145,6 +2765,7 @@ namespace UCG
                 opponentDeckAnchor,
                 opDeckY,
                 zoneSize,
+                groupNudgeX,
                 $"{source}.OpponentPileGroup");
             LayoutPileSideGroupWithTwoZones(
                 playerSidePileGroup,
@@ -2153,9 +2774,11 @@ namespace UCG
                 playerDiscardAnchor,
                 playerDiscardY,
                 zoneSize,
+                groupNudgeX,
                 $"{source}.PlayerPileGroup");
 
             LogPileSideInternalLayout(zoneSize, desiredGap, topPadding, bottomPadding, source);
+            return groupNudgeX;
         }
 
         void LayoutPileSideGroupWithTwoZones(
@@ -2165,13 +2788,14 @@ namespace UCG
             RectTransform secondZone,
             float secondWorldLocalY,
             Vector2 zoneSize,
+            float groupX,
             string source)
         {
             if (group == null) return;
 
             float groupCenterY = (firstWorldLocalY + secondWorldLocalY) * 0.5f;
             float groupHeight = Mathf.Abs(firstWorldLocalY - secondWorldLocalY) + zoneSize.y;
-            LayoutBoardPileGroup(group, new Vector2(0f, groupCenterY), new Vector2(zoneSize.x, groupHeight), source);
+            LayoutBoardPileGroup(group, new Vector2(groupX, groupCenterY), new Vector2(zoneSize.x, groupHeight), source);
             LayoutBoardZone(firstZone, new Vector2(0f, firstWorldLocalY - groupCenterY), zoneSize);
             LayoutBoardZone(secondZone, new Vector2(0f, secondWorldLocalY - groupCenterY), zoneSize);
         }
@@ -2189,13 +2813,32 @@ namespace UCG
                 Mathf.Max(requestedSize.y, zoneSize.y * 4f + desiredGap * 3f + verticalPadding * 2f),
                 rootHeight);
 
-            float visibleRight = GetVisibleBattlefieldRightInReference(root, root.rect.width > 0f ? root.rect.width : 1040f);
+            float visibleRight = GetSceneLayerPileRightReference(root, requestedSize.x, zoneSize);
+            float viewportRight = GetVisibleBattlefieldRightInReference(
+                root,
+                root.rect.width > 0f ? root.rect.width : 1040f);
             float rightSafeMargin = 20f;
-            float safeX = visibleRight == float.MinValue
+            float baseX = visibleRight == float.MinValue
                 ? pileRegionPos.x
                 : visibleRight - requestedSize.x * 0.5f - rightSafeMargin;
+            float maxSafeX = viewportRight == float.MinValue
+                ? baseX + Mathf.Max(0f, sidePileColumnNudgeX)
+                : viewportRight - requestedSize.x * 0.5f - rightSafeMargin;
+            float afterNudgeX = baseX + sidePileColumnNudgeX;
+            float safeX = Mathf.Min(afterNudgeX, maxSafeX);
 
             Vector2 beforePosition = pileSideRegionRoot.anchoredPosition;
+            _lastPileRegionNudgeMethod = "ApplyPileSideRegionSafeVisibilityLayout";
+            _lastPileRegionXBeforeMethod = beforePosition.x;
+            _lastPileRegionXBeforeNudge = baseX;
+            _lastPileRegionXNudgeValue = sidePileColumnNudgeX;
+            _lastPileRegionXAfterNudge = afterNudgeX;
+            _lastPileRegionXMaxSafeClamp = maxSafeX;
+            _lastPileRegionXAfterClamp = safeX;
+            _lastPileRegionVisibleRight = visibleRight;
+            _lastPileRegionViewportRight = viewportRight;
+            _lastPileRegionClampApplied = Mathf.Abs(safeX - afterNudgeX) > 0.1f;
+            _lastPileRegionLayoutFrame = Time.frameCount;
             pileSideRegionRoot.anchorMin = new Vector2(0.5f, 0.5f);
             pileSideRegionRoot.anchorMax = new Vector2(0.5f, 0.5f);
             pileSideRegionRoot.pivot = new Vector2(0.5f, 0.5f);
@@ -2207,18 +2850,7 @@ namespace UCG
             pileSideRegionRoot.SetAsLastSibling();
             EnsureVisibleCanvasGroup(pileSideRegionRoot, 1f);
             EnsureBoardRegionVisual(pileSideRegionRoot, "Pile Side Region");
-
-            if (debugBoardZones || debugBattlefieldLayout)
-            {
-                Debug.Log(
-                    "PileSideRegionSafeVisibilityLayout:\n"
-                    + $"visibleRight={FormatDebugFloat(visibleRight)}\n"
-                    + $"rightSafeMargin={rightSafeMargin:0.#}\n"
-                    + $"size=({requestedSize.x:0.#},{requestedSize.y:0.#})\n"
-                    + $"positionBefore=({beforePosition.x:0.#},{beforePosition.y:0.#})\n"
-                    + $"positionAfter=({pileSideRegionRoot.anchoredPosition.x:0.#},{pileSideRegionRoot.anchoredPosition.y:0.#})\n"
-                    + $"clipped={IsBoardZoneClippedByViewport(pileSideRegionRoot)}");
-            }
+            _lastPileRegionXAfterApply = pileSideRegionRoot.anchoredPosition.x;
         }
 
         void ApplyBoardZoneLayoutForPortrait(RectTransform root, Vector2 zoneSize)
@@ -2338,6 +2970,12 @@ namespace UCG
 
         float GetCardMatPileColumnX(RectTransform root, float boardWidth, Vector2 zoneSize)
         {
+            if (IsBoardZoneRootUnderBattlefieldContent(root))
+            {
+                float sceneColumnX = GetSceneLayerPileColumnX(root, zoneSize);
+                if (sceneColumnX != float.MinValue) return sceneColumnX;
+            }
+
             float rightEdge = GetVisibleBattlefieldRightInReference(root, boardWidth);
             float rightInset = Mathf.Clamp(pileColumnRightInset, 24f, 160f);
             return rightEdge - rightInset - zoneSize.x * 0.5f;
@@ -2345,16 +2983,51 @@ namespace UCG
 
         float GetCardMatPileColumnMaxX(RectTransform root, float boardWidth, Vector2 zoneSize)
         {
+            if (IsBoardZoneRootUnderBattlefieldContent(root))
+            {
+                return root != null && root.rect.width > 0f
+                    ? root.rect.xMax - zoneSize.x * 0.5f - Mathf.Clamp(sidePileRightMargin, 0f, 40f)
+                    : GetCardMatPileColumnX(root, boardWidth, zoneSize);
+            }
+
             float rightEdge = GetVisibleBattlefieldRightInReference(root, boardWidth);
             float safeMargin = Mathf.Clamp(sidePileRightMargin, 0f, 40f);
             return rightEdge - safeMargin - zoneSize.x * 0.5f;
+        }
+
+        float GetSceneLayerPileRightReference(RectTransform root, float regionWidth, Vector2 zoneSize)
+        {
+            if (!IsBoardZoneRootUnderBattlefieldContent(root))
+            {
+                return GetVisibleBattlefieldRightInReference(root, root != null && root.rect.width > 0f ? root.rect.width : 1040f);
+            }
+
+            float columnX = GetSceneLayerPileColumnX(root, zoneSize);
+            return columnX == float.MinValue ? float.MinValue : columnX + regionWidth * 0.5f + 20f;
+        }
+
+        float GetSceneLayerPileColumnX(RectTransform root, Vector2 zoneSize)
+        {
+            if (root == null) return float.MinValue;
+
+            float laneRight = GetRightmostLaneRightInReference(root);
+            if (laneRight == float.MinValue) return float.MinValue;
+
+            float gap = Mathf.Max(0f, Mathf.Max(Mathf.Max(sidePileMinGapFromLane, combatToPileGapX), sidePileToLaneGap));
+            float desiredX = laneRight + gap + zoneSize.x * 0.5f;
+            if (root.rect.width <= 0f) return desiredX;
+
+            float maxX = root.rect.xMax - zoneSize.x * 0.5f - Mathf.Clamp(sidePileRightMargin, 0f, 40f);
+            return Mathf.Min(desiredX, maxX);
         }
 
         float GetSidePileMaxColumnX(RectTransform root, float boardWidth, Vector2 zoneSize, float rightMargin)
         {
             if (IsBoardZoneRootUnderBattlefieldContent(root))
             {
-                return GetSidePanelRightX(root, boardWidth) - zoneSize.x * 0.5f;
+                return root != null && root.rect.width > 0f
+                    ? root.rect.xMax - zoneSize.x * 0.5f - rightMargin
+                    : GetSceneLayerPileColumnX(root, zoneSize);
             }
 
             float maxBoardX = boardWidth * 0.5f - zoneSize.x * 0.5f - rightMargin;
@@ -2430,12 +3103,24 @@ namespace UCG
             opponentRightEdge = float.MinValue;
             if (root == null || battlefieldManager == null || turnManager == null) return;
 
-            int laneIndex = Mathf.Clamp(turnManager.ActiveNewLaneIndex, 0, Mathf.Max(0, battlefieldManager.maxLaneCount - 1));
-            UcgBattleLane lane = battlefieldManager.GetLane(laneIndex);
-            if (lane == null || !lane.gameObject.activeInHierarchy) return;
+            var lanes = battlefieldManager.GetOpenedLanes(turnManager.currentTurn);
+            if (lanes == null || lanes.Count == 0)
+            {
+                int laneIndex = Mathf.Clamp(turnManager.ActiveNewLaneIndex, 0, Mathf.Max(0, battlefieldManager.maxLaneCount - 1));
+                UcgBattleLane lane = battlefieldManager.GetLane(laneIndex);
+                if (lane != null) lanes = new List<UcgBattleLane> { lane };
+            }
 
-            playerRightEdge = GetRectRightInReference(root, lane.playerSlot);
-            opponentRightEdge = GetRectRightInReference(root, lane.opponentSlot);
+            if (lanes == null) return;
+
+            for (int i = 0; i < lanes.Count; i++)
+            {
+                UcgBattleLane lane = lanes[i];
+                if (lane == null || !lane.gameObject.activeInHierarchy) continue;
+
+                playerRightEdge = Mathf.Max(playerRightEdge, GetRectRightInReference(root, lane.playerSlot));
+                opponentRightEdge = Mathf.Max(opponentRightEdge, GetRectRightInReference(root, lane.opponentSlot));
+            }
         }
 
         float GetRectRightInReference(RectTransform reference, RectTransform rectTransform)
@@ -2649,6 +3334,453 @@ namespace UCG
             ApplyBoardZoneDebugVisual(opponentDiscardAnchor, "OP DISCARD", false);
         }
 
+        void UpdateLayoutDebugBounds()
+        {
+            bool visible = debugBoardZones || debugBattlefieldLayout;
+            RectTransform contentRoot = battlefieldManager != null ? battlefieldManager.content : null;
+            RectTransform boardRoot = GetBoardZoneLayoutRoot();
+            if (!visible)
+            {
+                _layoutDebugBoundsLogged = false;
+            }
+
+            SetLayoutDebugFrame(contentRoot, "Content", new Color(1f, 0.05f, 0.05f, 1f), visible);
+            SetLayoutDebugFrame(boardRoot, "BoardRoot", new Color(1f, 0.92f, 0.05f, 1f), visible);
+            SetLayoutDebugFrame(pileSideRegionRoot, "PileRegion", new Color(0.72f, 0.16f, 1f, 1f), visible);
+            SetLayoutDebugFrame(playerSidePileGroup, "PlayerPile", new Color(0.14f, 1f, 0.18f, 1f), visible);
+            SetLayoutDebugFrame(opponentSidePileGroup, "OppPile", new Color(1f, 0.52f, 0.08f, 1f), visible);
+            SetLaneAreaDebugFrame(contentRoot, visible);
+
+            if (visible && !_layoutDebugBoundsLogged)
+            {
+                LogLayoutDebugBoundsInfo(contentRoot, boardRoot);
+                _layoutDebugBoundsLogged = true;
+            }
+        }
+
+        RectTransform SetLayoutDebugFrame(RectTransform target, string label, Color color, bool visible)
+        {
+            if (target == null) return null;
+            if (!visible)
+            {
+                HideLayoutDebugFrame(target, label);
+                return null;
+            }
+
+            RectTransform frame = EnsureLayoutDebugFrame(target, label, color, visible);
+            if (frame == null) return null;
+
+            frame.anchorMin = Vector2.zero;
+            frame.anchorMax = Vector2.one;
+            frame.pivot = new Vector2(0.5f, 0.5f);
+            frame.offsetMin = Vector2.zero;
+            frame.offsetMax = Vector2.zero;
+            frame.localScale = Vector3.one;
+            frame.localEulerAngles = Vector3.zero;
+            ApplyLayoutDebugFrameLayer(frame);
+            frame.SetAsLastSibling();
+            UpdateLayoutDebugLabel(frame, label, color);
+            return frame;
+        }
+
+        void SetLaneAreaDebugFrame(RectTransform contentRoot, bool visible)
+        {
+            if (contentRoot == null) return;
+            if (!visible)
+            {
+                HideLayoutDebugFrame(contentRoot, "LaneArea");
+                return;
+            }
+
+            Color laneAreaColor = new Color(0.05f, 0.95f, 1f, 1f);
+            RectTransform frame = EnsureLayoutDebugFrame(contentRoot, "LaneArea", laneAreaColor, visible);
+            if (frame == null) return;
+
+            if (!visible || !TryGetOpenedLaneAreaBounds(out Vector2 center, out Vector2 size))
+            {
+                frame.gameObject.SetActive(false);
+                return;
+            }
+
+            frame.anchorMin = new Vector2(0f, 0.5f);
+            frame.anchorMax = new Vector2(0f, 0.5f);
+            frame.pivot = new Vector2(0.5f, 0.5f);
+            frame.anchoredPosition = center;
+            frame.sizeDelta = size;
+            frame.localScale = Vector3.one;
+            frame.localEulerAngles = Vector3.zero;
+            ApplyLayoutDebugFrameLayer(frame);
+            frame.SetAsLastSibling();
+            frame.gameObject.SetActive(true);
+            UpdateLayoutDebugLabel(frame, "LaneArea", laneAreaColor);
+        }
+
+        RectTransform EnsureLayoutDebugFrame(RectTransform target, string label, Color color, bool visible)
+        {
+            string frameName = GetLayoutDebugFrameName(label);
+            Transform existing = target.Find(frameName);
+            RectTransform frame;
+            Image image;
+            Outline outline;
+
+            if (existing == null)
+            {
+                var frameObject = new GameObject(frameName, typeof(RectTransform), typeof(Image), typeof(Outline), typeof(Canvas));
+                frameObject.transform.SetParent(target, false);
+                frame = frameObject.GetComponent<RectTransform>();
+                image = frameObject.GetComponent<Image>();
+                outline = frameObject.GetComponent<Outline>();
+            }
+            else
+            {
+                frame = existing as RectTransform;
+                image = existing.GetComponent<Image>();
+                if (image == null) image = existing.gameObject.AddComponent<Image>();
+                outline = existing.GetComponent<Outline>();
+                if (outline == null) outline = existing.gameObject.AddComponent<Outline>();
+            }
+
+            image.enabled = true;
+            image.color = visible
+                ? new Color(color.r, color.g, color.b, 0.12f)
+                : Color.clear;
+            image.raycastTarget = false;
+
+            outline.enabled = visible;
+            outline.useGraphicAlpha = false;
+            outline.effectColor = visible ? color : Color.clear;
+            outline.effectDistance = new Vector2(4f, -4f);
+
+            ApplyLayoutDebugFrameLayer(frame);
+            EnsureLayoutDebugBorderBars(frame, color, visible);
+
+            frame.gameObject.SetActive(visible);
+            return frame;
+        }
+
+        void ApplyLayoutDebugFrameLayer(RectTransform frame)
+        {
+            if (frame == null) return;
+
+            Canvas frameCanvas = frame.GetComponent<Canvas>();
+            if (frameCanvas == null) frameCanvas = frame.gameObject.AddComponent<Canvas>();
+            frameCanvas.enabled = true;
+            frameCanvas.overrideSorting = true;
+            frameCanvas.sortingOrder = 31900;
+        }
+
+        void EnsureLayoutDebugBorderBars(RectTransform frame, Color color, bool visible)
+        {
+            if (frame == null) return;
+
+            EnsureLayoutDebugBorderBar(frame, "Debug Border Top", new Vector2(0f, 1f), new Vector2(1f, 1f), new Vector2(0f, -2f), new Vector2(0f, 4f), color, visible);
+            EnsureLayoutDebugBorderBar(frame, "Debug Border Bottom", new Vector2(0f, 0f), new Vector2(1f, 0f), new Vector2(0f, 2f), new Vector2(0f, 4f), color, visible);
+            EnsureLayoutDebugBorderBar(frame, "Debug Border Left", new Vector2(0f, 0f), new Vector2(0f, 1f), new Vector2(2f, 0f), new Vector2(4f, 0f), color, visible);
+            EnsureLayoutDebugBorderBar(frame, "Debug Border Right", new Vector2(1f, 0f), new Vector2(1f, 1f), new Vector2(-2f, 0f), new Vector2(4f, 0f), color, visible);
+        }
+
+        void EnsureLayoutDebugBorderBar(
+            RectTransform frame,
+            string barName,
+            Vector2 anchorMin,
+            Vector2 anchorMax,
+            Vector2 anchoredPosition,
+            Vector2 sizeDelta,
+            Color color,
+            bool visible)
+        {
+            Transform existingBar = frame.Find(barName);
+            RectTransform barRect;
+            Image barImage;
+
+            if (existingBar == null)
+            {
+                var barObject = new GameObject(barName, typeof(RectTransform), typeof(Image));
+                barObject.transform.SetParent(frame, false);
+                barRect = barObject.GetComponent<RectTransform>();
+                barImage = barObject.GetComponent<Image>();
+            }
+            else
+            {
+                barRect = existingBar as RectTransform;
+                barImage = existingBar.GetComponent<Image>();
+                if (barImage == null) barImage = existingBar.gameObject.AddComponent<Image>();
+            }
+
+            barRect.anchorMin = anchorMin;
+            barRect.anchorMax = anchorMax;
+            barRect.pivot = new Vector2(0.5f, 0.5f);
+            barRect.anchoredPosition = anchoredPosition;
+            barRect.sizeDelta = sizeDelta;
+            barRect.localScale = Vector3.one;
+            barRect.localEulerAngles = Vector3.zero;
+            barRect.gameObject.SetActive(visible);
+            barRect.SetAsLastSibling();
+
+            barImage.enabled = true;
+            barImage.color = visible ? color : Color.clear;
+            barImage.raycastTarget = false;
+        }
+
+        string GetLayoutDebugFrameName(string label)
+        {
+            return $"__Layout Debug Bounds {label}";
+        }
+
+        void HideLayoutDebugFrame(RectTransform target, string label)
+        {
+            if (target == null) return;
+
+            Transform existing = target.Find(GetLayoutDebugFrameName(label));
+            if (existing != null)
+            {
+                existing.gameObject.SetActive(false);
+            }
+        }
+
+        void UpdateLayoutDebugLabel(RectTransform frame, string label, Color color)
+        {
+            if (frame == null) return;
+
+            EnsureLayoutDebugLabelBackplate(frame);
+
+            const string labelName = "Debug Bounds Label";
+            Transform existingLabel = frame.Find(labelName);
+            RectTransform labelRect;
+            Text labelText;
+
+            if (existingLabel == null)
+            {
+                var labelObject = new GameObject(labelName, typeof(RectTransform), typeof(Text), typeof(Outline));
+                labelObject.transform.SetParent(frame, false);
+                labelRect = labelObject.GetComponent<RectTransform>();
+                labelText = labelObject.GetComponent<Text>();
+            }
+            else
+            {
+                labelRect = existingLabel as RectTransform;
+                labelText = existingLabel.GetComponent<Text>();
+                if (labelText == null) labelText = existingLabel.gameObject.AddComponent<Text>();
+                if (existingLabel.GetComponent<Outline>() == null) existingLabel.gameObject.AddComponent<Outline>();
+            }
+
+            labelRect.anchorMin = new Vector2(0f, 1f);
+            labelRect.anchorMax = new Vector2(0f, 1f);
+            labelRect.pivot = new Vector2(0f, 1f);
+            labelRect.anchoredPosition = new Vector2(10f, -8f);
+            labelRect.sizeDelta = new Vector2(150f, 30f);
+            labelRect.localScale = Vector3.one;
+            labelRect.localEulerAngles = Vector3.zero;
+            labelRect.SetAsLastSibling();
+
+            Font placeholderFont = LoadPlaceholderFont();
+            if (placeholderFont != null) labelText.font = placeholderFont;
+            labelText.text = label;
+            labelText.alignment = TextAnchor.MiddleLeft;
+            labelText.color = color;
+            labelText.fontSize = 18;
+            labelText.fontStyle = FontStyle.Bold;
+            labelText.resizeTextForBestFit = true;
+            labelText.resizeTextMinSize = 10;
+            labelText.resizeTextMaxSize = 18;
+            labelText.raycastTarget = false;
+
+            Outline textOutline = labelText.GetComponent<Outline>();
+            textOutline.enabled = true;
+            textOutline.effectColor = new Color(0f, 0f, 0f, 1f);
+            textOutline.effectDistance = new Vector2(2.5f, -2.5f);
+        }
+
+        void EnsureLayoutDebugLabelBackplate(RectTransform frame)
+        {
+            if (frame == null) return;
+
+            const string backplateName = "Debug Bounds Label Backplate";
+            Transform existingBackplate = frame.Find(backplateName);
+            RectTransform backplateRect;
+            Image backplateImage;
+
+            if (existingBackplate == null)
+            {
+                var backplateObject = new GameObject(backplateName, typeof(RectTransform), typeof(Image));
+                backplateObject.transform.SetParent(frame, false);
+                backplateRect = backplateObject.GetComponent<RectTransform>();
+                backplateImage = backplateObject.GetComponent<Image>();
+            }
+            else
+            {
+                backplateRect = existingBackplate as RectTransform;
+                backplateImage = existingBackplate.GetComponent<Image>();
+                if (backplateImage == null) backplateImage = existingBackplate.gameObject.AddComponent<Image>();
+            }
+
+            backplateRect.anchorMin = new Vector2(0f, 1f);
+            backplateRect.anchorMax = new Vector2(0f, 1f);
+            backplateRect.pivot = new Vector2(0f, 1f);
+            backplateRect.anchoredPosition = new Vector2(6f, -5f);
+            backplateRect.sizeDelta = new Vector2(164f, 36f);
+            backplateRect.localScale = Vector3.one;
+            backplateRect.localEulerAngles = Vector3.zero;
+            backplateRect.gameObject.SetActive(true);
+            backplateRect.SetAsLastSibling();
+
+            backplateImage.enabled = true;
+            backplateImage.color = new Color(0f, 0f, 0f, 0.82f);
+            backplateImage.raycastTarget = false;
+        }
+
+        bool TryGetOpenedLaneAreaBounds(out Vector2 center, out Vector2 size)
+        {
+            center = Vector2.zero;
+            size = Vector2.zero;
+            if (battlefieldManager == null) return false;
+
+            List<UcgBattleLane> lanes = turnManager != null
+                ? battlefieldManager.GetOpenedLanes(turnManager.currentTurn)
+                : battlefieldManager.GetAllVisibleLanes();
+            if (lanes == null || lanes.Count == 0)
+            {
+                lanes = battlefieldManager.GetAllVisibleLanes();
+            }
+
+            float minX = float.MaxValue;
+            float maxX = float.MinValue;
+            float minY = float.MaxValue;
+            float maxY = float.MinValue;
+
+            for (int i = 0; i < lanes.Count; i++)
+            {
+                RectTransform laneRect = lanes[i] != null ? lanes[i].transform as RectTransform : null;
+                if (laneRect == null || !laneRect.gameObject.activeInHierarchy) continue;
+
+                Vector2 laneSize = laneRect.sizeDelta;
+                float left = laneRect.anchoredPosition.x - laneRect.pivot.x * laneSize.x;
+                float bottom = laneRect.anchoredPosition.y - laneRect.pivot.y * laneSize.y;
+                minX = Mathf.Min(minX, left);
+                maxX = Mathf.Max(maxX, left + laneSize.x);
+                minY = Mathf.Min(minY, bottom);
+                maxY = Mathf.Max(maxY, bottom + laneSize.y);
+            }
+
+            if (minX == float.MaxValue || maxX == float.MinValue) return false;
+
+            center = new Vector2((minX + maxX) * 0.5f, (minY + maxY) * 0.5f);
+            size = new Vector2(Mathf.Max(1f, maxX - minX), Mathf.Max(1f, maxY - minY));
+            return true;
+        }
+
+        void LogLayoutDebugBoundsInfo(RectTransform contentRoot, RectTransform boardRoot)
+        {
+            if (!debugBoardZones && !debugBattlefieldLayout) return;
+
+            RectTransform laneAreaFrame = contentRoot != null
+                ? contentRoot.Find(GetLayoutDebugFrameName("LaneArea")) as RectTransform
+                : null;
+
+            Debug.Log(
+                "[UCG Layout] Full diagnostic\n"
+                + FormatPileNudgeDiagnostic()
+                + FormatLayoutDebugRect("Content", contentRoot)
+                + FormatLayoutDebugRect("BoardRoot", boardRoot)
+                + FormatLayoutDebugRect("PileRegion", pileSideRegionRoot)
+                + FormatLayoutDebugRect("PlayerPile", playerSidePileGroup)
+                + FormatLayoutDebugRect("OppPile", opponentSidePileGroup)
+                + FormatLayoutDebugRect("PlayerDeckSlot", playerDeckAnchor)
+                + FormatLayoutDebugRect("PlayerDiscardSlot", playerDiscardAnchor)
+                + FormatLayoutDebugRect("OpponentDeckSlot", opponentDeckAnchor)
+                + FormatLayoutDebugRect("OpponentDiscardSlot", opponentDiscardAnchor)
+                + FormatLayoutDebugRect("LaneArea", laneAreaFrame)
+                + FormatOpenedLaneBoundsDiagnostic());
+        }
+
+        string FormatLayoutDebugRect(string label, RectTransform rect)
+        {
+            if (rect == null)
+            {
+                return $"{label}: missing\n";
+            }
+
+            return $"{label}:\n"
+                + $"name={rect.name}\n"
+                + $"parentName={(rect.parent != null ? rect.parent.name : "none")}\n"
+                + $"parentPath={FormatParentPath(rect)}\n"
+                + $"anchorMin={FormatVector2(rect.anchorMin)}\n"
+                + $"anchorMax={FormatVector2(rect.anchorMax)}\n"
+                + $"pivot={FormatVector2(rect.pivot)}\n"
+                + $"anchoredPosition={FormatAnchoredPosition(rect)}\n"
+                + $"sizeDelta={FormatSizeDelta(rect)}\n"
+                + $"localScale={FormatVector3(rect.localScale)}\n"
+                + $"worldCorners={FormatWorldCorners(rect)}\n"
+                + $"activeInHierarchy={rect.gameObject.activeInHierarchy}\n";
+        }
+
+        string FormatPileNudgeDiagnostic()
+        {
+            float currentPileRegionX = pileSideRegionRoot != null ? pileSideRegionRoot.anchoredPosition.x : float.MinValue;
+            bool overwrittenAfterApply = _lastPileRegionXAfterApply != float.MinValue
+                && currentPileRegionX != float.MinValue
+                && Mathf.Abs(currentPileRegionX - _lastPileRegionXAfterApply) > 0.1f;
+
+            return "PileNudge:\n"
+                + $"sidePileColumnNudgeX={sidePileColumnNudgeX:0.###}\n"
+                + $"appliedMethod={_lastPileRegionNudgeMethod}\n"
+                + $"activeLayout={(useFixedReferenceBoardLayout ? "ReferenceBoardLayout" : "DynamicBoardLayout")}\n"
+                + $"layoutFrame={_lastPileRegionLayoutFrame}\n"
+                + $"visibleRight={FormatDebugFloat(_lastPileRegionVisibleRight)}\n"
+                + $"viewportRight={FormatDebugFloat(_lastPileRegionViewportRight)}\n"
+                + $"[UCG Layout] Pile final x before nudge = {FormatDebugFloat(_lastPileRegionXBeforeNudge)}\n"
+                + $"[UCG Layout] sidePileColumnNudgeX = {sidePileColumnNudgeX:0.###}\n"
+                + $"[UCG Layout] Pile final x after nudge = {FormatDebugFloat(_lastPileRegionXAfterNudge)}\n"
+                + $"[UCG Layout] Pile final x after clamp = {FormatDebugFloat(_lastPileRegionXAfterClamp)}\n"
+                + $"methodEntryX={FormatDebugFloat(_lastPileRegionXBeforeMethod)}\n"
+                + $"maxSafeClampX={FormatDebugFloat(_lastPileRegionXMaxSafeClamp)}\n"
+                + $"clampApplied={_lastPileRegionClampApplied}\n"
+                + $"appliedX={FormatDebugFloat(_lastPileRegionXAfterApply)}\n"
+                + $"currentPileRegionX={FormatDebugFloat(currentPileRegionX)}\n"
+                + $"overwrittenAfterApply={overwrittenAfterApply}\n"
+                + "dynamicLayoutAlsoUsesNudge=ApplyBoardZoneLayoutForPortrait when useFixedReferenceBoardLayout=false\n";
+        }
+
+        string FormatOpenedLaneBoundsDiagnostic()
+        {
+            string result = "OpenedLaneBounds:\n";
+            if (!TryGetOpenedLaneAreaBounds(out Vector2 center, out Vector2 size))
+            {
+                return result + "available=false\n";
+            }
+
+            result += $"available=true\ncenter={FormatVector2(center)}\nsize={FormatVector2(size)}\n";
+            if (battlefieldManager == null || turnManager == null) return result;
+
+            var lanes = battlefieldManager.GetOpenedLanes(turnManager.currentTurn);
+            for (int i = 0; i < lanes.Count; i++)
+            {
+                RectTransform laneRect = lanes[i] != null ? lanes[i].transform as RectTransform : null;
+                result += FormatLayoutDebugRect($"OpenedLane{i + 1}", laneRect);
+            }
+
+            return result;
+        }
+
+        string FormatVector2(Vector2 value)
+        {
+            return $"({value.x:0.###},{value.y:0.###})";
+        }
+
+        string FormatVector3(Vector3 value)
+        {
+            return $"({value.x:0.###},{value.y:0.###},{value.z:0.###})";
+        }
+
+        string FormatWorldCorners(RectTransform rect)
+        {
+            if (rect == null) return "missing";
+
+            Vector3[] corners = new Vector3[4];
+            rect.GetWorldCorners(corners);
+            return $"BL{FormatVector3(corners[0])} TL{FormatVector3(corners[1])} TR{FormatVector3(corners[2])} BR{FormatVector3(corners[3])}";
+        }
+
         void ApplyBoardZoneDebugVisual(RectTransform zone, string debugLabel, bool restorePlayerLabel)
         {
             if (zone == null) return;
@@ -2658,7 +3790,7 @@ namespace UCG
             {
                 image.color = debugBoardZones
                     ? new Color(0.18f, 0.06f, 0.30f, 0.86f)
-                    : new Color(0.012f, 0.09f, 0.14f, Mathf.Max(sidePileBackgroundAlpha, 0.42f));
+                    : new Color(0.006f, 0.045f, 0.08f, Mathf.Max(sidePileBackgroundAlpha, 0.34f));
                 image.raycastTarget = false;
             }
 
@@ -2668,8 +3800,8 @@ namespace UCG
                 outline.enabled = true;
                 outline.effectColor = debugBoardZones
                     ? new Color(1f, 0.92f, 0.12f, 1f)
-                    : new Color(0.72f, 0.98f, 1f, Mathf.Max(sidePileOutlineAlpha, 0.58f));
-                outline.effectDistance = debugBoardZones ? new Vector2(3.2f, -3.2f) : new Vector2(1.8f, -1.8f);
+                    : new Color(0.45f, 0.82f, 1f, Mathf.Max(sidePileOutlineAlpha, 0.46f));
+                outline.effectDistance = debugBoardZones ? new Vector2(3.2f, -3.2f) : new Vector2(1.9f, -1.9f);
             }
 
             Transform frameTransform = zone.Find("Card Frame");
@@ -2678,7 +3810,7 @@ namespace UCG
             {
                 frameImage.color = debugBoardZones
                     ? new Color(0.95f, 0.82f, 0.06f, 0.46f)
-                    : new Color(0.02f, 0.13f, 0.17f, 0.24f);
+                    : new Color(0.012f, 0.08f, 0.13f, 0.18f);
                 frameImage.raycastTarget = false;
             }
 
@@ -2688,8 +3820,8 @@ namespace UCG
                 frameOutline.enabled = true;
                 frameOutline.effectColor = debugBoardZones
                     ? new Color(1f, 0.96f, 0.18f, 1f)
-                    : new Color(0.8f, 1f, 1f, 0.5f);
-                frameOutline.effectDistance = debugBoardZones ? new Vector2(2f, -2f) : new Vector2(1f, -1f);
+                    : new Color(0.48f, 0.84f, 1f, 0.42f);
+                frameOutline.effectDistance = debugBoardZones ? new Vector2(2f, -2f) : new Vector2(1.1f, -1.1f);
             }
 
             Text label = zone.Find("Zone Label") != null ? zone.Find("Zone Label").GetComponent<Text>() : null;
@@ -2706,22 +3838,25 @@ namespace UCG
                 {
                     label.text = GetOpponentPileZoneLabel(zone);
                     label.gameObject.SetActive(true);
-                    label.fontSize = 12;
-                    label.color = new Color(0.86f, 1f, 1f, 1f);
+                    label.fontSize = 16;
+                    label.resizeTextMaxSize = 16;
+                    label.color = new Color(0.84f, 0.96f, 1f, 0.82f);
                 }
                 else if (zone == playerDeckAnchor)
                 {
                     label.text = "牌庫";
                     label.gameObject.SetActive(true);
-                    label.fontSize = 14;
-                    label.color = new Color(0.86f, 1f, 1f, 1f);
+                    label.fontSize = 16;
+                    label.resizeTextMaxSize = 16;
+                    label.color = new Color(0.84f, 0.96f, 1f, 0.82f);
                 }
                 else if (zone == playerDiscardAnchor)
                 {
-                    label.text = "棄牌";
+                    label.text = "棄牌區";
                     label.gameObject.SetActive(true);
-                    label.fontSize = 14;
-                    label.color = new Color(0.86f, 1f, 1f, 1f);
+                    label.fontSize = 16;
+                    label.resizeTextMaxSize = 16;
+                    label.color = new Color(0.84f, 0.96f, 1f, 0.82f);
                 }
             }
 
@@ -2729,6 +3864,9 @@ namespace UCG
             if (count != null)
             {
                 count.gameObject.SetActive(true);
+                count.fontSize = debugBoardZones ? 20 : 36;
+                count.resizeTextMinSize = debugBoardZones ? 10 : 18;
+                count.resizeTextMaxSize = debugBoardZones ? 20 : 36;
                 count.color = debugBoardZones
                     ? new Color(1f, 1f, 1f, 1f)
                     : new Color(0.98f, 1f, 1f, 1f);
@@ -2740,7 +3878,7 @@ namespace UCG
         string GetOpponentPileZoneLabel(RectTransform zone)
         {
             if (zone == opponentDeckAnchor) return "牌庫";
-            if (zone == opponentDiscardAnchor) return "棄牌";
+            if (zone == opponentDiscardAnchor) return "棄牌區";
             return "";
         }
 
@@ -2818,6 +3956,10 @@ namespace UCG
             if (root == null) return null;
 
             Transform existing = root.Find(regionName);
+            if (existing == null && regionName == "Pile Side Region")
+            {
+                existing = FindExistingZoneTransformAnywhere(regionName);
+            }
             RectTransform rect;
             if (existing == null)
             {
@@ -2994,10 +4136,16 @@ namespace UCG
 
         RectTransform EnsureBoardPileGroup(RectTransform root, string objectName)
         {
+            if (root == null) return null;
+
             Transform existing = root.Find(objectName);
             if (existing == null && root != null && root.parent != null)
             {
                 existing = root.parent.Find(objectName);
+            }
+            if (existing == null)
+            {
+                existing = FindExistingZoneTransformAnywhere(objectName);
             }
             RectTransform rect;
 
@@ -3070,26 +4218,32 @@ namespace UCG
             EnsureVisibleCanvasGroup(rect, 1f);
             rect.SetAsLastSibling();
             image.enabled = true;
+            ApplyRoundedPanelImage(image);
             image.color = debugBoardZones
                 ? new Color(0.025f, 0.18f, 0.24f, 0.74f)
-                : new Color(0.012f, 0.09f, 0.14f, Mathf.Max(sidePileBackgroundAlpha, 0.42f));
+                : new Color(0.006f, 0.045f, 0.08f, Mathf.Max(sidePileBackgroundAlpha, 0.34f));
             image.raycastTarget = false;
 
             Outline outline = rect.GetComponent<Outline>();
             outline.enabled = true;
             outline.effectColor = debugBoardZones
                 ? new Color(0.85f, 1f, 1f, 1f)
-                : new Color(0.72f, 0.98f, 1f, Mathf.Max(sidePileOutlineAlpha, 0.58f));
-            outline.effectDistance = new Vector2(1.8f, -1.8f);
+                : new Color(0.45f, 0.82f, 1f, Mathf.Max(sidePileOutlineAlpha, 0.46f));
+            outline.effectDistance = new Vector2(1.9f, -1.9f);
+
+            Shadow shadow = EnsureUiShadow(rect.gameObject);
+            shadow.effectColor = new Color(0f, 0.08f, 0.16f, 0.16f);
+            shadow.effectDistance = new Vector2(0f, -3f);
+            shadow.useGraphicAlpha = true;
 
             EnsureZoneInnerFrame(rect);
             bool hasLabel = !string.IsNullOrWhiteSpace(label);
-            Text titleText = EnsureZoneText(rect, "Zone Label", new Vector2(0.1f, 0.7f), new Vector2(0.9f, 0.92f), font, 14, new Color(0.82f, 1f, 1f, 0.72f));
+            Text titleText = EnsureZoneText(rect, "Zone Label", new Vector2(0.1f, 0.67f), new Vector2(0.9f, 0.87f), font, 16, new Color(0.84f, 0.96f, 1f, 0.82f));
             titleText.text = label;
             titleText.gameObject.SetActive(hasLabel || debugBoardZones);
             countText = hasLabel
-                ? EnsureZoneText(rect, "Zone Count", new Vector2(0.12f, 0.08f), new Vector2(0.88f, 0.32f), font, 18, new Color(0.98f, 1f, 1f, 0.86f))
-                : EnsureZoneText(rect, "Zone Count", new Vector2(0.18f, 0.33f), new Vector2(0.82f, 0.63f), font, 22, new Color(0.98f, 1f, 1f, 0.74f));
+                ? EnsureZoneText(rect, "Zone Count", new Vector2(0.12f, 0.25f), new Vector2(0.88f, 0.57f), font, 36, new Color(1f, 1f, 1f, 0.98f))
+                : EnsureZoneText(rect, "Zone Count", new Vector2(0.18f, 0.33f), new Vector2(0.82f, 0.63f), font, 36, new Color(1f, 1f, 1f, 0.98f));
             EnsureBoardZoneDebugText(rect, font);
             return rect;
         }
@@ -3106,6 +4260,17 @@ namespace UCG
             canvasGroup.ignoreParentGroups = false;
         }
 
+        void HideUnusedFixedBoardHudRoot()
+        {
+            if (canvas == null) return;
+
+            Transform fixedRoot = canvas.transform.Find("Fixed Board HUD Anchors");
+            if (fixedRoot == null) return;
+            if (fixedRoot.childCount > 0) return;
+
+            fixedRoot.gameObject.SetActive(false);
+        }
+
         Transform FindDescendantByName(Transform root, string objectName)
         {
             if (root == null) return null;
@@ -3117,6 +4282,38 @@ namespace UCG
 
                 Transform descendant = FindDescendantByName(child, objectName);
                 if (descendant != null) return descendant;
+            }
+
+            return null;
+        }
+
+        Transform FindExistingZoneTransformAnywhere(string objectName)
+        {
+            if (string.IsNullOrWhiteSpace(objectName)) return null;
+
+            Transform found = null;
+            if (battlefieldManager != null && battlefieldManager.content != null)
+            {
+                found = FindDescendantByName(battlefieldManager.content, objectName);
+                if (found != null) return found;
+            }
+
+            if (battlefieldManager != null && battlefieldManager.viewport != null)
+            {
+                found = FindDescendantByName(battlefieldManager.viewport, objectName);
+                if (found != null) return found;
+            }
+
+            if (battlefieldManager != null && battlefieldManager.transform != null)
+            {
+                found = FindDescendantByName(battlefieldManager.transform, objectName);
+                if (found != null) return found;
+            }
+
+            if (canvas != null)
+            {
+                found = FindDescendantByName(canvas.transform, objectName);
+                if (found != null) return found;
             }
 
             return null;
@@ -3150,17 +4347,18 @@ namespace UCG
             frameRect.offsetMax = Vector2.zero;
             frameRect.gameObject.SetActive(true);
             frameImage.enabled = true;
+            ApplyRoundedPanelImage(frameImage);
             frameImage.color = debugBoardZones
                 ? new Color(0.04f, 0.26f, 0.32f, 0.32f)
-                : new Color(0.02f, 0.13f, 0.17f, 0.22f);
+                : new Color(0.012f, 0.08f, 0.13f, 0.18f);
             frameImage.raycastTarget = false;
 
             Outline outline = frameRect.GetComponent<Outline>();
             outline.enabled = true;
             outline.effectColor = debugBoardZones
                 ? new Color(0.85f, 1f, 1f, 0.95f)
-                : new Color(0.8f, 1f, 1f, 0.48f);
-            outline.effectDistance = new Vector2(1f, -1f);
+                : new Color(0.48f, 0.84f, 1f, 0.42f);
+            outline.effectDistance = new Vector2(1.1f, -1.1f);
         }
 
         void EnsureBoardZoneDebugText(RectTransform parent, Font font)
@@ -3512,7 +4710,8 @@ namespace UCG
                 _playStatusRoutine = null;
             }
 
-            playResultText.text = message ?? "";
+            SetTopPromptAction(message);
+            UpdateTopPhaseHud();
             if (durationSeconds > 0f)
             {
                 _playStatusRoutine = StartCoroutine(PlayStatusReturnRoutine(durationSeconds));
@@ -3530,16 +4729,221 @@ namespace UCG
         {
             if (playResultText == null || _isTutorialFinishWaitingForClick || IsGameOver) return;
 
-            if (_lastPlayerWinCount > 0 || _lastOpponentWinCount > 0)
+            UpdateTopPhaseHud();
+        }
+
+        void UpdateTopPhaseHud()
+        {
+            if (playResultText == null || _isTutorialFinishWaitingForClick) return;
+            if (_isOpeningCameraIntro)
             {
-                playResultText.text = $"勝利路數：我方 {_lastPlayerWinCount}｜對手 {_lastOpponentWinCount}";
+                if (!string.IsNullOrEmpty(playResultText.text))
+                {
+                    playResultText.text = "";
+                }
                 return;
             }
 
-            if (phaseManager != null)
+            UcgGamePhase currentPhase = phaseManager != null ? phaseManager.CurrentPhase : UcgGamePhase.Start;
+            if (currentPhase != _lastTopPromptPhase)
             {
-                playResultText.text = phaseManager.GetPhaseDisplayName();
+                _lastTopPromptPhase = currentPhase;
+                _topPromptActionText = "";
             }
+
+            CaptureActionFromTransientHudText();
+            string topText = BuildTopPromptHudText();
+            if (!string.IsNullOrWhiteSpace(topText) && playResultText.text != topText)
+            {
+                playResultText.text = topText;
+            }
+        }
+
+        string BuildTopPromptHudText()
+        {
+            string phaseText = GetTopPromptPhaseText();
+            string actionText = string.IsNullOrWhiteSpace(_topPromptActionText)
+                ? GetDefaultTopPromptActionText()
+                : _topPromptActionText;
+            string helperText = GetTopPromptHelperText(actionText);
+
+            return $"<size=17><color=#EAF7FF>{phaseText}</color></size>\n"
+                + $"<size=24><color=#FFD66B>{actionText}</color></size>\n"
+                + $"<size=13><color=#DCEAF2>{helperText}</color></size>";
+        }
+
+        void SetTopPromptProgress(float progress, bool visible)
+        {
+            if (_topPromptProgressTrackRect == null)
+            {
+                Transform panel = canvas != null ? canvas.transform.Find("Play Result HUD Panel") : null;
+                EnsureTopPromptProgress(panel as RectTransform);
+            }
+            if (_topPromptProgressTrackRect == null) return;
+
+            _topPromptProgressTrackRect.gameObject.SetActive(visible);
+            if (!visible) return;
+
+            if (_topPromptProgressFillRect != null)
+            {
+                _topPromptProgressFillRect.anchorMax = new Vector2(Mathf.Clamp01(progress), 1f);
+                _topPromptProgressFillRect.offsetMin = Vector2.zero;
+                _topPromptProgressFillRect.offsetMax = Vector2.zero;
+            }
+        }
+
+        string GetTopPromptPhaseText()
+        {
+            if (IsGameOver) return "遊戲結束";
+            if (phaseManager == null) return "對戰準備";
+
+            switch (phaseManager.CurrentPhase)
+            {
+                case UcgGamePhase.EnterEffect:
+                case UcgGamePhase.BattleEffect:
+                    return "效果處理階段";
+                case UcgGamePhase.BattleJudgement:
+                    return "判定階段";
+                default:
+                    return phaseManager.GetPhaseDisplayName();
+            }
+        }
+
+        string GetDefaultTopPromptActionText()
+        {
+            if (IsGameOver) return "請確認對戰結果";
+            if (phaseManager == null) return "請準備開始對戰";
+
+            switch (phaseManager.CurrentPhase)
+            {
+                case UcgGamePhase.SceneSetup:
+                    return "請選擇一張場景卡";
+                case UcgGamePhase.CharacterSetup:
+                    return "請選擇一張角色卡";
+                case UcgGamePhase.Upgrade:
+                    return "請選擇您想升級的角色";
+                case UcgGamePhase.Open:
+                    return "請確認翻開的卡牌";
+                case UcgGamePhase.EnterEffect:
+                case UcgGamePhase.BattleEffect:
+                    return "請選擇效果目標";
+                case UcgGamePhase.BattleJudgement:
+                    return "正在比較雙方 BP";
+                case UcgGamePhase.End:
+                    return "正在清理本回合效果";
+                case UcgGamePhase.Draw:
+                    return "正在補充手牌";
+                default:
+                    return "請依照高亮提示操作";
+            }
+        }
+
+        string GetTopPromptHelperText(string actionText)
+        {
+            if (IsGameOver) return "可以重新開始或切換測試";
+            if (!string.IsNullOrWhiteSpace(actionText))
+            {
+                if (actionText.Contains("升級")) return "疊放到同名角色上，或點擊結束升級階段";
+                if (actionText.Contains("效果") || actionText.Contains("目標")) return "依照高亮提示完成操作";
+                if (actionText.Contains("放回") || actionText.Contains("放到牌庫") || actionText.Contains("放到底")) return "選擇後會依效果放回指定位置";
+                if (actionText.Contains("場景")) return "拖放到中央場景區；沒有合適卡牌可略過";
+                if (actionText.Contains("角色卡")) return "放到目前開放的 Lane 上";
+                if (actionText.Contains("BP")) return "勝利的 Lane 會保留，失敗的 Lane 會橫置";
+            }
+
+            if (phaseManager == null) return "文字提示說明目標，高亮提示顯示可操作區域";
+
+            switch (phaseManager.CurrentPhase)
+            {
+                case UcgGamePhase.SceneSetup:
+                    return "拖放到中央場景區；沒有合適卡牌可略過";
+                case UcgGamePhase.CharacterSetup:
+                    return "放到目前開放的 Lane 上";
+                case UcgGamePhase.Upgrade:
+                    return "疊放到同名角色上，或點擊結束升級階段";
+                case UcgGamePhase.EnterEffect:
+                case UcgGamePhase.BattleEffect:
+                    return "依照高亮提示完成操作";
+                case UcgGamePhase.BattleJudgement:
+                    return "勝利的 Lane 會保留，失敗的 Lane 會橫置";
+                case UcgGamePhase.End:
+                    return "準備進入下一回合";
+                default:
+                    return "文字提示說明目標，高亮提示顯示可操作區域";
+            }
+        }
+
+        void SetTopPromptAction(string message)
+        {
+            string actionPrompt = ExtractActionPrompt(message);
+            if (!string.IsNullOrWhiteSpace(actionPrompt))
+            {
+                _topPromptActionText = actionPrompt;
+            }
+        }
+
+        void CaptureActionFromTransientHudText()
+        {
+            if (playResultText == null) return;
+            string existing = playResultText.text;
+            if (string.IsNullOrWhiteSpace(existing)) return;
+            if (existing.Contains("<size=") || existing.Contains("<color=")) return;
+
+            SetTopPromptAction(existing);
+        }
+
+        string ExtractActionPrompt(string message)
+        {
+            if (string.IsNullOrWhiteSpace(message)) return "";
+
+            string[] lines = message.Replace('\r', '\n').Split('\n');
+            for (int i = lines.Length - 1; i >= 0; i--)
+            {
+                string line = CleanActionPromptLine(lines[i]);
+                if (IsActionPromptLine(line)) return line;
+            }
+
+            return "";
+        }
+
+        string CleanActionPromptLine(string line)
+        {
+            if (string.IsNullOrWhiteSpace(line)) return "";
+
+            line = line.Trim();
+            int dividerIndex = line.LastIndexOf('｜');
+            if (dividerIndex >= 0 && dividerIndex < line.Length - 1)
+            {
+                string tail = line.Substring(dividerIndex + 1).Trim();
+                if (IsActionPromptLine(tail)) return tail;
+            }
+
+            int colonIndex = line.IndexOf('：');
+            if (colonIndex >= 0 && colonIndex < line.Length - 1)
+            {
+                string tail = line.Substring(colonIndex + 1).Trim();
+                if (IsActionPromptLine(tail)) return tail;
+            }
+
+            return line;
+        }
+
+        bool IsActionPromptLine(string line)
+        {
+            if (string.IsNullOrWhiteSpace(line)) return false;
+            if (line.Contains("本回合先攻") || line.Contains("勝利路數") || line.Contains("遊戲結束")) return false;
+            if (line.StartsWith("對手") && !line.Contains("請選擇對手")) return false;
+            if (line.Contains("準備進入") || line.Contains("正在比較") || line.Contains("已完成")) return false;
+
+            return line.Contains("請選擇")
+                || line.Contains("請先選擇")
+                || line.Contains("請依序選擇")
+                || line.Contains("可以升級")
+                || line.Contains("可以設置")
+                || line.Contains("點擊完成")
+                || line.Contains("放回牌庫")
+                || line.Contains("放到底")
+                || line.Contains("選擇目標");
         }
 
         void SetGameResultHudVisible(bool visible)
@@ -3671,6 +5075,7 @@ namespace UCG
             panelImage.color = new Color(0.05f, 0.09f, 0.12f, 0.78f);
             panelImage.raycastTarget = false;
 
+            EnsureTutorialIcon(panelRect);
             tutorialGuide.tutorialText = EnsureTutorialText(panelRect);
             ApplyTutorialPanelNormalStyle();
             tutorialGuide.ResetForMode(currentTestMode);
@@ -3683,11 +5088,11 @@ namespace UCG
             RectTransform panelRect = tutorialGuide.transform as RectTransform;
             if (panelRect != null)
             {
-                panelRect.anchorMin = new Vector2(0.5f, 0f);
-                panelRect.anchorMax = new Vector2(0.5f, 0f);
+                panelRect.anchorMin = new Vector2(0.5f, 0.5f);
+                panelRect.anchorMax = new Vector2(0.5f, 0.5f);
                 panelRect.pivot = new Vector2(0.5f, 0.5f);
-                panelRect.anchoredPosition = new Vector2(0f, 1802f);
-                panelRect.sizeDelta = new Vector2(880f, 92f);
+                panelRect.anchoredPosition = new Vector2(0f, 0f);
+                panelRect.sizeDelta = Vector2.zero;
                 panelRect.localScale = Vector3.one;
             }
 
@@ -3695,7 +5100,7 @@ namespace UCG
             if (panelImage != null)
             {
                 ApplyRoundedPanelImage(panelImage);
-                panelImage.color = new Color(0.012f, 0.035f, 0.055f, 0.72f);
+                panelImage.color = Color.clear;
                 panelImage.raycastTarget = false;
             }
 
@@ -3703,31 +5108,33 @@ namespace UCG
             if (panelGroup == null) panelGroup = tutorialGuide.gameObject.AddComponent<CanvasGroup>();
             if (panelGroup != null)
             {
-                panelGroup.alpha = 1f;
+                panelGroup.alpha = 0f;
                 panelGroup.blocksRaycasts = false;
             }
 
             Outline panelOutline = tutorialGuide.GetComponent<Outline>();
             if (panelOutline == null) panelOutline = tutorialGuide.gameObject.AddComponent<Outline>();
-            panelOutline.effectColor = new Color(0.6f, 0.92f, 1f, 0.18f);
-            panelOutline.effectDistance = new Vector2(2f, -2f);
+            panelOutline.effectColor = Color.clear;
+            panelOutline.effectDistance = Vector2.zero;
 
-            Canvas panelCanvas = tutorialGuide.GetComponent<Canvas>();
-            if (panelCanvas != null)
-            {
-                panelCanvas.overrideSorting = false;
-                panelCanvas.sortingOrder = 0;
-            }
+            Shadow panelShadow = EnsureUiShadow(tutorialGuide.gameObject);
+            panelShadow.effectColor = Color.clear;
+            panelShadow.effectDistance = Vector2.zero;
+            panelShadow.useGraphicAlpha = true;
+
+            SetTutorialIconVisible(false);
+            SetTutorialTextLayout(true);
 
             Text text = tutorialGuide.tutorialText;
             if (text != null)
             {
-                text.fontSize = 23;
-                text.resizeTextMinSize = 14;
-                text.resizeTextMaxSize = 23;
+                text.fontSize = 24;
+                text.resizeTextMinSize = 15;
+                text.resizeTextMaxSize = 26;
                 text.alignment = TextAnchor.MiddleCenter;
-                text.lineSpacing = 1f;
-                text.color = new Color(0.92f, 0.98f, 1f, 1f);
+                text.lineSpacing = 0.92f;
+                text.color = Color.clear;
+                text.supportRichText = true;
                 text.raycastTarget = false;
             }
         }
@@ -3768,7 +5175,10 @@ namespace UCG
             Canvas panelCanvas = tutorialGuide.GetComponent<Canvas>();
             if (panelCanvas == null) panelCanvas = tutorialGuide.gameObject.AddComponent<Canvas>();
             panelCanvas.overrideSorting = true;
-            panelCanvas.sortingOrder = 26000;
+            panelCanvas.sortingOrder = 30000;
+
+            SetTutorialIconVisible(false);
+            SetTutorialTextLayout(false);
 
             Text text = tutorialGuide.tutorialText;
             if (text != null)
@@ -3805,8 +5215,8 @@ namespace UCG
 
             textRect.anchorMin = Vector2.zero;
             textRect.anchorMax = Vector2.one;
-            textRect.offsetMin = new Vector2(30f, 14f);
-            textRect.offsetMax = new Vector2(-30f, -14f);
+            textRect.offsetMin = new Vector2(22f, 12f);
+            textRect.offsetMax = new Vector2(-22f, -42f);
 
             text.alignment = TextAnchor.MiddleCenter;
             text.color = Color.white;
@@ -3815,13 +5225,136 @@ namespace UCG
             {
                 text.font = placeholderFont;
             }
-            text.fontSize = 28;
+            text.fontSize = 24;
             text.resizeTextForBestFit = true;
-            text.resizeTextMinSize = 18;
-            text.resizeTextMaxSize = 28;
+            text.resizeTextMinSize = 15;
+            text.resizeTextMaxSize = 26;
+            text.supportRichText = true;
             text.raycastTarget = false;
 
             return text;
+        }
+
+        void EnsureTutorialIcon(RectTransform parent)
+        {
+            const string iconFrameName = "Tutorial Icon Frame";
+            Transform existingFrame = parent.Find(iconFrameName);
+            RectTransform iconFrameRect;
+            Image iconFrameImage;
+
+            if (existingFrame == null)
+            {
+                var frameObject = new GameObject(iconFrameName, typeof(RectTransform), typeof(Image), typeof(Outline));
+                frameObject.transform.SetParent(parent, false);
+                iconFrameRect = frameObject.GetComponent<RectTransform>();
+                iconFrameImage = frameObject.GetComponent<Image>();
+            }
+            else
+            {
+                iconFrameRect = existingFrame as RectTransform;
+                iconFrameImage = existingFrame.GetComponent<Image>();
+                if (iconFrameImage == null) iconFrameImage = existingFrame.gameObject.AddComponent<Image>();
+                if (existingFrame.GetComponent<Outline>() == null) existingFrame.gameObject.AddComponent<Outline>();
+            }
+
+            iconFrameRect.anchorMin = new Vector2(0.5f, 1f);
+            iconFrameRect.anchorMax = new Vector2(0.5f, 1f);
+            iconFrameRect.pivot = new Vector2(0.5f, 1f);
+            iconFrameRect.anchoredPosition = new Vector2(0f, -8f);
+            iconFrameRect.sizeDelta = new Vector2(32f, 32f);
+            iconFrameRect.localScale = Vector3.one;
+            iconFrameRect.localEulerAngles = Vector3.zero;
+            iconFrameRect.SetAsLastSibling();
+            ApplyRoundedPanelImage(iconFrameImage);
+            iconFrameImage.color = new Color(1f, 0.72f, 0.18f, 0.16f);
+            iconFrameImage.raycastTarget = false;
+
+            Outline iconFrameOutline = iconFrameRect.GetComponent<Outline>();
+            iconFrameOutline.effectColor = new Color(1f, 0.78f, 0.24f, 0.68f);
+            iconFrameOutline.effectDistance = new Vector2(1.5f, -1.5f);
+            iconFrameOutline.useGraphicAlpha = true;
+
+            const string iconName = "Tutorial Icon";
+            Transform existingIcon = iconFrameRect.Find(iconName);
+            RectTransform iconRect;
+            Text iconText;
+            if (existingIcon == null)
+            {
+                var iconObject = new GameObject(iconName, typeof(RectTransform), typeof(Text), typeof(Outline));
+                iconObject.transform.SetParent(iconFrameRect, false);
+                iconRect = iconObject.GetComponent<RectTransform>();
+                iconText = iconObject.GetComponent<Text>();
+            }
+            else
+            {
+                iconRect = existingIcon as RectTransform;
+                iconText = existingIcon.GetComponent<Text>();
+                if (iconText == null) iconText = existingIcon.gameObject.AddComponent<Text>();
+                if (existingIcon.GetComponent<Outline>() == null) existingIcon.gameObject.AddComponent<Outline>();
+            }
+
+            iconRect.anchorMin = Vector2.zero;
+            iconRect.anchorMax = Vector2.one;
+            iconRect.offsetMin = Vector2.zero;
+            iconRect.offsetMax = Vector2.zero;
+            iconText.text = "!";
+            iconText.alignment = TextAnchor.MiddleCenter;
+            iconText.color = new Color(1f, 0.82f, 0.28f, 1f);
+            Font placeholderFont = LoadPlaceholderFont();
+            if (placeholderFont != null) iconText.font = placeholderFont;
+            iconText.fontSize = 24;
+            iconText.fontStyle = FontStyle.Bold;
+            iconText.raycastTarget = false;
+
+            Outline iconOutline = iconText.GetComponent<Outline>();
+            iconOutline.effectColor = new Color(0f, 0f, 0f, 0.62f);
+            iconOutline.effectDistance = new Vector2(1f, -1f);
+        }
+
+        void SetTutorialIconVisible(bool visible)
+        {
+            if (tutorialGuide == null) return;
+            Transform iconFrame = tutorialGuide.transform.Find("Tutorial Icon Frame");
+            if (iconFrame != null) iconFrame.gameObject.SetActive(visible);
+        }
+
+        void SetTutorialTextLayout(bool withIcon)
+        {
+            if (tutorialGuide == null || tutorialGuide.tutorialText == null) return;
+            RectTransform textRect = tutorialGuide.tutorialText.transform as RectTransform;
+            if (textRect == null) return;
+
+            textRect.anchorMin = Vector2.zero;
+            textRect.anchorMax = Vector2.one;
+            textRect.offsetMin = withIcon ? new Vector2(22f, 12f) : new Vector2(36f, 32f);
+            textRect.offsetMax = withIcon ? new Vector2(-22f, -42f) : new Vector2(-36f, -32f);
+        }
+
+        void EnsureTutorialPanelTopLayer()
+        {
+            if (_isTutorialFinishWaitingForClick) return;
+            HideTutorialPanelNormalVisual();
+        }
+
+        void HideTutorialPanelNormalVisual()
+        {
+            if (tutorialGuide == null) return;
+
+            Canvas panelCanvas = tutorialGuide.GetComponent<Canvas>();
+            if (panelCanvas == null) panelCanvas = tutorialGuide.gameObject.AddComponent<Canvas>();
+            panelCanvas.overrideSorting = false;
+            panelCanvas.sortingOrder = 0;
+
+            CanvasGroup panelGroup = tutorialGuide.GetComponent<CanvasGroup>();
+            if (panelGroup == null) panelGroup = tutorialGuide.gameObject.AddComponent<CanvasGroup>();
+            panelGroup.alpha = 0f;
+            panelGroup.blocksRaycasts = false;
+
+            RectTransform panelRect = tutorialGuide.transform as RectTransform;
+            if (panelRect != null)
+            {
+                panelRect.sizeDelta = Vector2.zero;
+            }
         }
 
         void EnsureRestartButton()
@@ -3849,11 +5382,11 @@ namespace UCG
             buttonRect.anchorMax = new Vector2(1f, 1f);
             buttonRect.pivot = new Vector2(1f, 1f);
             buttonRect.anchoredPosition = new Vector2(-36f, -64f);
-            buttonRect.sizeDelta = new Vector2(156f, 48f);
+            buttonRect.sizeDelta = new Vector2(178f, 48f);
 
             var image = restartButton.GetComponent<Image>();
             image.raycastTarget = true;
-            ApplyHudButtonStyle(restartButton, new Color(0.05f, 0.13f, 0.18f, 0.58f), new Color(0.12f, 0.32f, 0.46f, 0.82f));
+            ApplyTopHudButtonStyle(restartButton);
             restartButton.onClick.RemoveListener(RestartDemo);
             restartButton.onClick.AddListener(RestartDemo);
 
@@ -3885,15 +5418,15 @@ namespace UCG
             buttonRect.anchorMax = new Vector2(1f, 1f);
             buttonRect.pivot = new Vector2(1f, 1f);
             buttonRect.anchoredPosition = new Vector2(-36f, -118f);
-            buttonRect.sizeDelta = new Vector2(156f, 48f);
+            buttonRect.sizeDelta = new Vector2(178f, 48f);
 
             var image = switchTestButton.GetComponent<Image>();
             image.raycastTarget = true;
-            ApplyHudButtonStyle(switchTestButton, new Color(0.05f, 0.14f, 0.13f, 0.54f), new Color(0.13f, 0.32f, 0.26f, 0.78f));
+            ApplyTopHudButtonStyle(switchTestButton);
             switchTestButton.onClick.RemoveListener(SwitchTestMode);
             switchTestButton.onClick.AddListener(SwitchTestMode);
 
-            EnsureButtonLabel(buttonRect, "切換測試");
+            EnsureButtonLabelWithIcon(buttonRect, "⇄", "切換測試");
         }
 
         void EnsureSkipTutorialButton()
@@ -3921,16 +5454,16 @@ namespace UCG
             buttonRect.anchorMax = new Vector2(1f, 1f);
             buttonRect.pivot = new Vector2(1f, 1f);
             buttonRect.anchoredPosition = new Vector2(-36f, -172f);
-            buttonRect.sizeDelta = new Vector2(156f, 42f);
+            buttonRect.sizeDelta = new Vector2(178f, 48f);
 
             var image = skipTutorialButton.GetComponent<Image>();
             image.raycastTarget = true;
-            ApplyHudButtonStyle(skipTutorialButton, new Color(0.11f, 0.08f, 0.17f, 0.5f), new Color(0.24f, 0.16f, 0.34f, 0.74f));
+            ApplyTopHudButtonStyle(skipTutorialButton);
             skipTutorialButton.onClick.RemoveListener(SkipTutorialMode);
             skipTutorialButton.onClick.AddListener(SkipTutorialMode);
             skipTutorialButton.gameObject.SetActive(true);
 
-            EnsureButtonLabel(buttonRect, "跳過教學");
+            EnsureButtonLabelWithIcon(buttonRect, "»", "跳過教學");
         }
 
         void EnsureBoardDebugToggleButton()
@@ -3991,8 +5524,10 @@ namespace UCG
         {
             debugBoardZones = !debugBoardZones;
             _debugBoardZonesStateLogged = false;
+            _layoutDebugBoundsLogged = false;
             UpdateDebugBoardZonesActivePanel();
             ApplyBoardZoneDebugVisualState();
+            UpdateLayoutDebugBounds();
             if (debugBoardZones)
             {
                 RefreshPileSideRegionDebugVisibility();
@@ -4362,6 +5897,9 @@ namespace UCG
             }
 
             _isOpeningFirstPlayerSequence = false;
+            _isOpeningCameraIntro = false;
+            RestoreOpeningCameraScrollDuration();
+            StopTurnStartBannerRoutine();
             SetHandCardsInteractable(true, null);
         }
 
@@ -4371,17 +5909,17 @@ namespace UCG
             ClearPlayableHandHighlights();
             SetHandCardsInteractable(false, null);
             RefreshNextPhaseButtonState();
+            _isOpeningCameraIntro = true;
 
             if (playResultText != null)
             {
-                playResultText.text = "決定先攻中……";
-            }
-            if (tutorialGuide != null)
-            {
-                tutorialGuide.ShowPhasePrompt("決定先攻中……");
+                playResultText.text = "";
             }
 
-            yield return new WaitForSecondsRealtime(0.75f);
+            ShowOpeningBattlefieldOverview();
+            yield return new WaitForSecondsRealtime(Mathf.Max(0.1f, openingOverviewHoldSeconds));
+            yield return SmoothOpeningBattlefieldFocus();
+            _isOpeningCameraIntro = false;
 
             string resultMessage = string.IsNullOrWhiteSpace(_openingFirstPlayerMessage)
                 ? (turnOrderManager != null ? turnOrderManager.GetOpeningFirstPlayerText() : "正面，我方先攻！")
@@ -4398,6 +5936,8 @@ namespace UCG
 
             yield return new WaitForSecondsRealtime(1.35f);
 
+            yield return PlayTurnStartBannerForCurrentTurn();
+
             _openingFirstPlayerRoutine = null;
             _isOpeningFirstPlayerSequence = false;
             SetHandCardsInteractable(true, null);
@@ -4405,6 +5945,46 @@ namespace UCG
 
             phaseManager.SetPhase(UcgGamePhase.SceneSetup);
             EnterCurrentPhase();
+        }
+
+        void ShowOpeningBattlefieldOverview()
+        {
+            if (battlefieldManager == null) return;
+
+            ApplyCombatFocusViewportPosition("ShowOpeningBattlefieldOverview");
+            battlefieldManager.RefreshOpenedLaneVisibility(turnManager != null ? turnManager.currentTurn : 1);
+            battlefieldManager.ShowOverviewInstant("OpeningCameraIntro");
+            LogCombatViewportDiagnostic("ShowOpeningBattlefieldOverview", "OverviewAll", GetCurrentActiveLaneIndex());
+            RefreshBoardZoneLayout();
+        }
+
+        IEnumerator SmoothOpeningBattlefieldFocus()
+        {
+            if (battlefieldManager == null) yield break;
+
+            float transitionSeconds = Mathf.Clamp(openingFocusTransitionSeconds, 0.35f, 0.5f);
+            _openingCameraPreviousScrollDuration = battlefieldManager.activeLaneScrollDuration;
+            _openingCameraOverrodeScrollDuration = true;
+            battlefieldManager.activeLaneScrollDuration = transitionSeconds;
+
+            int activeLaneIndex = turnManager != null ? turnManager.ActiveNewLaneIndex : 0;
+            ApplyCombatFocusViewportPosition("SmoothOpeningBattlefieldFocus");
+            battlefieldManager.SmoothFocusActiveLane(activeLaneIndex < 0 ? 0 : activeLaneIndex);
+            LogCombatViewportDiagnostic("SmoothOpeningBattlefieldFocus", "FocusLane", activeLaneIndex < 0 ? 0 : activeLaneIndex);
+            yield return new WaitForSecondsRealtime(transitionSeconds);
+
+            RestoreOpeningCameraScrollDuration();
+            RefreshBoardZoneLayout();
+        }
+
+        void RestoreOpeningCameraScrollDuration()
+        {
+            if (!_openingCameraOverrodeScrollDuration) return;
+            if (battlefieldManager != null)
+            {
+                battlefieldManager.activeLaneScrollDuration = _openingCameraPreviousScrollDuration;
+            }
+            _openingCameraOverrodeScrollDuration = false;
         }
 
         void ClearEffectFeedback()
@@ -4807,30 +6387,30 @@ namespace UCG
             promptRect.anchorMin = new Vector2(0.5f, 1f);
             promptRect.anchorMax = new Vector2(0.5f, 1f);
             promptRect.pivot = new Vector2(0.5f, 1f);
-            promptRect.anchoredPosition = new Vector2(0f, -118f);
-            promptRect.sizeDelta = new Vector2(380f, 88f);
+            promptRect.anchoredPosition = new Vector2(0f, -56f);
+            promptRect.sizeDelta = new Vector2(704f, 132f);
             promptRect.localScale = Vector3.one;
             promptRect.localEulerAngles = Vector3.zero;
 
             var panelImage = nextPhaseButton.GetComponent<Image>();
             if (panelImage != null)
             {
-                panelImage.color = new Color(0.012f, 0.045f, 0.07f, 0.82f);
+                panelImage.color = Color.clear;
                 panelImage.raycastTarget = true;
             }
 
             var outline = nextPhaseButton.GetComponent<Outline>();
             if (outline == null) outline = nextPhaseButton.gameObject.AddComponent<Outline>();
-            outline.effectColor = new Color(0.42f, 0.9f, 1f, 0.42f);
-            outline.effectDistance = new Vector2(2.2f, -2.2f);
+            outline.effectColor = Color.clear;
+            outline.effectDistance = Vector2.zero;
             outline.useGraphicAlpha = false;
 
             ColorBlock colors = nextPhaseButton.colors;
-            colors.normalColor = Color.white;
-            colors.highlightedColor = new Color(0.76f, 0.96f, 1f, 1f);
-            colors.pressedColor = new Color(0.58f, 0.84f, 0.92f, 1f);
+            colors.normalColor = Color.clear;
+            colors.highlightedColor = Color.clear;
+            colors.pressedColor = Color.clear;
             colors.selectedColor = colors.highlightedColor;
-            colors.disabledColor = new Color(0.5f, 0.58f, 0.62f, 0.62f);
+            colors.disabledColor = Color.clear;
             colors.colorMultiplier = 1f;
             nextPhaseButton.colors = colors;
 
@@ -4842,7 +6422,7 @@ namespace UCG
                 new Vector2(20f, 0f),
                 new Vector2(-20f, -5f),
                 25,
-                new Color(0.94f, 1f, 1f, 0.98f),
+                Color.clear,
                 TextAnchor.MiddleCenter);
             _advancePromptCountdownText = EnsureAdvancePromptText(
                 promptRect,
@@ -4852,10 +6432,14 @@ namespace UCG
                 new Vector2(20f, 0f),
                 new Vector2(-20f, 0f),
                 15,
-                new Color(0.66f, 0.94f, 1f, 0.86f),
+                Color.clear,
                 TextAnchor.MiddleCenter);
 
             EnsureAdvancePromptProgress(promptRect);
+            if (_advancePromptProgressTrackRect != null)
+            {
+                _advancePromptProgressTrackRect.gameObject.SetActive(false);
+            }
 
             if (_advancePromptPulse == null)
             {
@@ -4871,7 +6455,7 @@ namespace UCG
             _advancePromptPulse.bobAmplitude = 0f;
             _advancePromptPulse.speed = 2.2f;
             _advancePromptPulse.CaptureBaseState();
-            _advancePromptPulse.enabled = true;
+            _advancePromptPulse.enabled = false;
         }
 
         Text EnsureAdvancePromptText(RectTransform parent, string objectName, Vector2 anchorMin, Vector2 anchorMax, Vector2 offsetMin, Vector2 offsetMax, int fontSize, Color color, TextAnchor alignment)
@@ -4913,8 +6497,8 @@ namespace UCG
             if (font != null) text.font = font;
 
             var outline = text.GetComponent<Outline>();
-            outline.effectColor = new Color(0f, 0f, 0f, 0.62f);
-            outline.effectDistance = new Vector2(1f, -1f);
+            outline.effectColor = Color.clear;
+            outline.effectDistance = Vector2.zero;
             return text;
         }
 
@@ -5020,7 +6604,97 @@ namespace UCG
 
         void EnsureRestartButtonLabel(RectTransform parent)
         {
-            EnsureButtonLabel(parent, "重新開始");
+            EnsureButtonLabelWithIcon(parent, "↻", "重新開始");
+        }
+
+        void ApplyTopHudButtonStyle(Button button)
+        {
+            if (button == null) return;
+
+            Color normalColor = new Color(0.012f, 0.06f, 0.11f, 0.68f);
+            Color highlightedColor = new Color(0.03f, 0.17f, 0.28f, 0.92f);
+            Color pressedColor = new Color(0.09f, 0.38f, 0.58f, 0.96f);
+
+            var image = button.GetComponent<Image>();
+            if (image != null)
+            {
+                ApplyRoundedPanelImage(image);
+                image.color = normalColor;
+                image.raycastTarget = true;
+                button.targetGraphic = image;
+            }
+
+            var outline = button.GetComponent<Outline>();
+            if (outline == null) outline = button.gameObject.AddComponent<Outline>();
+            outline.effectColor = new Color(0.44f, 0.9f, 1f, 0.62f);
+            outline.effectDistance = new Vector2(2.4f, -2.4f);
+            outline.useGraphicAlpha = true;
+
+            var shadow = EnsureUiShadow(button.gameObject);
+            shadow.effectColor = new Color(0f, 0.08f, 0.18f, 0.34f);
+            shadow.effectDistance = new Vector2(0f, -4f);
+            shadow.useGraphicAlpha = true;
+
+            ColorBlock colors = button.colors;
+            colors.normalColor = normalColor;
+            colors.highlightedColor = highlightedColor;
+            colors.pressedColor = pressedColor;
+            colors.selectedColor = highlightedColor;
+            colors.disabledColor = new Color(0.04f, 0.06f, 0.08f, 0.42f);
+            colors.colorMultiplier = 1.18f;
+            colors.fadeDuration = 0.08f;
+            button.transition = Selectable.Transition.ColorTint;
+            button.colors = colors;
+        }
+
+        void EnsureButtonLabelWithIcon(RectTransform parent, string icon, string text)
+        {
+            Text iconText = EnsureButtonChildText(parent, "Icon", new Vector2(0.06f, 0f), new Vector2(0.30f, 1f));
+            iconText.text = icon;
+            iconText.fontSize = 23;
+            iconText.resizeTextMinSize = 15;
+            iconText.resizeTextMaxSize = 23;
+            iconText.color = new Color(0.62f, 0.94f, 1f, 1f);
+
+            Text label = EnsureButtonChildText(parent, "Text", new Vector2(0.30f, 0f), new Vector2(0.94f, 1f));
+            label.text = text;
+            label.fontSize = 20;
+            label.resizeTextMinSize = 13;
+            label.resizeTextMaxSize = 20;
+            label.color = new Color(0.94f, 0.99f, 1f, 1f);
+        }
+
+        Text EnsureButtonChildText(RectTransform parent, string objectName, Vector2 anchorMin, Vector2 anchorMax)
+        {
+            Transform existing = parent.Find(objectName);
+            RectTransform textRect;
+            Text text;
+
+            if (existing == null)
+            {
+                var textObject = new GameObject(objectName, typeof(RectTransform), typeof(Text));
+                textObject.transform.SetParent(parent, false);
+                textRect = textObject.GetComponent<RectTransform>();
+                text = textObject.GetComponent<Text>();
+            }
+            else
+            {
+                textRect = existing as RectTransform;
+                text = existing.GetComponent<Text>();
+                if (text == null) text = existing.gameObject.AddComponent<Text>();
+            }
+
+            textRect.anchorMin = anchorMin;
+            textRect.anchorMax = anchorMax;
+            textRect.offsetMin = Vector2.zero;
+            textRect.offsetMax = Vector2.zero;
+            text.alignment = TextAnchor.MiddleCenter;
+            Font placeholderFont = LoadPlaceholderFont();
+            if (placeholderFont != null) text.font = placeholderFont;
+            text.fontStyle = FontStyle.Bold;
+            text.resizeTextForBestFit = true;
+            text.raycastTarget = false;
+            return text;
         }
 
         void EnsureButtonLabel(RectTransform parent, string text)
@@ -5072,6 +6746,7 @@ namespace UCG
         void RestartDemo(string resultMessage)
         {
             StopOpeningFirstPlayerRoutine();
+            StopTurnStartBannerRoutine();
             HideAdvanceButton();
             StopAutoPhaseRoutine();
             StopOpponentActionRoutine();
@@ -5099,6 +6774,7 @@ namespace UCG
             _opponentUpgradeExecutedTurn = -1;
             _advanceToUpgradeAfterOpponentSetup = false;
             _showRestoredCardsMessageOnStart = false;
+            _lastTurnStartBannerShownTurn = 0;
             _sceneCardPlacedTurn = -1;
             _activatedEffectsPreparedTurn = -1;
             _enterEffectPhaseHadPendingEffects = false;
@@ -5308,17 +6984,17 @@ namespace UCG
 
             if (phaseManager.CurrentPhase == UcgGamePhase.Start)
             {
-                if (playResultText != null)
-                {
-                    playResultText.text = _showRestoredCardsMessageOnStart && turnManager != null
-                        ? $"第 {turnManager.currentTurn} 回合開始\n新的回合開始，橫置的角色恢復豎置。\n接著展開第 {turnManager.ActiveNewLaneIndex + 1} 路。"
-                        : string.IsNullOrWhiteSpace(_openingFirstPlayerMessage)
-                            ? "決定先攻中……"
-                            : _openingFirstPlayerMessage;
-                }
+                UpdateTopPhaseHud();
                 _showRestoredCardsMessageOnStart = false;
-                UpdateMainPrompt();
-                BeginAutoPhaseRoutine(phaseManager.CurrentPhase);
+                if (ShouldPlayTurnStartBannerForCurrentTurn())
+                {
+                    BeginTurnStartBannerThenAutoPhase();
+                }
+                else
+                {
+                    UpdateMainPrompt();
+                    BeginAutoPhaseRoutine(phaseManager.CurrentPhase);
+                }
                 return;
             }
 
@@ -5564,6 +7240,7 @@ namespace UCG
                 }
                 else
                 {
+                    StartEffectSourceHighlight(nextEffect);
                     if (TryResolveOpponentTargetedEffect(nextEffect, out string opponentTargetMessage))
                     {
                         QueueEffectFeedback(opponentTargetMessage);
@@ -5577,6 +7254,7 @@ namespace UCG
                             : opponentTargetMessage;
                         ShowPlayStatus(skipMessage, 1.1f);
                     }
+                    StopEffectSourceHighlight(nextEffect);
                     HandleBattleEffectEntry();
                 }
                 return true;
@@ -5652,6 +7330,7 @@ namespace UCG
                     }
                     else
                     {
+                        StartEffectSourceHighlight(nextEffect);
                         if (TryResolveOpponentTargetedEffect(nextEffect, out string opponentTargetMessage))
                         {
                             QueueEffectFeedback(opponentTargetMessage);
@@ -5665,12 +7344,14 @@ namespace UCG
                                 : opponentTargetMessage;
                             ShowPlayStatus(skipMessage, 1.1f);
                         }
+                        StopEffectSourceHighlight(nextEffect);
                         guard++;
                         continue;
                     }
                     return true;
                 }
 
+                StartEffectSourceHighlight(nextEffect);
                 bool resolved = effectManager.ResolveNextEffect(this, out string message);
                 if (_isSelectingDeckOperationCard)
                 {
@@ -5714,6 +7395,7 @@ namespace UCG
                     playResultText.text = message;
                 }
 
+                StopEffectSourceHighlight(nextEffect);
                 guard++;
             }
 
@@ -5738,6 +7420,7 @@ namespace UCG
                     turnOrderManager.SetCurrentActingPlayer(UcgPlayerSide.Opponent);
                 }
 
+                StartEffectSourceHighlight(nextEffect);
                 if (effectManager.ResolveOpponentAutoBattleEffect(nextEffect, this, out string message, out string skippedReason))
                 {
                     appliedCount++;
@@ -5758,6 +7441,7 @@ namespace UCG
                     }
                 }
 
+                StopEffectSourceHighlight(nextEffect);
                 guard++;
             }
 
@@ -5952,6 +7636,65 @@ namespace UCG
             }
         }
 
+        void StartEffectSourceHighlight(UcgEffectInstance effect)
+        {
+            if (effect == null) return;
+            if (_activeEffectSourceHighlight != null && !ReferenceEquals(_activeEffectSourceHighlight, effect))
+            {
+                StopCurrentEffectSourceHighlight();
+            }
+
+            if (effect.sourceCard != null)
+            {
+                effect.sourceCard.StartEffectSourceHighlight();
+            }
+
+            if (effect.sourceSceneCard != null)
+            {
+                effect.sourceSceneCard.StartEffectSourceHighlight();
+            }
+
+            _activeEffectSourceHighlight = effect;
+        }
+
+        void StopEffectSourceHighlight(UcgEffectInstance effect)
+        {
+            if (effect == null) return;
+            if (_activeEffectSourceHighlight != null && !ReferenceEquals(_activeEffectSourceHighlight, effect)) return;
+
+            if (effect.sourceCard != null)
+            {
+                effect.sourceCard.StopEffectSourceHighlight();
+            }
+
+            if (effect.sourceSceneCard != null)
+            {
+                effect.sourceSceneCard.StopEffectSourceHighlight();
+            }
+
+            if (_activeEffectSourceHighlight == null || ReferenceEquals(_activeEffectSourceHighlight, effect))
+            {
+                _activeEffectSourceHighlight = null;
+            }
+        }
+
+        void StopCurrentEffectSourceHighlight()
+        {
+            UcgEffectInstance effect = _activeEffectSourceHighlight;
+            _activeEffectSourceHighlight = null;
+            if (effect == null) return;
+
+            if (effect.sourceCard != null)
+            {
+                effect.sourceCard.StopEffectSourceHighlight();
+            }
+
+            if (effect.sourceSceneCard != null)
+            {
+                effect.sourceSceneCard.StopEffectSourceHighlight();
+            }
+        }
+
         void ClearActivatedEffectSourceHighlights()
         {
             if (battlefieldManager != null)
@@ -6017,11 +7760,13 @@ namespace UCG
             {
                 if (nextEffect != null && nextEffect.ownerSide == UcgPlayerSide.Opponent)
                 {
+                    StartEffectSourceHighlight(nextEffect);
                     if (TryResolveOpponentTargetedEffect(nextEffect, out string opponentTargetMessage))
                     {
                         QueueEffectFeedback(opponentTargetMessage);
                         HighlightActivatedEffectSources();
                         ShowPlayStatus(opponentTargetMessage, 1.1f);
+                        StopEffectSourceHighlight(nextEffect);
                         if (phaseManager != null && phaseManager.CurrentPhase == UcgGamePhase.EnterEffect)
                         {
                             HandleEnterEffectEntry();
@@ -6039,6 +7784,7 @@ namespace UCG
                         ? "對手效果需要選擇，暫時略過"
                         : opponentTargetMessage;
                     ShowPlayStatus(skipMessage, 1.1f);
+                    StopEffectSourceHighlight(nextEffect);
                     UpdateMainPrompt();
                     return true;
                 }
@@ -6047,6 +7793,7 @@ namespace UCG
                 return true;
             }
 
+            StartEffectSourceHighlight(nextEffect);
             bool resolved = effectManager.ResolveNextEffect(this, out string message);
             if (_isSelectingDeckOperationCard)
             {
@@ -6063,6 +7810,7 @@ namespace UCG
             ShowPlayStatus(effectManager.HasPendingEffects
                 ? $"剩餘效果 {effectManager.PendingCount} 個"
                 : "效果處理完畢", 1.2f);
+            StopEffectSourceHighlight(nextEffect);
 
             if (phaseManager != null && phaseManager.CurrentPhase == UcgGamePhase.BattleEffect)
             {
@@ -6670,6 +8418,7 @@ namespace UCG
                 return;
             }
 
+            StartEffectSourceHighlight(effect);
             _isSelectingEffectTarget = true;
             _pendingTargetEffect = effect;
             _pendingTargetType = effectManager.GetTargetType(effect);
@@ -6803,6 +8552,7 @@ namespace UCG
 
         void ContinueAfterTargetEffectResolved(bool resolved, string message)
         {
+            StopCurrentEffectSourceHighlight();
             ShowPlayStatus(resolved
                 ? effectManager.HasPendingEffects
                     ? $"剩餘效果 {effectManager.PendingCount} 個"
@@ -7544,6 +9294,7 @@ namespace UCG
             RefreshZoneInfoUI();
             RefreshHandLayout();
             QueueEffectFeedback(message);
+            StopEffectSourceHighlight(sourceEffect);
             ContinueAfterTargetEffectResolved(true, message);
         }
 
@@ -7828,6 +9579,7 @@ namespace UCG
                 effectManager.RemoveEffect(effect);
             }
 
+            StopEffectSourceHighlight(effect);
             ClearEffectTargetSelection();
             string message = CombineEffectMessages(prefixMessage, GetNoLegalEffectTargetMessage(effect));
             QueueEffectFeedback(message);
@@ -8151,7 +9903,7 @@ namespace UCG
 
             CanvasGroup canvasGroup = nextPhaseButton.GetComponent<CanvasGroup>();
             if (canvasGroup == null) canvasGroup = nextPhaseButton.gameObject.AddComponent<CanvasGroup>();
-            canvasGroup.alpha = 1f;
+            canvasGroup.alpha = 0f;
             canvasGroup.interactable = true;
             canvasGroup.blocksRaycasts = true;
 
@@ -8175,6 +9927,7 @@ namespace UCG
             _currentAdvancePromptLabel = "";
             _advancePromptAutoAdvanceEnabled = true;
             _shownAdvancePromptResetVersion = -1;
+            SetTopPromptProgress(0f, false);
             nextPhaseButton.interactable = false;
             nextPhaseButton.gameObject.SetActive(false);
         }
@@ -8186,6 +9939,7 @@ namespace UCG
             _shownAdvancePromptResetVersion = -1;
             _isAdvanceCountdownPaused = false;
             StopAdvanceCountdownRoutine();
+            SetTopPromptProgress(0f, false);
         }
 
         bool ShouldAutoAdvancePrompt()
@@ -8312,41 +10066,40 @@ namespace UCG
             {
                 if (_advancePromptMainText != null)
                 {
-                    _advancePromptMainText.text = _currentAdvancePromptLabel;
+                    _advancePromptMainText.text = "";
                 }
 
                 if (_advancePromptCountdownText != null)
                 {
-                    _advancePromptCountdownText.text = "可選效果尚未處理｜點擊可手動確認";
+                    _advancePromptCountdownText.text = "";
                 }
 
                 if (_advancePromptProgressTrackRect != null)
                 {
                     _advancePromptProgressTrackRect.gameObject.SetActive(false);
                 }
+                SetTopPromptProgress(0f, false);
                 return;
             }
 
             if (_advancePromptProgressTrackRect != null)
             {
-                _advancePromptProgressTrackRect.gameObject.SetActive(true);
+                _advancePromptProgressTrackRect.gameObject.SetActive(false);
             }
 
             float total = Mathf.Max(0.1f, _advanceCountdownTotalSeconds);
             float remaining = Mathf.Clamp(_advanceCountdownRemainingSeconds, 0f, total);
-            int shownSeconds = Mathf.Max(1, Mathf.CeilToInt(remaining));
 
             if (_advancePromptMainText != null)
             {
-                _advancePromptMainText.text = _currentAdvancePromptLabel;
+                _advancePromptMainText.text = "";
             }
 
             if (_advancePromptCountdownText != null)
             {
-                _advancePromptCountdownText.text = _isAdvanceCountdownPaused
-                    ? "拖曳中，倒數暫停"
-                    : $"{shownSeconds} 秒後自動{_currentAdvancePromptLabel}｜點擊可立即確認";
+                _advancePromptCountdownText.text = "";
             }
+            SetTopPromptProgress(remaining / total, true);
 
             if (_advancePromptProgressFillRect != null)
             {
@@ -8381,6 +10134,7 @@ namespace UCG
             UnityEngine.Events.UnityAction action = _advancePromptConfirmAction;
             StopAdvanceCountdownRoutine();
             _advancePromptConfirmAction = null;
+            SetTopPromptProgress(0f, false);
 
             if (IsAdvancePromptDebugEnabled())
             {
@@ -8582,17 +10336,21 @@ namespace UCG
         {
             if (battlefieldManager == null || phaseManager == null) return;
             int currentTurn = turnManager != null ? turnManager.currentTurn : 1;
+            ApplyCombatFocusViewportPosition("ApplyBattlefieldViewForCurrentPhase");
             battlefieldManager.RefreshOpenedLaneVisibility(currentTurn);
 
             if (phaseManager.CurrentPhase == UcgGamePhase.SceneSetup
                 || phaseManager.CurrentPhase == UcgGamePhase.CharacterSetup
                 || phaseManager.CurrentPhase == UcgGamePhase.Upgrade)
             {
-                battlefieldManager.JumpToActiveLane("ApplyBattlefieldViewForCurrentPhase");
+                int activeLaneIndex = turnManager != null ? turnManager.ActiveNewLaneIndex : 0;
+                battlefieldManager.SmoothFocusActiveLane(activeLaneIndex < 0 ? 0 : activeLaneIndex);
+                LogCombatViewportDiagnostic("ApplyBattlefieldViewForCurrentPhase", "FocusLane", activeLaneIndex < 0 ? 0 : activeLaneIndex);
             }
             else
             {
-                battlefieldManager.ShowOverviewInstant("ApplyBattlefieldViewForCurrentPhase");
+                battlefieldManager.ShowOverview();
+                LogCombatViewportDiagnostic("ApplyBattlefieldViewForCurrentPhase", "OverviewAll", GetCurrentActiveLaneIndex());
             }
 
             RefreshBoardZoneLayout();
@@ -9718,6 +11476,7 @@ namespace UCG
             _lastOpponentWinCount = opponentWinCount;
             StopOpponentActionRoutine();
             StopEffectAutoAdvanceRoutine();
+            StopCurrentEffectSourceHighlight();
             ClearPendingActionState();
             if (effectManager != null)
             {
@@ -9793,6 +11552,7 @@ namespace UCG
         {
             StopEffectAutoAdvanceRoutine();
             StopDeckOperationNoValidAutoCloseRoutine();
+            StopCurrentEffectSourceHighlight();
             if (effectManager != null)
             {
                 effectManager.Clear();
@@ -12329,19 +14089,6 @@ namespace UCG
                     ? "這回合先專心展開戰鬥區，場景卡稍後再使用。"
                     : "現在可以設置場景卡了，有合適的場景就放到中央場景區。";
             }
-            if (turnOrderManager != null)
-            {
-                if (turnManager != null && turnManager.currentTurn == 1 && !string.IsNullOrWhiteSpace(_openingFirstPlayerMessage))
-                {
-                    prompt = $"{_openingFirstPlayerMessage}\n{prompt}";
-                }
-                prompt += $"\n{turnOrderManager.GetCurrentFirstPlayerText()}";
-                if (phaseManager.CurrentPhase == UcgGamePhase.End)
-                {
-                    prompt += $"｜{turnOrderManager.GetNextFirstPlayerText()}";
-                }
-            }
-
             tutorialGuide.ShowPhasePrompt(prompt);
             if (phaseManager.CurrentPhase == UcgGamePhase.End)
             {
@@ -14224,6 +15971,7 @@ namespace UCG
             ShowPlayStatus(message, 1.15f);
             QueueEffectFeedback(message);
             LogSelectHandToBottomThenDrawSameCount(sourceEffect, rule, UcgPlayerSide.Player, returnedCards, drawnCards, handBefore, deckBefore);
+            StopEffectSourceHighlight(sourceEffect);
 
             if (phaseManager != null && phaseManager.CurrentPhase == UcgGamePhase.EnterEffect)
             {
@@ -14267,7 +16015,8 @@ namespace UCG
             }
 
             StopDeckOperationNoValidAutoCloseRoutine();
-            ResolveDeckOperationDestinations(_pendingDeckSelection.sourceEffect, _pendingDeckSelection.rule, _pendingDeckSelection.revealedCards, selectedCard, _pendingDeckSelection.owner, true);
+            UcgEffectInstance sourceEffect = _pendingDeckSelection.sourceEffect;
+            ResolveDeckOperationDestinations(sourceEffect, _pendingDeckSelection.rule, _pendingDeckSelection.revealedCards, selectedCard, _pendingDeckSelection.owner, true);
             _pendingDeckSelection.resolved = true;
             _pendingDeckSelection.selectedCard = selectedCard;
             _pendingDeckSelection = null;
@@ -14288,6 +16037,7 @@ namespace UCG
             RefreshHandLayout();
             RefreshZoneInfoUI();
             QueueEffectFeedback("牌庫效果：處理完成");
+            StopEffectSourceHighlight(sourceEffect);
             if (phaseManager != null && phaseManager.CurrentPhase == UcgGamePhase.EnterEffect)
             {
                 HandleEnterEffectEntry();
@@ -14335,6 +16085,7 @@ namespace UCG
             RefreshHandLayout();
             RefreshZoneInfoUI();
             QueueEffectFeedback($"牌庫效果：{noTargetMessage}");
+            StopEffectSourceHighlight(sourceEffect);
 
             if (phaseManager != null && phaseManager.CurrentPhase == UcgGamePhase.EnterEffect)
             {
@@ -14424,6 +16175,7 @@ namespace UCG
             QueueEffectFeedback("已將 1 張手牌放回牌庫最底下");
             LogBp01037Execute(sourceEffect, drawnCards, selectedCard, handBefore, handAfterDraw, deckBefore, GetDrawPileForOwner(UcgPlayerSide.Player) != null ? GetDrawPileForOwner(UcgPlayerSide.Player).Count : 0, true, true, "");
             LogDrawThenPutHandToBottom(sourceEffect, rule, UcgPlayerSide.Player, drawnCards, selectedCard, handBefore, deckBefore);
+            StopEffectSourceHighlight(sourceEffect);
 
             if (phaseManager != null && phaseManager.CurrentPhase == UcgGamePhase.EnterEffect)
             {
@@ -14906,6 +16658,7 @@ namespace UCG
             view.SetFaceDown(false);
             view.SetBattlefieldLocked(false);
             view.OnCardSelected += HandleCardSelected;
+            EnsureHandCardCornerFrame(rectTransform);
 
             var hover = cardObject.AddComponent<UIHandCardHover>();
             hover.lift = 24f;
@@ -15000,6 +16753,7 @@ namespace UCG
                 if (cardRect == null) continue;
 
                 cardRect.sizeDelta = handCardSize;
+                EnsureHandCardCornerFrame(cardRect);
 
                 var view = cardRect.GetComponent<UcgCardView>();
                 if (view != null)
@@ -15032,6 +16786,50 @@ namespace UCG
             if (cardCount <= 8) return new Vector2(204f, 296f);
             if (cardCount <= 12) return new Vector2(194f, 281f);
             return new Vector2(184f, 267f);
+        }
+
+        void EnsureHandCardCornerFrame(RectTransform cardRect)
+        {
+            if (cardRect == null) return;
+
+            const string frameName = "Hand Card Soft Corners";
+            Transform existingFrame = cardRect.Find(frameName);
+            RectTransform frameRect;
+            Image frameImage;
+
+            if (existingFrame == null)
+            {
+                var frameObject = new GameObject(frameName, typeof(RectTransform), typeof(Image), typeof(Outline));
+                frameObject.transform.SetParent(cardRect, false);
+                frameRect = frameObject.GetComponent<RectTransform>();
+                frameImage = frameObject.GetComponent<Image>();
+            }
+            else
+            {
+                frameRect = existingFrame as RectTransform;
+                frameImage = existingFrame.GetComponent<Image>();
+                if (frameImage == null) frameImage = existingFrame.gameObject.AddComponent<Image>();
+                if (existingFrame.GetComponent<Outline>() == null) existingFrame.gameObject.AddComponent<Outline>();
+            }
+
+            frameRect.anchorMin = Vector2.zero;
+            frameRect.anchorMax = Vector2.one;
+            frameRect.pivot = new Vector2(0.5f, 0.5f);
+            frameRect.offsetMin = Vector2.zero;
+            frameRect.offsetMax = Vector2.zero;
+            frameRect.localScale = Vector3.one;
+            frameRect.localEulerAngles = Vector3.zero;
+            frameRect.SetAsLastSibling();
+
+            ApplyRoundedPanelImage(frameImage);
+            frameImage.color = new Color(1f, 1f, 1f, 0.018f);
+            frameImage.raycastTarget = false;
+
+            Outline outline = frameRect.GetComponent<Outline>();
+            outline.enabled = true;
+            outline.effectColor = new Color(0.52f, 0.9f, 1f, 0.20f);
+            outline.effectDistance = new Vector2(1.1f, -1.1f);
+            outline.useGraphicAlpha = true;
         }
 
         void UpdateDeckCountText()
