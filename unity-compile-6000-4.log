@@ -1,0 +1,22 @@
+[Licensing::Module] Trying to connect to existing licensing client channel...
+Built from '6000.4/staging' branch; Version is '6000.4.11f1 (b0a1d6caadd2) revision 11575766'; Using compiler version '194234433'; Build Type 'Release'
+[Licensing::IpcConnector] Connection to channel LicenseClient-86186 refused
+OS: 'Windows 10  (10.0.19045) 64bit Core' Language: 'zh' Physical Memory: 16349 MB
+BatchMode: 1, IsHumanControllingUs: 0, StartBugReporterOnCrash: 0, Is64bit: 1
+System  architecture: x64
+Process architecture: x64
+Date: 2026-06-28T04:10:00Z
+Assertion failed on expression: 'SUCCEEDED(hr)'
+Assertion failed on expression: 'SUCCEEDED(hr)'
+
+COMMAND LINE ARGUMENTS:
+C:\Program Files\Unity\Hub\Editor\6000.4.11f1\Editor\Unity.exe
+-batchmode
+-quit
+-projectPath
+C:\Users\86186\CodexProjects\UCG-Battle-Demo
+-logFile
+C:\Users\86186\CodexProjects\UCG-Battle-Demo\unity-compile-6000-4.log
+Successfully changed project path to: C:\Users\86186\CodexProjects\UCG-Battle-Demo
+C:/Users/86186/CodexProjects/UCG-Battle-Demo
+Exiting without the bug reporter. Application will terminate with return code 1

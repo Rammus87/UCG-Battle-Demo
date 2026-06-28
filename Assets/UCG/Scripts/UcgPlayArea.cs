@@ -24,16 +24,17 @@ namespace UCG
 
         [Header("Feedback")]
         public Image highlightImage;
-        public Color defaultColor = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.DeepGlass, 0.2f);
-        public Color hoverColor = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.FocusCyan, 0.18f);
-        public Color occupiedColor = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.DeepGlass, 0.24f);
-        public Color activeSetupColor = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.BrandPink, 0.2f);
-        public Color upgradeAvailableColor = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.WarningGold, 0.24f);
-        public Color validDropColor = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.FocusCyan, 0.24f);
-        public Color invalidDropColor = new Color(0.46f, 0.08f, 0.12f, 0.22f);
-        public Color lockedColor = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.DeepGlass, 0.1f);
+        public Color defaultColor = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.DeepGlass, 0.070f);
+        public Color hoverColor = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.DeepGlass, 0.060f);
+        public Color occupiedColor = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.DeepGlass, 0.040f);
+        public Color activeSetupColor = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.DeepGlass, 0.052f);
+        public Color upgradeAvailableColor = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.WarningGold, 0.075f);
+        public Color validDropColor = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.DeepGlass, 0.050f);
+        public Color invalidDropColor = new Color(0.46f, 0.08f, 0.12f, 0.04f);
+        public Color lockedColor = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.DeepGlass, 0.018f);
 
         UcgLaneHighlightState _highlightState = UcgLaneHighlightState.Normal;
+        bool _isPointerInside;
         UcgGuidancePulse _slotPulse;
         RectTransform _guideArrowRect;
         Text _guideArrowText;
@@ -54,13 +55,20 @@ namespace UCG
 
         public void OnPointerEnter(PointerEventData eventData)
         {
+            _isPointerInside = true;
             if (highlightImage == null) return;
-            if (_highlightState != UcgLaneHighlightState.Normal) return;
+            if (_highlightState != UcgLaneHighlightState.Normal)
+            {
+                RefreshSlotFrameStyle();
+                return;
+            }
             highlightImage.color = IsOccupied() ? occupiedColor : hoverColor;
+            RefreshSlotFrameStyle();
         }
 
         public void OnPointerExit(PointerEventData eventData)
         {
+            _isPointerInside = false;
             RefreshHighlight();
         }
 
@@ -329,8 +337,8 @@ namespace UCG
 
             Color baseColor = highlightImage.color;
             Color flashColor = isUpgrade
-                ? UcgToolUiPalette.WithAlpha(UcgToolUiPalette.WarningGold, 0.42f)
-                : UcgToolUiPalette.WithAlpha(UcgToolUiPalette.FocusCyan, 0.36f);
+                ? UcgToolUiPalette.WithAlpha(UcgToolUiPalette.WarningGold, 0.12f)
+                : UcgToolUiPalette.WithAlpha(UcgToolUiPalette.FocusCyan, 0.11f);
             float duration = isUpgrade ? 0.22f : 0.18f;
             float elapsed = 0f;
 
@@ -496,7 +504,180 @@ namespace UCG
                     break;
             }
 
+            Color slotFill = highlightImage.color;
+            if (_highlightState == UcgLaneHighlightState.ActiveSetupTarget)
+            {
+                slotFill = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.DeepGlass, Mathf.Min(slotFill.a, 0.052f));
+            }
+            else if (_highlightState == UcgLaneHighlightState.ValidDropTarget)
+            {
+                slotFill = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.DeepGlass, Mathf.Min(slotFill.a, 0.050f));
+            }
+            else if (_highlightState == UcgLaneHighlightState.UpgradeAvailable)
+            {
+                slotFill.a = Mathf.Min(slotFill.a, 0.075f);
+            }
+            else if (_highlightState == UcgLaneHighlightState.InvalidDropTarget)
+            {
+                slotFill.a = Mathf.Min(slotFill.a, 0.052f);
+            }
+            else
+            {
+                slotFill.a = Mathf.Min(slotFill.a, IsOccupied() ? 0.040f : 0.070f);
+            }
+            highlightImage.color = slotFill;
+
+            RefreshSlotFrameStyle();
             RefreshGuideMotion();
+        }
+
+        void RefreshSlotFrameStyle()
+        {
+            if (highlightImage == null) return;
+
+            Color borderColor = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.GlassBorder, IsOccupied() ? 0.28f : 0.24f);
+            float borderDistance = IsOccupied() ? 1.2f : 1.05f;
+            Color shadowColor = new Color(4f / 255f, 9f / 255f, 18f / 255f, IsOccupied() ? 0.24f : 0.17f);
+            Vector2 shadowDistance = new Vector2(0f, IsOccupied() ? -4f : -3f);
+
+            if (_highlightState == UcgLaneHighlightState.ActiveSetupTarget)
+            {
+                borderColor = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.BrandPinkLight, 0.66f);
+                borderDistance = 1.6f;
+                shadowColor = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.BrandPink, 0.10f);
+                shadowDistance = new Vector2(0f, -4f);
+            }
+            else if (_highlightState == UcgLaneHighlightState.ValidDropTarget)
+            {
+                borderColor = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.FocusCyan, 0.54f);
+                borderDistance = 1.7f;
+                shadowColor = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.FocusCyan, 0.12f);
+                shadowDistance = new Vector2(0f, -4f);
+            }
+            else if (_highlightState == UcgLaneHighlightState.UpgradeAvailable)
+            {
+                borderColor = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.WarningGold, 0.38f);
+                borderDistance = 1.4f;
+                shadowColor = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.WarningGold, 0.08f);
+                shadowDistance = new Vector2(0f, -3.5f);
+            }
+            else if (_highlightState == UcgLaneHighlightState.InvalidDropTarget)
+            {
+                borderColor = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.WarningGold, 0.28f);
+                borderDistance = 1.1f;
+                shadowColor = new Color(0.46f, 0.08f, 0.12f, 0.06f);
+                shadowDistance = new Vector2(0f, -2.5f);
+            }
+            else if (_highlightState == UcgLaneHighlightState.Locked)
+            {
+                borderColor = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.GlassBorder, 0.09f);
+                borderDistance = 0.8f;
+                shadowColor = new Color(4f / 255f, 9f / 255f, 18f / 255f, 0.08f);
+                shadowDistance = new Vector2(0f, -1.5f);
+            }
+            else if (_isPointerInside)
+            {
+                borderColor = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.FocusCyan, 0.46f);
+                borderDistance = 1.5f;
+                shadowColor = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.FocusCyan, 0.075f);
+                shadowDistance = new Vector2(0f, -3.5f);
+            }
+
+            Outline outline = highlightImage.GetComponent<Outline>();
+            if (outline != null)
+            {
+                outline.enabled = true;
+                outline.effectColor = borderColor;
+                outline.effectDistance = new Vector2(borderDistance, -borderDistance);
+                outline.useGraphicAlpha = true;
+            }
+
+            Shadow shadow = GetExactShadow();
+            if (shadow == null) shadow = gameObject.AddComponent<Shadow>();
+            shadow.effectColor = shadowColor;
+            shadow.effectDistance = shadowDistance;
+            shadow.useGraphicAlpha = true;
+
+            RefreshCardGroundShadow(IsOccupied(), _highlightState, _isPointerInside);
+        }
+
+        void RefreshCardGroundShadow(bool occupied, UcgLaneHighlightState state, bool pointerInside)
+        {
+            RectTransform slotRect = cardSlot != null ? cardSlot : transform as RectTransform;
+            if (slotRect == null) return;
+
+            const string shadowName = "Slot Card Ground Shadow";
+            Transform existingShadow = slotRect.Find(shadowName);
+            RectTransform shadowRect;
+            Image shadowImage;
+
+            if (existingShadow == null)
+            {
+                var shadowObject = new GameObject(shadowName, typeof(RectTransform), typeof(Image));
+                shadowObject.transform.SetParent(slotRect, false);
+                shadowRect = shadowObject.GetComponent<RectTransform>();
+                shadowImage = shadowObject.GetComponent<Image>();
+            }
+            else
+            {
+                shadowRect = existingShadow as RectTransform;
+                shadowImage = existingShadow.GetComponent<Image>();
+                if (shadowImage == null) shadowImage = existingShadow.gameObject.AddComponent<Image>();
+            }
+
+            ApplySlicedUiSprite(shadowImage);
+            shadowImage.raycastTarget = false;
+            shadowImage.enabled = true;
+
+            float alpha = occupied ? 0.34f : 0.085f;
+            Color shadowColor = new Color(2f / 255f, 6f / 255f, 14f / 255f, alpha);
+            if (state == UcgLaneHighlightState.ActiveSetupTarget)
+            {
+                shadowColor = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.BrandPink, occupied ? 0.20f : 0.075f);
+            }
+            else if (state == UcgLaneHighlightState.ValidDropTarget || pointerInside)
+            {
+                shadowColor = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.FocusCyan, occupied ? 0.20f : 0.095f);
+            }
+            else if (state == UcgLaneHighlightState.UpgradeAvailable)
+            {
+                shadowColor = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.WarningGold, occupied ? 0.16f : 0.07f);
+            }
+
+            shadowImage.color = shadowColor;
+            shadowRect.anchorMin = new Vector2(occupied ? 0.10f : 0.18f, occupied ? 0.17f : 0.12f);
+            shadowRect.anchorMax = new Vector2(occupied ? 0.90f : 0.82f, occupied ? 0.17f : 0.12f);
+            shadowRect.offsetMin = new Vector2(0f, occupied ? -18f : -9f);
+            shadowRect.offsetMax = new Vector2(0f, occupied ? 10f : 6f);
+            shadowRect.localScale = Vector3.one;
+            shadowRect.localEulerAngles = Vector3.zero;
+            shadowRect.SetSiblingIndex(Mathf.Min(3, slotRect.childCount - 1));
+        }
+
+        Shadow GetExactShadow()
+        {
+            Shadow[] shadows = GetComponents<Shadow>();
+            for (int i = 0; i < shadows.Length; i++)
+            {
+                if (shadows[i] != null && shadows[i].GetType() == typeof(Shadow))
+                {
+                    return shadows[i];
+                }
+            }
+
+            return null;
+        }
+
+        static void ApplySlicedUiSprite(Image image)
+        {
+            if (image == null) return;
+
+            Sprite roundedSprite = Resources.GetBuiltinResource<Sprite>("UI/Skin/UISprite.psd");
+            if (roundedSprite == null) return;
+
+            image.sprite = roundedSprite;
+            image.type = Image.Type.Sliced;
+            image.pixelsPerUnitMultiplier = 1f;
         }
 
         void RefreshGuideMotion()
@@ -515,17 +696,18 @@ namespace UCG
                 _slotPulse.targetRect = transform as RectTransform;
                 _slotPulse.pulseScale = false;
                 _slotPulse.pulseAlpha = true;
-                _slotPulse.alphaAmplitude = 0.045f;
                 _slotPulse.speed = 2.2f;
             }
 
             if (_slotPulse != null)
             {
+                _slotPulse.alphaAmplitude = 0.018f;
                 _slotPulse.CaptureBaseState();
                 _slotPulse.enabled = pulseSlot;
             }
 
             EnsureGuideRing();
+            ApplyGuideRingStyle();
             if (_guideRingRect != null)
             {
                 _guideRingRect.gameObject.SetActive(showDropGuide || _highlightState == UcgLaneHighlightState.UpgradeAvailable);
@@ -533,10 +715,37 @@ namespace UCG
             }
 
             EnsureGuideArrow();
+            ApplyGuideRingStyle();
             if (_guideArrowRect != null)
             {
                 _guideArrowRect.gameObject.SetActive(showDropGuide);
                 if (_guideArrowRect.gameObject.activeSelf) _guideArrowRect.SetAsLastSibling();
+            }
+        }
+
+        void ApplyGuideRingStyle()
+        {
+            Color accent = UcgToolUiPalette.FocusCyan;
+            if (_highlightState == UcgLaneHighlightState.ActiveSetupTarget)
+            {
+                accent = UcgToolUiPalette.BrandPinkLight;
+            }
+            else if (_highlightState == UcgLaneHighlightState.UpgradeAvailable)
+            {
+                accent = UcgToolUiPalette.WarningGold;
+            }
+
+            if (_guideRingImage != null)
+            {
+                _guideRingImage.color = UcgToolUiPalette.WithAlpha(accent, 0.028f);
+            }
+            if (_guideRingOutline != null)
+            {
+                _guideRingOutline.effectColor = UcgToolUiPalette.WithAlpha(accent, 0.32f);
+            }
+            if (_guideArrowText != null)
+            {
+                _guideArrowText.color = UcgToolUiPalette.WithAlpha(accent, 0.78f);
             }
         }
 
@@ -566,15 +775,15 @@ namespace UCG
             _guideRingRect.anchorMax = new Vector2(0.5f, 0.5f);
             _guideRingRect.pivot = new Vector2(0.5f, 0.5f);
             _guideRingRect.anchoredPosition = Vector2.zero;
-            _guideRingRect.sizeDelta = slotSize + new Vector2(10f, 10f);
+            _guideRingRect.sizeDelta = slotSize + new Vector2(4f, 4f);
             _guideRingRect.localScale = Vector3.one;
             _guideRingRect.localEulerAngles = Vector3.zero;
             _guideRingRect.SetAsLastSibling();
 
-            _guideRingImage.color = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.FocusCyan, 0.045f);
+            _guideRingImage.color = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.FocusCyan, 0.026f);
             _guideRingImage.raycastTarget = false;
-            _guideRingOutline.effectColor = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.FocusCyan, 0.42f);
-            _guideRingOutline.effectDistance = new Vector2(2.4f, -2.4f);
+            _guideRingOutline.effectColor = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.FocusCyan, 0.32f);
+            _guideRingOutline.effectDistance = new Vector2(1.5f, -1.5f);
             _guideRingOutline.useGraphicAlpha = true;
 
             _guideRingPulse = _guideRingRect.GetComponent<UcgGuidancePulse>();

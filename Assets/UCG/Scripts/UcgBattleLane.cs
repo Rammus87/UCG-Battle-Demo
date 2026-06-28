@@ -43,11 +43,17 @@ namespace UCG
         UcgCardData _fixedOpponentCardData;
         Sprite _fixedOpponentCardSprite;
         Vector2 _fixedOpponentCardSize;
-        Color _opponentSlotDefaultColor = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.DeepGlass, 0.18f);
+        Color _opponentSlotDefaultColor = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.DeepGlass, 0.110f);
         Color _effectTargetColor = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.BrandPinkLight, 0.62f);
         Image _laneFocusImage;
         Outline _laneFocusOutline;
         UcgGuidancePulse _laneFocusPulse;
+        RectTransform _laneDuelAxisRect;
+        Image _laneDuelAxisImage;
+        RectTransform _laneDuelAxisGlowRect;
+        Image _laneDuelAxisGlowImage;
+        RectTransform _laneDuelAxisCoreRect;
+        Image _laneDuelAxisCoreImage;
         Coroutine _playerRestRotationRoutine;
         Coroutine _opponentRestRotationRoutine;
         Coroutine _judgementResultRoutine;
@@ -72,13 +78,14 @@ namespace UCG
             laneRect.pivot = new Vector2(0.5f, 0.5f);
             laneRect.sizeDelta = new Vector2(300f, 820f);
             EnsureLaneFocusBackdrop(laneRect);
+            EnsureLaneDuelAxis(laneRect);
 
             opponentSlot = EnsureSlot("Opponent Slot", new Vector2(0f, 310f), opponentSlotSize, _opponentSlotDefaultColor, true);
             EnsureSlotLabel(opponentSlot, "對手");
 
             resultLabel = EnsureResultLabel();
 
-            playerSlot = EnsureSlot("Player Slot", new Vector2(0f, -310f), playerSlotSize, UcgToolUiPalette.WithAlpha(UcgToolUiPalette.DeepGlass, 0.2f), true);
+            playerSlot = EnsureSlot("Player Slot", new Vector2(0f, -310f), playerSlotSize, UcgToolUiPalette.WithAlpha(UcgToolUiPalette.DeepGlass, 0.120f), true);
             playerPlayArea = playerSlot.GetComponent<UcgPlayArea>();
             if (playerPlayArea == null) playerPlayArea = playerSlot.gameObject.AddComponent<UcgPlayArea>();
 
@@ -91,13 +98,13 @@ namespace UCG
             playerPlayArea.phaseManager = phaseManager;
             playerPlayArea.placedCardSize = placedCardSize;
             playerPlayArea.upgradeStackOffset = new Vector2(10f, 6f);
-            playerPlayArea.defaultColor = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.DeepGlass, 0.2f);
-            playerPlayArea.hoverColor = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.FocusCyan, 0.18f);
-            playerPlayArea.occupiedColor = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.DeepGlass, 0.24f);
-            playerPlayArea.activeSetupColor = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.BrandPink, 0.2f);
-            playerPlayArea.upgradeAvailableColor = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.WarningGold, 0.24f);
-            playerPlayArea.validDropColor = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.FocusCyan, 0.24f);
-            playerPlayArea.invalidDropColor = new Color(0.46f, 0.08f, 0.12f, 0.22f);
+            playerPlayArea.defaultColor = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.DeepGlass, 0.070f);
+            playerPlayArea.hoverColor = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.DeepGlass, 0.060f);
+            playerPlayArea.occupiedColor = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.DeepGlass, 0.040f);
+            playerPlayArea.activeSetupColor = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.DeepGlass, 0.052f);
+            playerPlayArea.upgradeAvailableColor = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.WarningGold, 0.075f);
+            playerPlayArea.validDropColor = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.DeepGlass, 0.050f);
+            playerPlayArea.invalidDropColor = new Color(0.46f, 0.08f, 0.12f, 0.04f);
             ResetLaneState();
             SetActiveLaneFocus(false);
         }
@@ -242,6 +249,7 @@ namespace UCG
             ConfigureOpponentCardClickTarget(view);
 
             ApplyOpponentCardSorting();
+            ApplySlotFocusState(opponentSlot, false, true);
             return view;
         }
 
@@ -944,6 +952,7 @@ namespace UCG
             }
 
             opponentTopCard = null;
+            ApplySlotFocusState(opponentSlot, false, true);
         }
 
         public void SetEffectTargetHighlight(UcgPlayerSide side, bool active)
@@ -956,7 +965,7 @@ namespace UCG
                     UcgCardView card = playerPlayArea.GetTopCard();
                     if (card != null)
                     {
-                        card.SetPlayableHighlight(active);
+                        card.SetEffectTargetHighlight(active);
                     }
                 }
 
@@ -972,7 +981,7 @@ namespace UCG
             UcgCardView opponentCard = GetOpponentTopCard();
             if (opponentCard != null)
             {
-                opponentCard.SetPlayableHighlight(active);
+                opponentCard.SetEffectTargetHighlight(active);
             }
         }
 
@@ -988,29 +997,40 @@ namespace UCG
 
             _laneFocusImage.enabled = true;
             _laneFocusImage.color = active
-                ? UcgToolUiPalette.WithAlpha(UcgToolUiPalette.DeepGlass, 0.06f)
-                : UcgToolUiPalette.WithAlpha(UcgToolUiPalette.DeepGlass, 0.035f);
+                ? UcgToolUiPalette.WithAlpha(UcgToolUiPalette.BrandPink, 0.012f)
+                : UcgToolUiPalette.WithAlpha(UcgToolUiPalette.DeepGlass, 0.003f);
 
             if (_laneFocusOutline != null)
             {
                 _laneFocusOutline.enabled = true;
                 _laneFocusOutline.effectColor = active
-                    ? UcgToolUiPalette.WithAlpha(UcgToolUiPalette.BrandPinkLight, 0.28f)
-                    : UcgToolUiPalette.WithAlpha(UcgToolUiPalette.GlassBorder, 0.12f);
+                    ? UcgToolUiPalette.WithAlpha(UcgToolUiPalette.BrandPinkLight, 0.34f)
+                    : UcgToolUiPalette.WithAlpha(UcgToolUiPalette.GlassBorder, 0.035f);
                 _laneFocusOutline.effectDistance = active
-                    ? new Vector2(2.2f, -2.2f)
-                    : new Vector2(1.7f, -1.7f);
+                    ? new Vector2(1.8f, -1.8f)
+                    : new Vector2(0.8f, -0.8f);
             }
 
             ApplySlotFocusState(playerSlot, active, false);
-            ApplySlotFocusState(opponentSlot, false, true);
+            ApplySlotFocusState(opponentSlot, active, true);
 
             if (_laneFocusPulse != null)
             {
-                _laneFocusPulse.alphaAmplitude = active ? 0.018f : 0.025f;
+                _laneFocusPulse.alphaAmplitude = active ? 0.035f : 0.004f;
                 _laneFocusPulse.CaptureBaseState();
                 _laneFocusPulse.enabled = active;
             }
+
+            Shadow focusShadow = EnsureUiShadow(_laneFocusImage.gameObject);
+            if (focusShadow != null)
+            {
+                focusShadow.effectColor = active
+                    ? UcgToolUiPalette.WithAlpha(UcgToolUiPalette.BrandPink, 0.12f)
+                    : new Color(15f / 255f, 23f / 255f, 42f / 255f, 0.04f);
+                focusShadow.effectDistance = active ? new Vector2(0f, -4f) : new Vector2(0f, -1f);
+            }
+
+            ApplyLaneDuelAxisState(active);
         }
 
         void ApplySlotFocusState(RectTransform slot, bool active, bool opponent)
@@ -1022,23 +1042,36 @@ namespace UCG
             {
                 image.color = active
                     ? opponent
-                        ? UcgToolUiPalette.WithAlpha(UcgToolUiPalette.DeepGlass, 0.18f)
-                        : UcgToolUiPalette.WithAlpha(UcgToolUiPalette.BrandPink, 0.2f)
+                        ? UcgToolUiPalette.WithAlpha(UcgToolUiPalette.DeepGlass, 0.025f)
+                        : UcgToolUiPalette.WithAlpha(UcgToolUiPalette.DeepGlass, 0.040f)
                     : opponent
-                        ? UcgToolUiPalette.WithAlpha(UcgToolUiPalette.DeepGlass, 0.18f)
-                        : UcgToolUiPalette.WithAlpha(UcgToolUiPalette.DeepGlass, 0.2f);
+                        ? UcgToolUiPalette.WithAlpha(UcgToolUiPalette.DeepGlass, 0.025f)
+                        : UcgToolUiPalette.WithAlpha(UcgToolUiPalette.DeepGlass, 0.025f);
             }
 
             Outline outline = slot.GetComponent<Outline>();
             if (outline != null)
             {
                 outline.effectColor = active
-                    ? UcgToolUiPalette.WithAlpha(UcgToolUiPalette.BrandPinkLight, 0.68f)
-                    : UcgToolUiPalette.WithAlpha(UcgToolUiPalette.GlassBorder, 0.18f);
+                    ? UcgToolUiPalette.WithAlpha(UcgToolUiPalette.BrandPinkLight, 0.62f)
+                    : UcgToolUiPalette.WithAlpha(UcgToolUiPalette.GlassBorder, opponent ? 0.14f : 0.18f);
                 outline.effectDistance = active
-                    ? new Vector2(3.2f, -3.2f)
-                    : new Vector2(1.5f, -1.5f);
+                    ? new Vector2(2.4f, -2.4f)
+                    : new Vector2(1.1f, -1.1f);
             }
+
+            Shadow shadow = EnsureUiShadow(slot.gameObject);
+            if (shadow != null)
+            {
+                shadow.effectColor = active
+                    ? UcgToolUiPalette.WithAlpha(UcgToolUiPalette.BrandPink, 0.11f)
+                    : new Color(4f / 255f, 9f / 255f, 18f / 255f, opponent ? 0.10f : 0.14f);
+                shadow.effectDistance = active
+                    ? new Vector2(0f, -4f)
+                    : new Vector2(0f, -2.5f);
+            }
+
+            SetSlotCardGroundShadow(slot, CountCardsInSlot(slot) > 0, active, opponent);
         }
 
         void RefreshOpponentTopCard()
@@ -1219,19 +1252,143 @@ namespace UCG
             _laneFocusOutline.useGraphicAlpha = true;
 
             Shadow backdropShadow = EnsureUiShadow(backdropRect.gameObject);
-            backdropShadow.effectColor = new Color(15f / 255f, 23f / 255f, 42f / 255f, 0.2f);
-            backdropShadow.effectDistance = new Vector2(0f, -3f);
+            backdropShadow.effectColor = new Color(15f / 255f, 23f / 255f, 42f / 255f, 0.05f);
+            backdropShadow.effectDistance = new Vector2(0f, -1f);
             backdropShadow.useGraphicAlpha = true;
 
             _laneFocusPulse = backdropRect.GetComponent<UcgGuidancePulse>();
             if (_laneFocusPulse == null) _laneFocusPulse = backdropRect.gameObject.AddComponent<UcgGuidancePulse>();
             _laneFocusPulse.targetImage = _laneFocusImage;
+            _laneFocusPulse.targetOutline = _laneFocusOutline;
             _laneFocusPulse.targetRect = backdropRect;
             _laneFocusPulse.pulseAlpha = true;
-            _laneFocusPulse.alphaAmplitude = 0.055f;
+            _laneFocusPulse.alphaAmplitude = 0.006f;
             _laneFocusPulse.pulseScale = false;
             _laneFocusPulse.speed = 1.8f;
             _laneFocusPulse.enabled = false;
+        }
+
+        void EnsureLaneDuelAxis(RectTransform laneRect)
+        {
+            if (laneRect == null) return;
+
+            const string axisName = "Lane Duel Axis";
+            Transform existingAxis = transform.Find(axisName);
+            if (existingAxis == null)
+            {
+                var axisObject = new GameObject(axisName, typeof(RectTransform), typeof(Image));
+                axisObject.transform.SetParent(transform, false);
+                _laneDuelAxisRect = axisObject.GetComponent<RectTransform>();
+                _laneDuelAxisImage = axisObject.GetComponent<Image>();
+            }
+            else
+            {
+                _laneDuelAxisRect = existingAxis as RectTransform;
+                _laneDuelAxisImage = existingAxis.GetComponent<Image>();
+                if (_laneDuelAxisImage == null) _laneDuelAxisImage = existingAxis.gameObject.AddComponent<Image>();
+            }
+
+            _laneDuelAxisRect.anchorMin = new Vector2(0.5f, 0.5f);
+            _laneDuelAxisRect.anchorMax = new Vector2(0.5f, 0.5f);
+            _laneDuelAxisRect.pivot = new Vector2(0.5f, 0.5f);
+            _laneDuelAxisRect.localScale = Vector3.one;
+            _laneDuelAxisRect.localEulerAngles = Vector3.zero;
+            _laneDuelAxisRect.SetSiblingIndex(Mathf.Min(1, transform.childCount - 1));
+
+            _laneDuelAxisImage.raycastTarget = false;
+            EnsureLaneDuelAxisLayer("Lane Duel Axis Soft Light", ref _laneDuelAxisGlowRect, ref _laneDuelAxisGlowImage);
+            EnsureLaneDuelAxisLayer("Lane Duel Axis Center Core", ref _laneDuelAxisCoreRect, ref _laneDuelAxisCoreImage);
+            ApplyLaneDuelAxisState(false);
+        }
+
+        void EnsureLaneDuelAxisLayer(string objectName, ref RectTransform rect, ref Image image)
+        {
+            Transform existingLayer = transform.Find(objectName);
+            if (existingLayer == null)
+            {
+                var layerObject = new GameObject(objectName, typeof(RectTransform), typeof(Image));
+                layerObject.transform.SetParent(transform, false);
+                rect = layerObject.GetComponent<RectTransform>();
+                image = layerObject.GetComponent<Image>();
+            }
+            else
+            {
+                rect = existingLayer as RectTransform;
+                image = existingLayer.GetComponent<Image>();
+                if (image == null) image = existingLayer.gameObject.AddComponent<Image>();
+            }
+
+            rect.anchorMin = new Vector2(0.5f, 0.5f);
+            rect.anchorMax = new Vector2(0.5f, 0.5f);
+            rect.pivot = new Vector2(0.5f, 0.5f);
+            rect.localScale = Vector3.one;
+            rect.localEulerAngles = Vector3.zero;
+            image.raycastTarget = false;
+            image.enabled = false;
+            image.color = Color.clear;
+            ApplySlicedUiSprite(image);
+        }
+
+        void ApplyLaneDuelAxisState(bool active)
+        {
+            if (_laneDuelAxisImage == null) return;
+
+            UpdateLaneDuelAxisLayout(active);
+            _laneDuelAxisImage.enabled = active;
+            _laneDuelAxisImage.color = active
+                ? UcgToolUiPalette.WithAlpha(UcgToolUiPalette.FocusCyan, 0.30f)
+                : Color.clear;
+
+            if (_laneDuelAxisGlowImage != null)
+            {
+                _laneDuelAxisGlowImage.enabled = active;
+                _laneDuelAxisGlowImage.color = active
+                    ? UcgToolUiPalette.WithAlpha(UcgToolUiPalette.FocusCyan, 0.070f)
+                    : Color.clear;
+            }
+
+            if (_laneDuelAxisCoreImage != null)
+            {
+                _laneDuelAxisCoreImage.enabled = active;
+                _laneDuelAxisCoreImage.color = active
+                    ? UcgToolUiPalette.WithAlpha(UcgToolUiPalette.BrandPinkLight, 0.20f)
+                    : Color.clear;
+            }
+        }
+
+        void UpdateLaneDuelAxisLayout(bool active)
+        {
+            if (_laneDuelAxisRect == null) return;
+
+            float playerY = playerSlot != null ? playerSlot.anchoredPosition.y : -150f;
+            float opponentY = opponentSlot != null ? opponentSlot.anchoredPosition.y : 150f;
+            float playerHeight = playerSlot != null ? playerSlot.sizeDelta.y : 224f;
+            float opponentHeight = opponentSlot != null ? opponentSlot.sizeDelta.y : 224f;
+            float lowerCardTop = Mathf.Min(playerY, opponentY) + playerHeight * 0.5f + 12f;
+            float upperCardBottom = Mathf.Max(playerY, opponentY) - opponentHeight * 0.5f - 12f;
+            float axisHeight = Mathf.Max(0f, upperCardBottom - lowerCardTop);
+
+            _laneDuelAxisRect.anchoredPosition = new Vector2(0f, (lowerCardTop + upperCardBottom) * 0.5f);
+            _laneDuelAxisRect.sizeDelta = new Vector2(active ? 3f : 2f, axisHeight);
+
+            if (_laneDuelAxisGlowRect != null)
+            {
+                _laneDuelAxisGlowRect.anchoredPosition = _laneDuelAxisRect.anchoredPosition;
+                _laneDuelAxisGlowRect.sizeDelta = new Vector2(active ? 14f : 8f, axisHeight);
+                _laneDuelAxisGlowRect.SetSiblingIndex(Mathf.Min(1, transform.childCount - 1));
+            }
+
+            if (_laneDuelAxisRect != null)
+            {
+                _laneDuelAxisRect.SetSiblingIndex(Mathf.Min(2, transform.childCount - 1));
+            }
+
+            if (_laneDuelAxisCoreRect != null)
+            {
+                _laneDuelAxisCoreRect.anchoredPosition = _laneDuelAxisRect.anchoredPosition;
+                _laneDuelAxisCoreRect.sizeDelta = new Vector2(active ? 13f : 8f, active ? 13f : 8f);
+                _laneDuelAxisCoreRect.SetSiblingIndex(Mathf.Min(3, transform.childCount - 1));
+            }
         }
 
         RectTransform EnsureSlot(string slotName, Vector2 anchoredPosition, Vector2 size, Color color, bool raycastTarget)
@@ -1261,23 +1418,210 @@ namespace UCG
             slotRect.sizeDelta = size;
 
             ApplySlicedUiSprite(slotImage);
-            slotImage.color = color;
+            bool isPlayerSlot = slotName.Contains("Player");
+            slotImage.color = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.DeepGlass, isPlayerSlot ? 0.135f : 0.110f);
             slotImage.raycastTarget = raycastTarget;
 
             var outline = slotRect.GetComponent<Outline>();
             if (outline == null) outline = slotRect.gameObject.AddComponent<Outline>();
-            outline.effectColor = slotName.Contains("Player")
-                ? UcgToolUiPalette.WithAlpha(UcgToolUiPalette.GlassBorder, 0.42f)
-                : UcgToolUiPalette.WithAlpha(UcgToolUiPalette.GlassBorder, 0.3f);
-            outline.effectDistance = new Vector2(1.8f, -1.8f);
+            outline.effectColor = isPlayerSlot
+                ? UcgToolUiPalette.WithAlpha(UcgToolUiPalette.FocusCyan, 0.26f)
+                : UcgToolUiPalette.WithAlpha(UcgToolUiPalette.GlassBorder, 0.22f);
+            outline.effectDistance = new Vector2(1.1f, -1.1f);
             outline.useGraphicAlpha = true;
 
             var shadow = EnsureUiShadow(slotRect.gameObject);
-            shadow.effectColor = new Color(15f / 255f, 23f / 255f, 42f / 255f, 0.24f);
-            shadow.effectDistance = new Vector2(0f, -3f);
+            shadow.effectColor = new Color(4f / 255f, 9f / 255f, 18f / 255f, isPlayerSlot ? 0.24f : 0.20f);
+            shadow.effectDistance = new Vector2(0f, -4.5f);
             shadow.useGraphicAlpha = true;
 
+            EnsureSlotSurfaceDetails(slotRect, isPlayerSlot);
+
             return slotRect;
+        }
+
+        void EnsureSlotSurfaceDetails(RectTransform slotRect, bool isPlayerSlot)
+        {
+            if (slotRect == null) return;
+
+            RectTransform interior = EnsureSlotDecorImage(
+                slotRect,
+                "Slot Interior Shade",
+                Vector2.zero,
+                Vector2.one,
+                new Vector2(6f, 6f),
+                new Vector2(-6f, -6f),
+                UcgToolUiPalette.WithAlpha(UcgToolUiPalette.DeepGlass, isPlayerSlot ? 0.105f : 0.085f),
+                true);
+            Color edgeColor = UcgToolUiPalette.WithAlpha(
+                isPlayerSlot ? UcgToolUiPalette.FocusCyan : UcgToolUiPalette.GlassBorder,
+                isPlayerSlot ? 0.16f : 0.13f);
+            RectTransform topEdge = EnsureSlotDecorImage(
+                slotRect,
+                "Slot Edge Top",
+                new Vector2(0f, 1f),
+                new Vector2(1f, 1f),
+                new Vector2(16f, -2f),
+                new Vector2(-16f, 0f),
+                edgeColor,
+                false);
+            RectTransform bottomEdge = EnsureSlotDecorImage(
+                slotRect,
+                "Slot Edge Bottom",
+                new Vector2(0f, 0f),
+                new Vector2(1f, 0f),
+                new Vector2(16f, 0f),
+                new Vector2(-16f, 2f),
+                edgeColor,
+                false);
+            RectTransform leftEdge = EnsureSlotDecorImage(
+                slotRect,
+                "Slot Edge Left",
+                new Vector2(0f, 0f),
+                new Vector2(0f, 1f),
+                new Vector2(0f, 16f),
+                new Vector2(2f, -16f),
+                edgeColor,
+                false);
+            RectTransform rightEdge = EnsureSlotDecorImage(
+                slotRect,
+                "Slot Edge Right",
+                new Vector2(1f, 0f),
+                new Vector2(1f, 1f),
+                new Vector2(-2f, 16f),
+                new Vector2(0f, -16f),
+                edgeColor,
+                false);
+            RectTransform bottomShade = EnsureSlotDecorImage(
+                slotRect,
+                "Slot Bottom Shade",
+                new Vector2(0f, 0f),
+                new Vector2(1f, 0f),
+                new Vector2(18f, 4f),
+                new Vector2(-18f, 15f),
+                new Color(0f, 0f, 0f, isPlayerSlot ? 0.105f : 0.085f),
+                true);
+            RectTransform topHighlight = EnsureSlotDecorImage(
+                slotRect,
+                "Slot Top Highlight",
+                new Vector2(0f, 1f),
+                new Vector2(1f, 1f),
+                new Vector2(18f, -5f),
+                new Vector2(-18f, -3f),
+                UcgToolUiPalette.WithAlpha(UcgToolUiPalette.SoftWhite, isPlayerSlot ? 0.060f : 0.046f),
+                true);
+            RectTransform cardShadow = EnsureSlotDecorImage(
+                slotRect,
+                "Slot Card Ground Shadow",
+                new Vector2(0.14f, 0.17f),
+                new Vector2(0.86f, 0.17f),
+                new Vector2(0f, -14f),
+                new Vector2(0f, 8f),
+                new Color(0f, 0f, 0f, 0.070f),
+                true);
+
+            if (interior != null) interior.SetAsFirstSibling();
+            if (bottomShade != null) bottomShade.SetSiblingIndex(Mathf.Min(1, slotRect.childCount - 1));
+            if (topHighlight != null) topHighlight.SetSiblingIndex(Mathf.Min(2, slotRect.childCount - 1));
+            if (cardShadow != null) cardShadow.SetSiblingIndex(Mathf.Min(3, slotRect.childCount - 1));
+            if (topEdge != null) topEdge.SetSiblingIndex(Mathf.Min(4, slotRect.childCount - 1));
+            if (bottomEdge != null) bottomEdge.SetSiblingIndex(Mathf.Min(5, slotRect.childCount - 1));
+            if (leftEdge != null) leftEdge.SetSiblingIndex(Mathf.Min(6, slotRect.childCount - 1));
+            if (rightEdge != null) rightEdge.SetSiblingIndex(Mathf.Min(7, slotRect.childCount - 1));
+            EnsureSlotCornerMarkers(slotRect, isPlayerSlot);
+        }
+
+        void EnsureSlotCornerMarkers(RectTransform slotRect, bool isPlayerSlot)
+        {
+            if (slotRect == null) return;
+
+            Color color = UcgToolUiPalette.WithAlpha(
+                isPlayerSlot ? UcgToolUiPalette.FocusCyan : UcgToolUiPalette.GlassBorder,
+                isPlayerSlot ? 0.22f : 0.16f);
+            EnsureSlotDecorImage(slotRect, "Slot Corner TL H", new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(13f, -11f), new Vector2(28f, -9f), color, false);
+            EnsureSlotDecorImage(slotRect, "Slot Corner TL V", new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(11f, -28f), new Vector2(13f, -13f), color, false);
+            EnsureSlotDecorImage(slotRect, "Slot Corner TR H", new Vector2(1f, 1f), new Vector2(1f, 1f), new Vector2(-28f, -11f), new Vector2(-13f, -9f), color, false);
+            EnsureSlotDecorImage(slotRect, "Slot Corner TR V", new Vector2(1f, 1f), new Vector2(1f, 1f), new Vector2(-13f, -28f), new Vector2(-11f, -13f), color, false);
+            EnsureSlotDecorImage(slotRect, "Slot Corner BL H", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(13f, 9f), new Vector2(28f, 11f), color, false);
+            EnsureSlotDecorImage(slotRect, "Slot Corner BL V", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(11f, 13f), new Vector2(13f, 28f), color, false);
+            EnsureSlotDecorImage(slotRect, "Slot Corner BR H", new Vector2(1f, 0f), new Vector2(1f, 0f), new Vector2(-28f, 9f), new Vector2(-13f, 11f), color, false);
+            EnsureSlotDecorImage(slotRect, "Slot Corner BR V", new Vector2(1f, 0f), new Vector2(1f, 0f), new Vector2(-13f, 13f), new Vector2(-11f, 28f), color, false);
+        }
+
+        void SetSlotCardGroundShadow(RectTransform slot, bool occupied, bool active, bool opponent)
+        {
+            if (slot == null) return;
+
+            Transform shadowTransform = slot.Find("Slot Card Ground Shadow");
+            if (shadowTransform == null)
+            {
+                EnsureSlotSurfaceDetails(slot, !opponent);
+                shadowTransform = slot.Find("Slot Card Ground Shadow");
+            }
+            RectTransform shadowRect = shadowTransform as RectTransform;
+            Image shadowImage = shadowTransform != null ? shadowTransform.GetComponent<Image>() : null;
+            if (shadowRect == null || shadowImage == null) return;
+
+            float baseAlpha = occupied ? 0.30f : 0.070f;
+            float stateLift = active ? 0.018f : 0f;
+            shadowImage.enabled = true;
+            shadowImage.color = active
+                ? UcgToolUiPalette.WithAlpha(UcgToolUiPalette.BrandPink, occupied ? baseAlpha + stateLift : 0.070f)
+                : new Color(2f / 255f, 6f / 255f, 14f / 255f, baseAlpha);
+            shadowImage.raycastTarget = false;
+
+            shadowRect.anchorMin = new Vector2(occupied ? 0.10f : 0.18f, occupied ? 0.17f : 0.12f);
+            shadowRect.anchorMax = new Vector2(occupied ? 0.90f : 0.82f, occupied ? 0.17f : 0.12f);
+            shadowRect.offsetMin = new Vector2(0f, occupied ? -18f : -9f);
+            shadowRect.offsetMax = new Vector2(0f, occupied ? 10f : 6f);
+            shadowRect.localScale = Vector3.one;
+            shadowRect.localEulerAngles = Vector3.zero;
+            shadowRect.SetSiblingIndex(Mathf.Min(3, slot.childCount - 1));
+        }
+
+        RectTransform EnsureSlotDecorImage(
+            RectTransform parent,
+            string objectName,
+            Vector2 anchorMin,
+            Vector2 anchorMax,
+            Vector2 offsetMin,
+            Vector2 offsetMax,
+            Color color,
+            bool sliced)
+        {
+            if (parent == null) return null;
+
+            Transform existing = parent.Find(objectName);
+            RectTransform rect;
+            Image image;
+
+            if (existing == null)
+            {
+                var decorObject = new GameObject(objectName, typeof(RectTransform), typeof(Image));
+                decorObject.transform.SetParent(parent, false);
+                rect = decorObject.GetComponent<RectTransform>();
+                image = decorObject.GetComponent<Image>();
+            }
+            else
+            {
+                rect = existing as RectTransform;
+                image = existing.GetComponent<Image>();
+                if (image == null) image = existing.gameObject.AddComponent<Image>();
+            }
+
+            rect.anchorMin = anchorMin;
+            rect.anchorMax = anchorMax;
+            rect.offsetMin = offsetMin;
+            rect.offsetMax = offsetMax;
+            rect.localScale = Vector3.one;
+            rect.localEulerAngles = Vector3.zero;
+
+            if (sliced) ApplySlicedUiSprite(image);
+            image.color = color;
+            image.raycastTarget = false;
+            image.enabled = color.a > 0.001f;
+
+            return rect;
         }
 
         static void ApplySlicedUiSprite(Image image)

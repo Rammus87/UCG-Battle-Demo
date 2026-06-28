@@ -1,4 +1,4 @@
-using System.Collections;
+﻿using System.Collections;
 using System.Collections.Generic;
 using CardFanUI;
 using UnityEngine;
@@ -31,6 +31,13 @@ namespace UCG
         const int DemoCardCount = 6;
         const string BattleBackgroundAssetPath = "Assets/UCG/Art/Backgrounds/battle_bg_mobile_symmetry.png";
         const string BattleBackgroundResourcePath = "UCG/Backgrounds/battle_bg_mobile_symmetry";
+        const float MinSceneSafeWidth = 520f;
+        const float MinSceneSafeHeight = 220f;
+        const float MinSceneLaneGap = 48f;
+        const float MinHorizontalCardSafeWidth = 260f;
+        const float MinLaneVisualGap = 42f;
+        const float MinSidePileLaneGap = 48f;
+        static Sprite _cardSelectionFocusZoneSprite;
         static readonly string[] EffectTestCardIds =
         {
             "BP05-002",
@@ -146,11 +153,11 @@ namespace UCG
         public float portraitSlotHeight = 224f;
         public float battleSlotWidth = 162f;
         public float battleSlotHeight = 224f;
-        public float pileSlotWidth = 162f;
-        public float pileSlotHeight = 224f;
-        public float horizontalCardSafePadding = 34f;
-        public float laneGapForHorizontalCard = 36f;
-        public float minLaneGap = 28f;
+        public float pileSlotWidth = 108f;
+        public float pileSlotHeight = 128f;
+        public float horizontalCardSafePadding = 36f;
+        public float laneGapForHorizontalCard = 42f;
+        public float minLaneGap = 36f;
         public float combatToPileGap = 96f;
         public float boardZoneSectionGap = 42f;
         public float opponentRowY = 240f;
@@ -158,15 +165,15 @@ namespace UCG
         public float sceneAreaY = 0f;
         public float sceneAreaWidth = 560f;
         public float sceneAreaHeight = 230f;
-        public float sceneToOpponentLaneGap = 34f;
-        public float sceneToPlayerLaneGap = 34f;
+        public float sceneToOpponentLaneGap = 48f;
+        public float sceneToPlayerLaneGap = 48f;
         public float fieldColumnX = 0f;
         public float pileColumnRightInset = 96f;
         public bool useFixedReferenceBoardLayout = true;
         public Vector2 combatRegionPos = new Vector2(-78f, 0f);
         public Vector2 combatRegionSize = new Vector2(700f, 920f);
         public Vector2 pileRegionPos = new Vector2(334f, 0f);
-        public Vector2 pileRegionSize = new Vector2(192f, 920f);
+        public Vector2 pileRegionSize = new Vector2(128f, 920f);
         public Vector2 referenceSceneAreaPos = new Vector2(0f, 0f);
         public Vector2 referenceOpponentBattleSlotPos = new Vector2(0f, 240f);
         public Vector2 referencePlayerBattleSlotPos = new Vector2(0f, -240f);
@@ -181,18 +188,19 @@ namespace UCG
         public float sidePileColumnMargin = 32f;
         public bool sidePileFollowFocus = false;
         public float sidePileFocusCompensationFactor = 0.18f;
-        public float sidePileToLaneGap = 32f;
+        public float sidePileToLaneGap = 48f;
         public float sidePileTooFarGap = 160f;
-        public float sidePileMinGapFromLane = 12f;
-        public float combatToPileGapX = 42f;
+        public float sidePileMinGapFromLane = 40f;
+        public float combatToPileGapX = 48f;
         public float sidePileColumnNudgeX = 40f;
         public float sidePanelWidth = 260f;
         public float sidePanelRightMargin = 96f;
         public float deckDiscardGroupGap = 16f;
         public float debugSidePileExtremeOffsetX = -300f;
         public float sidePileRightMargin = 4f;
-        public float sidePileBackgroundAlpha = 0.32f;
-        public float sidePileOutlineAlpha = 0.46f;
+        public float sidePileBackgroundAlpha = 0.68f;
+        public float sidePileOutlineAlpha = 0.34f;
+        public bool debugDiscardReturnTrace;
         public float sceneAreaScale = 0.9f;
         public float sceneAreaAlpha = 0.07f;
         public float sceneAreaOutlineAlpha = 0.3f;
@@ -207,6 +215,12 @@ namespace UCG
         Coroutine _playStatusRoutine;
         Coroutine _openingFirstPlayerRoutine;
         Coroutine _deckOperationNoValidAutoCloseRoutine;
+        Coroutine _deckOperationSelectionResultRoutine;
+        Coroutine _deckOperationHandReturnRoutine;
+        Coroutine _deckOperationDrawThenSelectRoutine;
+        Coroutine _deckOperationDrawThenFinishRoutine;
+        Coroutine _deckOperationNoSelectionDiscardRoutine;
+        Coroutine _drawCardsToHandRoutine;
         Coroutine _advanceCountdownRoutine;
         Coroutine _battlefieldCommitAnimationRoutine;
         Coroutine _judgementVisualRoutine;
@@ -273,18 +287,31 @@ namespace UCG
         float _lastPileRegionViewportRight = float.MinValue;
         bool _lastPileRegionClampApplied;
         int _lastPileRegionLayoutFrame = -1;
+        bool _hasBoardZoneViewSnapshot;
+        Vector2 _lastBoardZoneContentPositionSnapshot;
+        Vector3 _lastBoardZoneContentScaleSnapshot;
+        Vector2 _lastBoardZoneViewportSizeSnapshot;
+        Vector2 _lastBoardZoneRootSizeSnapshot;
         bool _advanceToUpgradeAfterOpponentSetup;
         bool _showRestoredCardsMessageOnStart;
         bool _enterEffectPhaseHadPendingEffects;
         bool _battleEffectPhaseHadPendingEffects;
         string _openingFirstPlayerMessage = "";
         string _topPromptActionText = "";
+        RectTransform _battlefieldVisualLayer;
+        Image _battlefieldVisualImage;
+        Outline _battlefieldVisualOutline;
         RectTransform _topPromptProgressTrackRect;
         RectTransform _topPromptProgressFillRect;
         RectTransform _effectFeedbackToastPanel;
         Image _effectFeedbackToastImage;
         RectTransform _effectFeedbackToastAccent;
         Image _effectFeedbackToastAccentImage;
+        RectTransform _effectFeedbackTextRect;
+        Vector2 _effectFeedbackTextBasePosition;
+        Vector2 _effectFeedbackToastBasePosition;
+        Text _effectFeedbackToastIconText;
+        Text _effectFeedbackToastTitleText;
         RectTransform _turnStartBannerRoot;
         CanvasGroup _turnStartBannerCanvasGroup;
         Text _turnStartBannerTurnText;
@@ -335,6 +362,9 @@ namespace UCG
         RectTransform _deckOperationCardsRoot;
         Text _deckOperationSelectionTitle;
         Button _deckOperationNoSelectionButton;
+        UcgCardMoveAnimationSystem _cardMoveAnimationSystem;
+        bool _deckOperationResultAnimationRunning;
+        int _deckOperationStateVersion;
         Button _boardDebugToggleButton;
         RectTransform _debugBoardZonesActivePanel;
         Text _debugBoardZonesActiveText;
@@ -392,13 +422,14 @@ namespace UCG
             EnsureExternalCardServices();
             EnsureSfxController();
             EnsureEffectManager();
+            EnsureCardMoveAnimationSystem();
             EnsureOpponentScript();
             EnsureTurnOrderManager();
-            EnsureDeckCountText();
-            EnsureZoneInfoUI();
             EnsureDiscardPilePanel();
             EnsureGameResultText();
             EnsureBattlefieldManager();
+            EnsureDeckCountText();
+            EnsureZoneInfoUI();
             EnsureSceneSlots();
             EnsurePendingConfirmDialog();
             EnsureGameOverModal();
@@ -431,9 +462,11 @@ namespace UCG
             UpdateDebugBoardZonesActivePanel();
             UpdateLayoutDebugBounds();
             UpdateDebugCombatViewportOffset();
+            RefreshBoardZoneLayoutIfBattlefieldViewChanged();
             UpdateEffectTestToolPanelVisibility();
             UpdateTopPhaseHud();
             EnsureTutorialPanelTopLayer();
+            UpdateHandRaycastDebugProbe();
         }
 
         void EnsureDebugBoardZonesActivePanel()
@@ -608,6 +641,7 @@ namespace UCG
 
             ConfigureCanvasScaler(canvas.gameObject);
             EnsureHudBackground();
+            EnsureBattlefieldVisualLayer();
         }
 
         void ConfigureCanvasScaler(GameObject canvasObject)
@@ -655,16 +689,332 @@ namespace UCG
             bool hasBattleBackground = battleBackground != null;
             backgroundImage.sprite = battleBackground;
             backgroundImage.color = hasBattleBackground
-                ? Color.white
+                ? new Color(0.34f, 0.42f, 0.56f, 1f)
                 : new Color(0.015f, 0.03f, 0.055f, 1f);
             backgroundImage.preserveAspect = false;
             backgroundImage.raycastTarget = false;
+
+            EnsureBackgroundTreatment(backgroundRect, hasBattleBackground);
 
             EnsureHudDecorBar(backgroundRect, "HUD Energy Band Top", new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -178f), new Vector2(1180f, 46f), -8f, hasBattleBackground ? Color.clear : new Color(0.18f, 0.62f, 0.95f, 0.045f));
             EnsureHudDecorBar(backgroundRect, "HUD Energy Band Field", new Vector2(0.5f, 0f), new Vector2(0.5f, 0f), new Vector2(0f, 930f), new Vector2(1080f, 430f), 0f, hasBattleBackground ? Color.clear : new Color(0.12f, 0.24f, 0.34f, 0.08f));
             EnsureHudDecorBar(backgroundRect, "HUD Energy Band Hand", new Vector2(0.5f, 0f), new Vector2(0.5f, 0f), new Vector2(0f, 230f), new Vector2(1180f, 220f), 5f, hasBattleBackground ? Color.clear : new Color(0.02f, 0.08f, 0.13f, 0.28f));
             EnsureHudDecorBar(backgroundRect, "HUD Diagonal Trace A", new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(-330f, 100f), new Vector2(760f, 5f), -24f, hasBattleBackground ? Color.clear : new Color(0.42f, 0.92f, 1f, 0.035f));
             EnsureHudDecorBar(backgroundRect, "HUD Diagonal Trace B", new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(330f, -40f), new Vector2(720f, 4f), -24f, hasBattleBackground ? Color.clear : new Color(0.85f, 0.92f, 1f, 0.025f));
+        }
+
+        void EnsureBackgroundTreatment(RectTransform backgroundRect, bool hasBattleBackground)
+        {
+            if (backgroundRect == null) return;
+
+            float dimAlpha = hasBattleBackground ? 0.42f : 0.08f;
+            EnsureHudAccentImage(
+                backgroundRect,
+                "Background Treatment Dim",
+                Vector2.zero,
+                Vector2.one,
+                Vector2.zero,
+                Vector2.zero,
+                new Color(1f / 255f, 5f / 255f, 12f / 255f, dimAlpha));
+            EnsureHudAccentImage(
+                backgroundRect,
+                "Battlefield Ambient Spine",
+                new Vector2(0.5f, 0.16f),
+                new Vector2(0.5f, 0.84f),
+                new Vector2(-2f, 0f),
+                new Vector2(2f, 0f),
+                UcgToolUiPalette.WithAlpha(UcgToolUiPalette.FocusCyan, hasBattleBackground ? 0.075f : 0.04f));
+            EnsureHudAccentImage(
+                backgroundRect,
+                "Battlefield Ambient Center",
+                new Vector2(0.5f, 0.50f),
+                new Vector2(0.5f, 0.50f),
+                new Vector2(-210f, -18f),
+                new Vector2(210f, 18f),
+                UcgToolUiPalette.WithAlpha(UcgToolUiPalette.FocusCyan, hasBattleBackground ? 0.050f : 0.03f));
+            EnsureHudAccentImage(
+                backgroundRect,
+                "Background Left Vignette",
+                new Vector2(0f, 0f),
+                new Vector2(0f, 1f),
+                Vector2.zero,
+                new Vector2(150f, 0f),
+                new Color(0f, 0f, 0f, hasBattleBackground ? 0.34f : 0.08f));
+            EnsureHudAccentImage(
+                backgroundRect,
+                "Background Right Vignette",
+                new Vector2(1f, 0f),
+                new Vector2(1f, 1f),
+                new Vector2(-150f, 0f),
+                Vector2.zero,
+                new Color(0f, 0f, 0f, hasBattleBackground ? 0.34f : 0.08f));
+            EnsureHudAccentImage(
+                backgroundRect,
+                "Background Top Vignette",
+                new Vector2(0f, 1f),
+                new Vector2(1f, 1f),
+                new Vector2(0f, -170f),
+                Vector2.zero,
+                new Color(0f, 0f, 0f, hasBattleBackground ? 0.28f : 0.06f));
+            EnsureHudAccentImage(
+                backgroundRect,
+                "Background Bottom Vignette",
+                Vector2.zero,
+                new Vector2(1f, 0f),
+                Vector2.zero,
+                new Vector2(0f, 210f),
+                new Color(0f, 0f, 0f, hasBattleBackground ? 0.24f : 0.06f));
+            EnsureHudAccentImage(
+                backgroundRect,
+                "Battlefield Ambient Cross Spark",
+                new Vector2(0.5f, 0.50f),
+                new Vector2(0.5f, 0.50f),
+                new Vector2(-4f, -4f),
+                new Vector2(4f, 4f),
+                UcgToolUiPalette.WithAlpha(UcgToolUiPalette.BrandPinkLight, hasBattleBackground ? 0.055f : 0.035f));
+        }
+
+        void EnsureBattlefieldVisualLayer()
+        {
+            if (canvas == null) return;
+
+            const string legacyBoardName = "Battle Board Panel";
+            Transform legacyBoard = canvas.transform.Find(legacyBoardName);
+            if (legacyBoard != null)
+            {
+                RetireLegacyBattleBoardPanel(legacyBoard);
+            }
+
+            const string boardName = "Battlefield Visual Layer";
+            Transform existingBoard = canvas.transform.Find(boardName);
+            if (existingBoard == null)
+            {
+                var boardObject = new GameObject(boardName, typeof(RectTransform), typeof(Image), typeof(Outline));
+                boardObject.transform.SetParent(canvas.transform, false);
+                _battlefieldVisualLayer = boardObject.GetComponent<RectTransform>();
+                _battlefieldVisualImage = boardObject.GetComponent<Image>();
+                _battlefieldVisualOutline = boardObject.GetComponent<Outline>();
+            }
+            else
+            {
+                _battlefieldVisualLayer = existingBoard as RectTransform;
+                _battlefieldVisualImage = existingBoard.GetComponent<Image>();
+                if (_battlefieldVisualImage == null) _battlefieldVisualImage = existingBoard.gameObject.AddComponent<Image>();
+                _battlefieldVisualOutline = existingBoard.GetComponent<Outline>();
+                if (_battlefieldVisualOutline == null) _battlefieldVisualOutline = existingBoard.gameObject.AddComponent<Outline>();
+            }
+
+            _battlefieldVisualLayer.anchorMin = new Vector2(0.5f, 0.5f);
+            _battlefieldVisualLayer.anchorMax = new Vector2(0.5f, 0.5f);
+            _battlefieldVisualLayer.pivot = new Vector2(0.5f, 0.5f);
+            _battlefieldVisualLayer.anchoredPosition = new Vector2(0f, 82f);
+            _battlefieldVisualLayer.sizeDelta = new Vector2(820f, 760f);
+            _battlefieldVisualLayer.localScale = Vector3.one;
+            _battlefieldVisualLayer.localEulerAngles = Vector3.zero;
+            _battlefieldVisualLayer.gameObject.SetActive(true);
+
+            ApplyRoundedPanelImage(_battlefieldVisualImage);
+            _battlefieldVisualImage.enabled = false;
+            _battlefieldVisualImage.color = Color.clear;
+            _battlefieldVisualImage.raycastTarget = false;
+
+            _battlefieldVisualOutline.enabled = false;
+            _battlefieldVisualOutline.effectColor = Color.clear;
+            _battlefieldVisualOutline.effectDistance = Vector2.zero;
+            _battlefieldVisualOutline.useGraphicAlpha = true;
+
+            Shadow layerShadow = EnsureUiShadow(_battlefieldVisualLayer.gameObject);
+            layerShadow.effectColor = Color.clear;
+            layerShadow.effectDistance = Vector2.zero;
+            layerShadow.useGraphicAlpha = true;
+
+            RetireLegacyVisualChild(_battlefieldVisualLayer, "Battle Board Opponent Region");
+            RetireLegacyVisualChild(_battlefieldVisualLayer, "Battle Board Duel Region");
+            RetireLegacyVisualChild(_battlefieldVisualLayer, "Battle Board Player Region");
+            RetireLegacyVisualChild(_battlefieldVisualLayer, "Battle Board Duel Axis Line");
+            RetireLegacyVisualChild(_battlefieldVisualLayer, "Battle Board Top Highlight");
+            RetireLegacyVisualChild(_battlefieldVisualLayer, "Battle Board Center Wash");
+            RetireLegacyVisualChild(_battlefieldVisualLayer, "Battle Board Left Edge");
+            RetireLegacyVisualChild(_battlefieldVisualLayer, "Battle Board Right Edge");
+
+            EnsureBattlefieldFrameAccents(_battlefieldVisualLayer);
+            ApplyBattlefieldVisualLayer();
+        }
+
+        void RetireLegacyBattleBoardPanel(Transform legacyBoard)
+        {
+            if (legacyBoard == null) return;
+
+            Graphic[] graphics = legacyBoard.GetComponentsInChildren<Graphic>(true);
+            for (int i = 0; i < graphics.Length; i++)
+            {
+                if (graphics[i] == null) continue;
+                graphics[i].color = Color.clear;
+                graphics[i].raycastTarget = false;
+            }
+
+            Shadow[] shadows = legacyBoard.GetComponentsInChildren<Shadow>(true);
+            for (int i = 0; i < shadows.Length; i++)
+            {
+                if (shadows[i] == null) continue;
+                shadows[i].effectColor = Color.clear;
+                shadows[i].effectDistance = Vector2.zero;
+            }
+
+            legacyBoard.gameObject.SetActive(false);
+        }
+
+        void RetireLegacyVisualChild(RectTransform parent, string objectName)
+        {
+            if (parent == null) return;
+
+            Transform existing = parent.Find(objectName);
+            if (existing == null) return;
+
+            Graphic[] graphics = existing.GetComponentsInChildren<Graphic>(true);
+            for (int i = 0; i < graphics.Length; i++)
+            {
+                if (graphics[i] == null) continue;
+                graphics[i].color = Color.clear;
+                graphics[i].raycastTarget = false;
+            }
+
+            Shadow[] shadows = existing.GetComponentsInChildren<Shadow>(true);
+            for (int i = 0; i < shadows.Length; i++)
+            {
+                if (shadows[i] == null) continue;
+                shadows[i].effectColor = Color.clear;
+                shadows[i].effectDistance = Vector2.zero;
+            }
+
+            existing.gameObject.SetActive(false);
+        }
+
+        void EnsureBattlefieldFrameAccents(RectTransform parent)
+        {
+            if (parent == null) return;
+
+            Color cyan = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.FocusCyan, debugBoardZones ? 0.88f : 0.22f);
+            Color cyanSoft = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.FocusCyan, debugBoardZones ? 0.72f : 0.095f);
+            Color pink = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.BrandPinkLight, debugBoardZones ? 0.86f : 0.17f);
+            Color pinkSoft = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.BrandPinkLight, debugBoardZones ? 0.70f : 0.082f);
+
+            EnsureBattlefieldAccent(parent, "Battlefield Frame TL H", new Vector2(0.055f, 0.91f), new Vector2(0.055f, 0.91f), new Vector2(42f, 0f), new Vector2(84f, 2f), cyan);
+            EnsureBattlefieldAccent(parent, "Battlefield Frame TL V", new Vector2(0.055f, 0.91f), new Vector2(0.055f, 0.91f), new Vector2(0f, -34f), new Vector2(2f, 68f), pink);
+            EnsureBattlefieldAccent(parent, "Battlefield Frame TR H", new Vector2(0.945f, 0.91f), new Vector2(0.945f, 0.91f), new Vector2(-42f, 0f), new Vector2(84f, 2f), cyan);
+            EnsureBattlefieldAccent(parent, "Battlefield Frame TR V", new Vector2(0.945f, 0.91f), new Vector2(0.945f, 0.91f), new Vector2(0f, -34f), new Vector2(2f, 68f), pink);
+            EnsureBattlefieldAccent(parent, "Battlefield Frame BL H", new Vector2(0.055f, 0.09f), new Vector2(0.055f, 0.09f), new Vector2(42f, 0f), new Vector2(84f, 2f), cyan);
+            EnsureBattlefieldAccent(parent, "Battlefield Frame BL V", new Vector2(0.055f, 0.09f), new Vector2(0.055f, 0.09f), new Vector2(0f, 34f), new Vector2(2f, 68f), pink);
+            EnsureBattlefieldAccent(parent, "Battlefield Frame BR H", new Vector2(0.945f, 0.09f), new Vector2(0.945f, 0.09f), new Vector2(-42f, 0f), new Vector2(84f, 2f), cyan);
+            EnsureBattlefieldAccent(parent, "Battlefield Frame BR V", new Vector2(0.945f, 0.09f), new Vector2(0.945f, 0.09f), new Vector2(0f, 34f), new Vector2(2f, 68f), pink);
+
+            EnsureBattlefieldAccent(parent, "Battlefield Frame Top Hairline", new Vector2(0.18f, 0.91f), new Vector2(0.82f, 0.91f), Vector2.zero, new Vector2(0f, 1.4f), cyanSoft);
+            EnsureBattlefieldAccent(parent, "Battlefield Frame Bottom Hairline", new Vector2(0.18f, 0.09f), new Vector2(0.82f, 0.09f), Vector2.zero, new Vector2(0f, 1.4f), cyanSoft);
+            EnsureBattlefieldAccent(parent, "Battlefield Frame Left Trace", new Vector2(0.055f, 0.27f), new Vector2(0.055f, 0.73f), Vector2.zero, new Vector2(1.2f, 0f), pinkSoft);
+            EnsureBattlefieldAccent(parent, "Battlefield Frame Right Trace", new Vector2(0.945f, 0.27f), new Vector2(0.945f, 0.73f), Vector2.zero, new Vector2(1.2f, 0f), pinkSoft);
+            EnsureBattlefieldAccent(parent, "Battlefield Center Spine Trace", new Vector2(0.5f, 0.20f), new Vector2(0.5f, 0.80f), Vector2.zero, new Vector2(1.2f, 0f), cyanSoft);
+            EnsureBattlefieldAreaLabel(parent, "Battlefield Opponent Area Label", "Opponent", new Vector2(0.5f, 0.79f), UcgToolUiPalette.WithAlpha(UcgToolUiPalette.SoftWhite, debugBoardZones ? 0.90f : 0.42f), 19);
+            EnsureBattlefieldAreaLabel(parent, "Battlefield Player Area Label", "Player", new Vector2(0.5f, 0.21f), UcgToolUiPalette.WithAlpha(UcgToolUiPalette.SoftWhite, debugBoardZones ? 0.90f : 0.42f), 19);
+            EnsureBattlefieldAreaLabel(parent, "Battlefield Scene Axis Label", "Scene", new Vector2(0.5f, 0.50f), UcgToolUiPalette.WithAlpha(UcgToolUiPalette.FocusCyan, debugBoardZones ? 0.90f : 0.34f), 16);
+        }
+
+        void EnsureBattlefieldAreaLabel(RectTransform parent, string objectName, string text, Vector2 anchor, Color color, int fontSize)
+        {
+            if (parent == null) return;
+
+            Transform existingLabel = parent.Find(objectName);
+            RectTransform labelRect;
+            Text label;
+            if (existingLabel == null)
+            {
+                var labelObject = new GameObject(objectName, typeof(RectTransform), typeof(Text), typeof(Outline));
+                labelObject.transform.SetParent(parent, false);
+                labelRect = labelObject.GetComponent<RectTransform>();
+                label = labelObject.GetComponent<Text>();
+            }
+            else
+            {
+                labelRect = existingLabel as RectTransform;
+                label = existingLabel.GetComponent<Text>();
+                if (label == null) label = existingLabel.gameObject.AddComponent<Text>();
+                if (existingLabel.GetComponent<Outline>() == null) existingLabel.gameObject.AddComponent<Outline>();
+            }
+
+            labelRect.anchorMin = anchor;
+            labelRect.anchorMax = anchor;
+            labelRect.pivot = new Vector2(0.5f, 0.5f);
+            labelRect.anchoredPosition = Vector2.zero;
+            labelRect.sizeDelta = new Vector2(180f, 34f);
+            labelRect.localScale = Vector3.one;
+            labelRect.localEulerAngles = Vector3.zero;
+            labelRect.SetAsLastSibling();
+
+            label.text = text;
+            label.alignment = TextAnchor.MiddleCenter;
+            label.color = color;
+            label.fontSize = fontSize;
+            label.fontStyle = FontStyle.Bold;
+            label.resizeTextForBestFit = true;
+            label.resizeTextMinSize = 11;
+            label.resizeTextMaxSize = fontSize;
+            label.raycastTarget = false;
+            Font font = LoadPlaceholderFont();
+            if (font != null) label.font = font;
+
+            Outline outline = label.GetComponent<Outline>();
+            if (outline != null)
+            {
+                outline.enabled = true;
+                outline.effectColor = new Color(0f, 0f, 0f, debugBoardZones ? 0.56f : 0.28f);
+                outline.effectDistance = new Vector2(1f, -1f);
+                outline.useGraphicAlpha = true;
+            }
+        }
+
+        void EnsureBattlefieldAccent(RectTransform parent, string objectName, Vector2 anchorMin, Vector2 anchorMax, Vector2 anchoredPosition, Vector2 sizeDelta, Color color)
+        {
+            if (parent == null) return;
+
+            Transform existingAccent = parent.Find(objectName);
+            RectTransform accentRect;
+            Image accentImage;
+
+            if (existingAccent == null)
+            {
+                var accentObject = new GameObject(objectName, typeof(RectTransform), typeof(Image));
+                accentObject.transform.SetParent(parent, false);
+                accentRect = accentObject.GetComponent<RectTransform>();
+                accentImage = accentObject.GetComponent<Image>();
+            }
+            else
+            {
+                accentRect = existingAccent as RectTransform;
+                accentImage = existingAccent.GetComponent<Image>();
+                if (accentImage == null) accentImage = existingAccent.gameObject.AddComponent<Image>();
+            }
+
+            accentRect.anchorMin = anchorMin;
+            accentRect.anchorMax = anchorMax;
+            accentRect.pivot = new Vector2(0.5f, 0.5f);
+            accentRect.anchoredPosition = anchoredPosition;
+            accentRect.sizeDelta = sizeDelta;
+            accentRect.localScale = Vector3.one;
+            accentRect.localEulerAngles = Vector3.zero;
+            bool visible = color.a > 0.001f;
+            accentRect.gameObject.SetActive(visible);
+            accentImage.enabled = visible;
+            accentImage.color = color;
+            accentImage.raycastTarget = false;
+        }
+
+        void ApplyBattlefieldVisualLayer()
+        {
+            if (canvas == null || _battlefieldVisualLayer == null) return;
+
+            Transform background = canvas.transform.Find("UCG HUD Background");
+            int targetIndex = background != null ? background.GetSiblingIndex() + 1 : 0;
+            targetIndex = Mathf.Clamp(targetIndex, 0, canvas.transform.childCount - 1);
+            _battlefieldVisualLayer.SetSiblingIndex(targetIndex);
         }
 
         Sprite LoadBattleBackgroundSprite()
@@ -756,22 +1106,225 @@ namespace UCG
             plateRect.sizeDelta = targetRect.sizeDelta + padding;
             plateRect.localScale = Vector3.one;
             plateRect.localEulerAngles = Vector3.zero;
-            plateImage.color = fillColor;
-            plateImage.raycastTarget = false;
-            ApplyRoundedPanelImage(plateImage);
-
-            var outline = plateRect.GetComponent<Outline>();
-            outline.effectColor = outlineColor;
-            outline.effectDistance = new Vector2(1.5f, -1.5f);
-            outline.useGraphicAlpha = true;
-
-            var shadow = EnsureUiShadow(plateRect.gameObject);
-            shadow.effectColor = new Color(15f / 255f, 23f / 255f, 42f / 255f, 0.24f);
-            shadow.effectDistance = new Vector2(0f, -5f);
-            shadow.useGraphicAlpha = true;
+            ApplyGlassSurface(
+                plateRect,
+                plateImage,
+                outlineColor,
+                Mathf.Clamp01(fillColor.a),
+                Mathf.Clamp01(Mathf.Max(outlineColor.a, 0.18f)),
+                0.14f,
+                false);
 
             plateRect.SetSiblingIndex(Mathf.Max(0, targetRect.GetSiblingIndex()));
             return plateImage;
+        }
+
+        RectTransform EnsureHudAccentImage(RectTransform parent, string objectName, Vector2 anchorMin, Vector2 anchorMax, Vector2 offsetMin, Vector2 offsetMax, Color color)
+        {
+            if (parent == null) return null;
+
+            Transform existing = parent.Find(objectName);
+            RectTransform rect;
+            Image image;
+            if (existing == null)
+            {
+                var accentObject = new GameObject(objectName, typeof(RectTransform), typeof(Image));
+                accentObject.transform.SetParent(parent, false);
+                rect = accentObject.GetComponent<RectTransform>();
+                image = accentObject.GetComponent<Image>();
+            }
+            else
+            {
+                rect = existing as RectTransform;
+                image = existing.GetComponent<Image>();
+                if (image == null) image = existing.gameObject.AddComponent<Image>();
+            }
+
+            rect.anchorMin = anchorMin;
+            rect.anchorMax = anchorMax;
+            rect.offsetMin = offsetMin;
+            rect.offsetMax = offsetMax;
+            rect.localScale = Vector3.one;
+            rect.localEulerAngles = Vector3.zero;
+            image.enabled = color.a > 0.001f;
+            image.color = color;
+            image.raycastTarget = false;
+            return rect;
+        }
+
+        void ApplyGlassSurface(
+            RectTransform panelRect,
+            Image panelImage,
+            Color accentColor,
+            float fillAlpha,
+            float borderAlpha,
+            float shadowAlpha,
+            bool raycastTarget)
+        {
+            if (panelRect == null) return;
+
+            if (panelImage == null) panelImage = panelRect.GetComponent<Image>();
+            if (panelImage != null)
+            {
+                ApplyRoundedPanelImage(panelImage);
+                panelImage.color = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.DeepGlass, Mathf.Clamp01(fillAlpha));
+                panelImage.raycastTarget = raycastTarget;
+            }
+
+            Outline outline = panelRect.GetComponent<Outline>();
+            if (outline == null) outline = panelRect.gameObject.AddComponent<Outline>();
+            outline.enabled = true;
+            outline.effectColor = UcgToolUiPalette.WithAlpha(accentColor, Mathf.Clamp01(borderAlpha));
+            outline.effectDistance = new Vector2(1f, -1f);
+            outline.useGraphicAlpha = true;
+
+            Shadow shadow = EnsureUiShadow(panelRect.gameObject);
+            if (shadow != null)
+            {
+                shadow.effectColor = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.GlassShadow, Mathf.Clamp01(shadowAlpha));
+                shadow.effectDistance = new Vector2(0f, -5f);
+                shadow.useGraphicAlpha = true;
+            }
+
+            SetGlassSurfaceOverlayAlpha(panelRect, fillAlpha);
+        }
+
+        void SetGlassSurfaceOverlayAlpha(RectTransform panelRect, float alpha)
+        {
+            if (panelRect == null) return;
+
+            float clamped = Mathf.Clamp01(alpha);
+            RectTransform topHighlight = EnsureGlassOverlay(
+                panelRect,
+                "Glass Top Highlight",
+                new Vector2(0.05f, 0.88f),
+                new Vector2(0.95f, 0.98f),
+                UcgToolUiPalette.WithAlpha(UcgToolUiPalette.GlassTopHighlight, 0.026f * clamped));
+            RectTransform innerShade = EnsureGlassOverlay(
+                panelRect,
+                "Glass Inner Shadow",
+                new Vector2(0.04f, 0.02f),
+                new Vector2(0.96f, 0.22f),
+                UcgToolUiPalette.WithAlpha(UcgToolUiPalette.GlassInnerShadow, 0.048f * clamped));
+
+            if (innerShade != null) innerShade.SetSiblingIndex(0);
+            if (topHighlight != null) topHighlight.SetSiblingIndex(Mathf.Min(1, panelRect.childCount - 1));
+        }
+
+        RectTransform EnsureGlassOverlay(RectTransform parent, string objectName, Vector2 anchorMin, Vector2 anchorMax, Color color)
+        {
+            if (parent == null) return null;
+
+            Transform existing = parent.Find(objectName);
+            RectTransform rect;
+            Image image;
+            if (existing == null)
+            {
+                var overlayObject = new GameObject(objectName, typeof(RectTransform), typeof(Image));
+                overlayObject.transform.SetParent(parent, false);
+                rect = overlayObject.GetComponent<RectTransform>();
+                image = overlayObject.GetComponent<Image>();
+            }
+            else
+            {
+                rect = existing as RectTransform;
+                image = existing.GetComponent<Image>();
+                if (image == null) image = existing.gameObject.AddComponent<Image>();
+            }
+
+            rect.anchorMin = anchorMin;
+            rect.anchorMax = anchorMax;
+            rect.offsetMin = Vector2.zero;
+            rect.offsetMax = Vector2.zero;
+            rect.localScale = Vector3.one;
+            rect.localEulerAngles = Vector3.zero;
+            ApplyRoundedPanelImage(image);
+            image.enabled = color.a > 0.001f;
+            image.color = color;
+            image.raycastTarget = false;
+            return rect;
+        }
+
+        void StyleTopPromptPanel(RectTransform panelRect)
+        {
+            if (panelRect == null) return;
+
+            Image image = panelRect.GetComponent<Image>();
+            ApplyGlassSurface(panelRect, image, UcgToolUiPalette.BrandPinkLight, 0.78f, 0.34f, 0.18f, false);
+
+            EnsureHudAccentImage(
+                panelRect,
+                "Top Prompt Bottom Accent",
+                new Vector2(0.12f, 0f),
+                new Vector2(0.88f, 0f),
+                new Vector2(0f, 8f),
+                new Vector2(0f, 10f),
+                UcgToolUiPalette.WithAlpha(UcgToolUiPalette.BrandPinkLight, 0.18f));
+            EnsureHudAccentImage(
+                panelRect,
+                "Top Prompt Left Edge Accent",
+                new Vector2(0f, 0.26f),
+                new Vector2(0f, 0.74f),
+                new Vector2(6f, 0f),
+                new Vector2(8f, 0f),
+                UcgToolUiPalette.WithAlpha(UcgToolUiPalette.BrandPinkLight, 0.18f));
+            EnsureHudAccentImage(
+                panelRect,
+                "Top Prompt Right Edge Accent",
+                new Vector2(1f, 0.26f),
+                new Vector2(1f, 0.74f),
+                new Vector2(-8f, 0f),
+                new Vector2(-6f, 0f),
+                UcgToolUiPalette.WithAlpha(UcgToolUiPalette.FocusCyan, 0.11f));
+            EnsureHudAccentImage(
+                panelRect,
+                "Top Prompt Soft Highlight",
+                new Vector2(0.16f, 1f),
+                new Vector2(0.84f, 1f),
+                new Vector2(0f, -9f),
+                new Vector2(0f, -7f),
+                UcgToolUiPalette.WithAlpha(UcgToolUiPalette.SoftWhite, 0.045f));
+        }
+
+        void StyleNavigationPillPanel(RectTransform panelRect)
+        {
+            if (panelRect == null) return;
+
+            Image image = panelRect.GetComponent<Image>();
+            ApplyGlassSurface(panelRect, image, UcgToolUiPalette.FocusCyan, 0.72f, 0.24f, 0.12f, false);
+
+            EnsureHudAccentImage(
+                panelRect,
+                "Navigation Pill Left Accent",
+                new Vector2(0f, 0.5f),
+                new Vector2(0f, 0.5f),
+                new Vector2(14f, -1f),
+                new Vector2(56f, 1f),
+                UcgToolUiPalette.WithAlpha(UcgToolUiPalette.BrandPinkLight, 0.14f));
+            EnsureHudAccentImage(
+                panelRect,
+                "Navigation Pill Right Accent",
+                new Vector2(1f, 0.5f),
+                new Vector2(1f, 0.5f),
+                new Vector2(-56f, -1f),
+                new Vector2(-14f, 1f),
+                UcgToolUiPalette.WithAlpha(UcgToolUiPalette.FocusCyan, 0.14f));
+        }
+
+        void StyleCompactInfoPanel(RectTransform panelRect, Image panelImage)
+        {
+            if (panelRect == null) return;
+
+            ApplyGlassSurface(panelRect, panelImage, UcgToolUiPalette.FocusCyan, 0.72f, 0.20f, 0.12f, false);
+
+            EnsureHudAccentImage(
+                panelRect,
+                "Compact Info Accent",
+                new Vector2(0f, 0.12f),
+                new Vector2(0f, 0.88f),
+                new Vector2(7f, 0f),
+                new Vector2(9f, 0f),
+                UcgToolUiPalette.WithAlpha(UcgToolUiPalette.FocusCyan, 0.08f));
         }
 
         void ApplyHudButtonStyle(Button button, Color normalColor, Color highlightedColor)
@@ -781,6 +1334,7 @@ namespace UCG
             var image = button.GetComponent<Image>();
             if (image != null)
             {
+                ApplyRoundedPanelImage(image);
                 image.color = normalColor;
                 image.raycastTarget = true;
                 button.targetGraphic = image;
@@ -788,15 +1342,27 @@ namespace UCG
 
             var outline = button.GetComponent<Outline>();
             if (outline == null) outline = button.gameObject.AddComponent<Outline>();
-            outline.effectColor = new Color(0.58f, 0.9f, 1f, 0.18f);
-            outline.effectDistance = new Vector2(2f, -2f);
+            outline.effectColor = new Color(highlightedColor.r, highlightedColor.g, highlightedColor.b, 0.26f);
+            outline.effectDistance = new Vector2(1f, -1f);
+            outline.useGraphicAlpha = true;
+
+            Shadow shadow = EnsureUiShadow(button.gameObject);
+            if (shadow != null)
+            {
+                shadow.effectColor = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.GlassShadow, 0.12f);
+                shadow.effectDistance = new Vector2(0f, -3f);
+                shadow.useGraphicAlpha = true;
+            }
+
+            SetGlassSurfaceOverlayAlpha(button.transform as RectTransform, normalColor.a);
 
             ColorBlock colors = button.colors;
             colors.normalColor = normalColor;
             colors.highlightedColor = highlightedColor;
             colors.pressedColor = new Color(highlightedColor.r * 0.82f, highlightedColor.g * 0.82f, highlightedColor.b * 0.82f, highlightedColor.a);
             colors.selectedColor = highlightedColor;
-            colors.disabledColor = new Color(0.08f, 0.09f, 0.11f, 0.42f);
+            colors.disabledColor = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.DeepGlass, 0.28f);
+            colors.fadeDuration = 0.1f;
             button.colors = colors;
         }
 
@@ -851,8 +1417,8 @@ namespace UCG
             resultRect.anchorMin = new Vector2(0.5f, 1f);
             resultRect.anchorMax = new Vector2(0.5f, 1f);
             resultRect.pivot = new Vector2(0.5f, 1f);
-            resultRect.anchoredPosition = new Vector2(0f, -56f);
-            resultRect.sizeDelta = new Vector2(680f, 94f);
+            resultRect.anchoredPosition = new Vector2(0f, -40f);
+            resultRect.sizeDelta = new Vector2(600f, 78f);
 
             playResultText.text = "";
             playResultText.alignment = TextAnchor.MiddleCenter;
@@ -863,19 +1429,20 @@ namespace UCG
             {
                 playResultText.font = placeholderFont;
             }
-            playResultText.fontSize = 18;
+            playResultText.fontSize = 17;
             playResultText.resizeTextForBestFit = true;
             playResultText.resizeTextMinSize = 11;
-            playResultText.resizeTextMaxSize = 23;
-            playResultText.lineSpacing = 0.86f;
+            playResultText.resizeTextMaxSize = 22;
+            playResultText.lineSpacing = 0.92f;
             playResultText.raycastTarget = false;
             Image panelImage = EnsureHudBackplate(
                 "Play Result HUD Panel",
                 resultRect,
                 UcgToolUiPalette.DeepGlass,
                 UcgToolUiPalette.GlassBorder,
-                new Vector2(24f, 14f));
+                new Vector2(28f, 14f));
             RectTransform panelRect = panelImage != null ? panelImage.transform as RectTransform : null;
+            StyleTopPromptPanel(panelRect);
             EnsureTopPromptProgress(panelRect);
             ApplyTopPromptLayer(resultRect, panelRect);
             UpdateTopPhaseHud();
@@ -904,14 +1471,14 @@ namespace UCG
                 if (trackImage == null) trackImage = existingTrack.gameObject.AddComponent<Image>();
             }
 
-            _topPromptProgressTrackRect.anchorMin = new Vector2(0.1f, 0f);
-            _topPromptProgressTrackRect.anchorMax = new Vector2(0.9f, 0f);
+            _topPromptProgressTrackRect.anchorMin = new Vector2(0.14f, 0f);
+            _topPromptProgressTrackRect.anchorMax = new Vector2(0.86f, 0f);
             _topPromptProgressTrackRect.pivot = new Vector2(0.5f, 0f);
-            _topPromptProgressTrackRect.anchoredPosition = new Vector2(0f, 10f);
-            _topPromptProgressTrackRect.sizeDelta = new Vector2(0f, 4f);
+            _topPromptProgressTrackRect.anchoredPosition = new Vector2(0f, 9f);
+            _topPromptProgressTrackRect.sizeDelta = new Vector2(0f, 3f);
             _topPromptProgressTrackRect.localScale = Vector3.one;
             _topPromptProgressTrackRect.localEulerAngles = Vector3.zero;
-            trackImage.color = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.BrandPink, 0.16f);
+            trackImage.color = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.GlassBorder, 0.12f);
             trackImage.raycastTarget = false;
 
             const string fillName = "Top Prompt Countdown Fill";
@@ -937,11 +1504,11 @@ namespace UCG
             _topPromptProgressFillRect.offsetMax = Vector2.zero;
             _topPromptProgressFillRect.localScale = Vector3.one;
             _topPromptProgressFillRect.localEulerAngles = Vector3.zero;
-            fillImage.color = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.BrandPinkLight, 0.78f);
+            fillImage.color = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.BrandPinkLight, 0.64f);
             fillImage.raycastTarget = false;
 
             Shadow fillGlow = EnsureUiShadow(_topPromptProgressFillRect.gameObject);
-            fillGlow.effectColor = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.FocusCyan, 0.24f);
+            fillGlow.effectColor = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.FocusCyan, 0.14f);
             fillGlow.effectDistance = new Vector2(0f, -1f);
             fillGlow.useGraphicAlpha = true;
 
@@ -1000,19 +1567,7 @@ namespace UCG
             _turnStartBannerRoot.localScale = Vector3.one;
             _turnStartBannerRoot.localEulerAngles = Vector3.zero;
 
-            panelImage.color = UcgToolUiPalette.DeepGlass;
-            panelImage.raycastTarget = false;
-            ApplyRoundedPanelImage(panelImage);
-
-            var outline = _turnStartBannerRoot.GetComponent<Outline>();
-            outline.effectColor = UcgToolUiPalette.GlassBorder;
-            outline.effectDistance = new Vector2(2f, -2f);
-            outline.useGraphicAlpha = true;
-
-            var shadow = EnsureUiShadow(_turnStartBannerRoot.gameObject);
-            shadow.effectColor = new Color(0f, 0.06f, 0.16f, 0.38f);
-            shadow.effectDistance = new Vector2(0f, -8f);
-            shadow.useGraphicAlpha = true;
+            ApplyGlassSurface(_turnStartBannerRoot, panelImage, UcgToolUiPalette.FocusCyan, 0.78f, 0.28f, 0.18f, false);
 
             _turnStartBannerCanvasGroup.alpha = 0f;
             _turnStartBannerCanvasGroup.interactable = false;
@@ -1130,11 +1685,11 @@ namespace UCG
             bool playerFirst = turnOrderManager == null || turnOrderManager.GetCurrentFirstPlayer() == UcgPlayerSide.Player;
             if (_turnStartBannerTurnText != null)
             {
-                _turnStartBannerTurnText.text = $"第 {turnNumber} 回合";
+                _turnStartBannerTurnText.text = $"提示";
             }
             if (_turnStartBannerInitiativeText != null)
             {
-                _turnStartBannerInitiativeText.text = playerFirst ? "你是先攻" : "你是後攻";
+                _turnStartBannerInitiativeText.text = playerFirst ? "雿效果" : "雿敺";
                 _turnStartBannerInitiativeText.color = playerFirst
                     ? UcgToolUiPalette.WarningGold
                     : UcgToolUiPalette.SoftWhite;
@@ -1225,22 +1780,24 @@ namespace UCG
             feedbackRect.anchorMin = new Vector2(0.5f, 0f);
             feedbackRect.anchorMax = new Vector2(0.5f, 0f);
             feedbackRect.pivot = new Vector2(0.5f, 0.5f);
-            feedbackRect.anchoredPosition = new Vector2(0f, 520f);
-            feedbackRect.sizeDelta = new Vector2(680f, 38f);
+            feedbackRect.anchoredPosition = new Vector2(88f, 492f);
+            feedbackRect.sizeDelta = new Vector2(480f, 40f);
             feedbackRect.localScale = Vector3.one;
+            _effectFeedbackTextRect = feedbackRect;
+            _effectFeedbackTextBasePosition = feedbackRect.anchoredPosition;
 
             effectFeedbackText.text = "";
-            effectFeedbackText.alignment = TextAnchor.MiddleCenter;
-            effectFeedbackText.color = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.SoftWhite, 0f);
+            effectFeedbackText.alignment = TextAnchor.MiddleLeft;
+            effectFeedbackText.color = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.BodyWhite, 0f);
             Font placeholderFont = LoadPlaceholderFont();
             if (placeholderFont != null)
             {
                 effectFeedbackText.font = placeholderFont;
             }
-            effectFeedbackText.fontSize = 16;
+            effectFeedbackText.fontSize = 15;
             effectFeedbackText.resizeTextForBestFit = true;
             effectFeedbackText.resizeTextMinSize = 12;
-            effectFeedbackText.resizeTextMaxSize = 16;
+            effectFeedbackText.resizeTextMaxSize = 15;
             effectFeedbackText.raycastTarget = false;
 
             var outline = effectFeedbackText.GetComponent<Outline>();
@@ -1273,15 +1830,14 @@ namespace UCG
             _effectFeedbackToastPanel.anchorMin = textRect.anchorMin;
             _effectFeedbackToastPanel.anchorMax = textRect.anchorMax;
             _effectFeedbackToastPanel.pivot = textRect.pivot;
-            _effectFeedbackToastPanel.anchoredPosition = textRect.anchoredPosition;
-            _effectFeedbackToastPanel.sizeDelta = textRect.sizeDelta + new Vector2(22f, 12f);
+            _effectFeedbackToastPanel.anchoredPosition = new Vector2(0f, 492f);
+            _effectFeedbackToastPanel.sizeDelta = new Vector2(660f, 104f);
             _effectFeedbackToastPanel.localScale = Vector3.one;
             _effectFeedbackToastPanel.localEulerAngles = Vector3.zero;
             _effectFeedbackToastPanel.SetSiblingIndex(Mathf.Max(0, textRect.GetSiblingIndex()));
+            _effectFeedbackToastBasePosition = _effectFeedbackToastPanel.anchoredPosition;
 
-            ApplyRoundedPanelImage(_effectFeedbackToastImage);
-            _effectFeedbackToastImage.color = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.ToastGlass, 0f);
-            _effectFeedbackToastImage.raycastTarget = false;
+            ApplyGlassSurface(_effectFeedbackToastPanel, _effectFeedbackToastImage, UcgToolUiPalette.BrandPinkLight, 0f, 0f, 0f, false);
 
             const string accentName = "Effect Feedback Toast Accent";
             Transform existingAccent = _effectFeedbackToastPanel.Find(accentName);
@@ -1308,18 +1864,176 @@ namespace UCG
             _effectFeedbackToastAccent.localEulerAngles = Vector3.zero;
             _effectFeedbackToastAccentImage.color = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.BrandPink, 0f);
             _effectFeedbackToastAccentImage.raycastTarget = false;
-            SetEffectFeedbackToastAlpha(0f);
+
+            RectTransform iconFrame = EnsureToastDecorImage(
+                _effectFeedbackToastPanel,
+                "Effect Feedback Toast Icon Frame",
+                new Vector2(0f, 0.5f),
+                new Vector2(0f, 0.5f),
+                new Vector2(30f, -28f),
+                new Vector2(86f, 28f),
+                Color.clear,
+                true);
+            if (iconFrame != null)
+            {
+                Outline iconOutline = iconFrame.GetComponent<Outline>();
+                if (iconOutline == null) iconOutline = iconFrame.gameObject.AddComponent<Outline>();
+                iconOutline.enabled = true;
+                iconOutline.effectColor = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.BrandPinkLight, 0f);
+                iconOutline.effectDistance = new Vector2(1.2f, -1.2f);
+                iconOutline.useGraphicAlpha = true;
+            }
+
+            _effectFeedbackToastIconText = EnsureEffectToastText(
+                _effectFeedbackToastPanel,
+                "Effect Feedback Toast Icon",
+                new Vector2(0f, 0.5f),
+                new Vector2(0f, 0.5f),
+                new Vector2(58f, 1f),
+                new Vector2(54f, 54f),
+                TextAnchor.MiddleCenter,
+                30);
+            _effectFeedbackToastIconText.text = "!";
+
+            _effectFeedbackToastTitleText = EnsureEffectToastText(
+                _effectFeedbackToastPanel,
+                "Effect Feedback Toast Title",
+                new Vector2(0f, 0.5f),
+                new Vector2(0f, 0.5f),
+                new Vector2(142f, 24f),
+                new Vector2(500f, 30f),
+                TextAnchor.MiddleLeft,
+                19);
+            _effectFeedbackToastTitleText.text = "Effect";
+
+            SetEffectFeedbackToastAlpha(0f, 0f);
         }
 
-        void SetEffectFeedbackToastAlpha(float alpha)
+        RectTransform EnsureToastDecorImage(RectTransform parent, string objectName, Vector2 anchorMin, Vector2 anchorMax, Vector2 offsetMin, Vector2 offsetMax, Color color, bool rounded)
+        {
+            if (parent == null) return null;
+
+            Transform existing = parent.Find(objectName);
+            RectTransform rect;
+            Image image;
+            if (existing == null)
+            {
+                var decorObject = new GameObject(objectName, typeof(RectTransform), typeof(Image), typeof(Outline));
+                decorObject.transform.SetParent(parent, false);
+                rect = decorObject.GetComponent<RectTransform>();
+                image = decorObject.GetComponent<Image>();
+            }
+            else
+            {
+                rect = existing as RectTransform;
+                image = existing.GetComponent<Image>();
+                if (image == null) image = existing.gameObject.AddComponent<Image>();
+            }
+
+            rect.anchorMin = anchorMin;
+            rect.anchorMax = anchorMax;
+            rect.offsetMin = offsetMin;
+            rect.offsetMax = offsetMax;
+            rect.localScale = Vector3.one;
+            rect.localEulerAngles = Vector3.zero;
+            if (rounded) ApplyRoundedPanelImage(image);
+            image.color = color;
+            image.raycastTarget = false;
+            return rect;
+        }
+
+        Text EnsureEffectToastText(RectTransform parent, string objectName, Vector2 anchorMin, Vector2 anchorMax, Vector2 anchoredPosition, Vector2 sizeDelta, TextAnchor alignment, int fontSize)
+        {
+            Transform existingText = parent.Find(objectName);
+            RectTransform textRect;
+            Text text;
+
+            if (existingText == null)
+            {
+                var textObject = new GameObject(objectName, typeof(RectTransform), typeof(Text), typeof(Outline));
+                textObject.transform.SetParent(parent, false);
+                textRect = textObject.GetComponent<RectTransform>();
+                text = textObject.GetComponent<Text>();
+            }
+            else
+            {
+                textRect = existingText as RectTransform;
+                text = existingText.GetComponent<Text>();
+                if (text == null) text = existingText.gameObject.AddComponent<Text>();
+                if (existingText.GetComponent<Outline>() == null) existingText.gameObject.AddComponent<Outline>();
+            }
+
+            textRect.anchorMin = anchorMin;
+            textRect.anchorMax = anchorMax;
+            textRect.pivot = new Vector2(0.5f, 0.5f);
+            textRect.anchoredPosition = anchoredPosition;
+            textRect.sizeDelta = sizeDelta;
+            textRect.localScale = Vector3.one;
+            textRect.localEulerAngles = Vector3.zero;
+
+            Font placeholderFont = LoadPlaceholderFont();
+            if (placeholderFont != null) text.font = placeholderFont;
+            text.alignment = alignment;
+            text.fontSize = fontSize;
+            text.resizeTextForBestFit = true;
+            text.resizeTextMinSize = Mathf.Max(10, fontSize - 5);
+            text.resizeTextMaxSize = fontSize;
+            text.supportRichText = true;
+            text.raycastTarget = false;
+
+            var outline = text.GetComponent<Outline>();
+            outline.effectColor = new Color(0f, 0f, 0f, 0.58f);
+            outline.effectDistance = new Vector2(1f, -1f);
+            outline.useGraphicAlpha = true;
+
+            return text;
+        }
+
+        void SetEffectFeedbackToastAlpha(float alpha, float slideOffsetY)
         {
             if (_effectFeedbackToastImage != null)
             {
-                _effectFeedbackToastImage.color = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.DeepGlass, 0.78f * alpha);
+                _effectFeedbackToastImage.color = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.DeepGlass, 0.90f * alpha);
             }
             if (_effectFeedbackToastAccentImage != null)
             {
-                _effectFeedbackToastAccentImage.color = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.BrandPink, 0.92f * alpha);
+                _effectFeedbackToastAccentImage.color = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.BrandPink, 0.72f * alpha);
+            }
+            if (_effectFeedbackToastPanel != null)
+            {
+                _effectFeedbackToastPanel.anchoredPosition = _effectFeedbackToastBasePosition + new Vector2(0f, slideOffsetY);
+                SetGlassSurfaceOverlayAlpha(_effectFeedbackToastPanel, 0.86f * alpha);
+
+                var outline = _effectFeedbackToastPanel.GetComponent<Outline>();
+                if (outline != null)
+                {
+                    outline.effectColor = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.BrandPinkLight, 0.34f * alpha);
+                }
+
+                var shadow = _effectFeedbackToastPanel.GetComponent<Shadow>();
+                if (shadow != null)
+                {
+                    shadow.effectColor = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.GlassShadow, 0.15f * alpha);
+                }
+
+                Transform iconFrameTransform = _effectFeedbackToastPanel.Find("Effect Feedback Toast Icon Frame");
+                Outline iconOutline = iconFrameTransform != null ? iconFrameTransform.GetComponent<Outline>() : null;
+                if (iconOutline != null)
+                {
+                    iconOutline.effectColor = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.BrandPinkLight, 0.44f * alpha);
+                }
+            }
+            if (_effectFeedbackTextRect != null)
+            {
+                _effectFeedbackTextRect.anchoredPosition = _effectFeedbackTextBasePosition + new Vector2(0f, slideOffsetY);
+            }
+            if (_effectFeedbackToastIconText != null)
+            {
+                _effectFeedbackToastIconText.color = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.BrandPinkLight, 0.92f * alpha);
+            }
+            if (_effectFeedbackToastTitleText != null)
+            {
+                _effectFeedbackToastTitleText.color = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.BrandPinkLight, 0.94f * alpha);
             }
         }
 
@@ -1465,14 +2179,28 @@ namespace UCG
         float GetBattleLaneWidth()
         {
             Vector2 portraitSize = GetPortraitCardSlotSize();
-            float horizontalCardWidth = portraitSize.y;
-            float safeWidth = horizontalCardWidth + Mathf.Max(0f, horizontalCardSafePadding);
+            float safeWidth = GetHorizontalCardSafeWidth(portraitSize);
             return Mathf.Clamp(Mathf.Max(portraitSize.x, safeWidth), 190f, 340f);
+        }
+
+        float GetHorizontalCardSafeWidth(Vector2 portraitSize)
+        {
+            float horizontalCardWidth = portraitSize.y;
+            return Mathf.Max(
+                MinHorizontalCardSafeWidth,
+                horizontalCardWidth + Mathf.Max(0f, horizontalCardSafePadding));
+        }
+
+        float GetHorizontalCardRightOverhang()
+        {
+            Vector2 portraitSize = GetPortraitCardSlotSize();
+            float safeHorizontalWidth = GetHorizontalCardSafeWidth(portraitSize);
+            return Mathf.Max(0f, (safeHorizontalWidth - portraitSize.x) * 0.5f);
         }
 
         float GetBattleLaneSpacing()
         {
-            return Mathf.Clamp(Mathf.Max(minLaneGap, laneGapForHorizontalCard, boardZoneSectionGap), 24f, 72f);
+            return Mathf.Clamp(Mathf.Max(MinLaneVisualGap, minLaneGap, laneGapForHorizontalCard, boardZoneSectionGap), 36f, 72f);
         }
 
         Vector2 GetPortraitCardSlotSize()
@@ -1501,7 +2229,7 @@ namespace UCG
             float sceneCenterY = GetReferenceSceneAreaPosition().y;
             float y = sceneCenterY
                 + GetSceneAreaSize().y * 0.5f
-                + Mathf.Max(0f, sceneToOpponentLaneGap)
+                + Mathf.Max(MinSceneLaneGap, sceneToOpponentLaneGap)
                 + GetBattleSlotSize().y * 0.5f;
             return new Vector2(referenceOpponentBattleSlotPos.x, y);
         }
@@ -1511,7 +2239,7 @@ namespace UCG
             float sceneCenterY = GetReferenceSceneAreaPosition().y;
             float y = sceneCenterY
                 - GetSceneAreaSize().y * 0.5f
-                - Mathf.Max(0f, sceneToPlayerLaneGap)
+                - Mathf.Max(MinSceneLaneGap, sceneToPlayerLaneGap)
                 - GetBattleSlotSize().y * 0.5f;
             return new Vector2(referencePlayerBattleSlotPos.x, y);
         }
@@ -1657,7 +2385,7 @@ namespace UCG
                 "[UCG Camera] Combat viewport diagnostic\n"
                 + $"source={source}\n"
                 + $"focusMode={focusMode}\n"
-                + $"phase={(phaseManager != null ? phaseManager.CurrentPhase.ToString() : "None")}\n"
+                + $"focusTargetLaneIndex={clampedLaneIndex}\n"
                 + $"turn={currentTurn}\n"
                 + $"activeLaneIndex={clampedLaneIndex}\n"
                 + $"formalCombatFocusViewportPosition={formalFocus:0.00}\n"
@@ -1980,8 +2708,7 @@ namespace UCG
             panelRect.anchoredPosition = Vector2.zero;
             panelRect.sizeDelta = new Vector2(640f, 430f);
             panelRect.SetAsLastSibling();
-            panelImage.color = new Color(0.05f, 0.07f, 0.1f, 0.98f);
-            panelImage.raycastTarget = true;
+            ApplyGlassSurface(panelRect, panelImage, UcgToolUiPalette.BrandPinkLight, 0.86f, 0.26f, 0.16f, true);
 
             EnsureGameOverText(panelRect, font);
             EnsureGameOverRestartButton(panelRect, font);
@@ -2014,8 +2741,9 @@ namespace UCG
             textRect.offsetMin = Vector2.zero;
             textRect.offsetMax = Vector2.zero;
             text.alignment = TextAnchor.MiddleCenter;
-            text.color = Color.white;
+            text.color = UcgToolUiPalette.BrandPinkLight;
             text.fontSize = 34;
+            text.fontStyle = FontStyle.Bold;
             text.resizeTextForBestFit = true;
             text.resizeTextMinSize = 18;
             text.resizeTextMaxSize = 34;
@@ -2051,11 +2779,8 @@ namespace UCG
             buttonRect.anchoredPosition = Vector2.zero;
             buttonRect.sizeDelta = new Vector2(240f, 72f);
 
-            var image = button.GetComponent<Image>();
-            image.color = new Color(0.18f, 0.42f, 0.7f, 0.96f);
-            image.raycastTarget = true;
-            button.targetGraphic = image;
-            EnsureButtonLabel(buttonRect, "重新開始");
+            ApplyPrimaryHudButtonStyle(button);
+            EnsureButtonLabel(buttonRect, "確認");
         }
 
         RectTransform EnsureModalDimBackground(RectTransform root)
@@ -2085,7 +2810,7 @@ namespace UCG
             dimRect.offsetMin = Vector2.zero;
             dimRect.offsetMax = Vector2.zero;
             dimRect.SetAsFirstSibling();
-            dimImage.color = new Color(0f, 0f, 0f, 0.55f);
+            dimImage.color = new Color(0f, 0f, 0f, 0.46f);
             dimImage.raycastTarget = true;
             return dimRect;
         }
@@ -2117,12 +2842,69 @@ namespace UCG
             panelRect.anchoredPosition = Vector2.zero;
             panelRect.sizeDelta = new Vector2(560f, 270f);
             panelRect.SetAsLastSibling();
-            panelImage.color = new Color(0.08f, 0.1f, 0.14f, 0.97f);
-            panelImage.raycastTarget = true;
+            ApplyDialogStyle(panelRect, panelImage);
 
+            EnsureModalConfirmTitle(panelRect, font);
             EnsureModalConfirmText(panelRect, font);
+            EnsureModalConfirmSubtitle(panelRect, font);
             EnsureModalConfirmButton(panelRect, font);
             return panelRect;
+        }
+
+        void ApplyDialogStyle(RectTransform panelRect, Image panelImage)
+        {
+            ApplyGlassSurface(panelRect, panelImage, UcgToolUiPalette.BrandPinkLight, 0.88f, 0.36f, 0.18f, true);
+            EnsureHudAccentImage(
+                panelRect,
+                "Dialog Top Hairline",
+                new Vector2(0.16f, 1f),
+                new Vector2(0.84f, 1f),
+                new Vector2(0f, -10f),
+                new Vector2(0f, -8f),
+                UcgToolUiPalette.WithAlpha(UcgToolUiPalette.SoftWhite, 0.14f));
+            EnsureHudAccentImage(
+                panelRect,
+                "Dialog Bottom Accent",
+                new Vector2(0.20f, 0f),
+                new Vector2(0.80f, 0f),
+                new Vector2(0f, 8f),
+                new Vector2(0f, 10f),
+                UcgToolUiPalette.WithAlpha(UcgToolUiPalette.BrandPinkLight, 0.32f));
+        }
+
+        void EnsureModalConfirmTitle(RectTransform panelRect, Font font)
+        {
+            const string titleName = "Confirm Title";
+            Transform existingTitle = panelRect.Find(titleName);
+            RectTransform titleRect;
+            Text titleText;
+            if (existingTitle == null)
+            {
+                var titleObject = new GameObject(titleName, typeof(RectTransform), typeof(Text));
+                titleObject.transform.SetParent(panelRect, false);
+                titleRect = titleObject.GetComponent<RectTransform>();
+                titleText = titleObject.GetComponent<Text>();
+            }
+            else
+            {
+                titleRect = existingTitle as RectTransform;
+                titleText = existingTitle.GetComponent<Text>();
+                if (titleText == null) titleText = existingTitle.gameObject.AddComponent<Text>();
+            }
+
+            titleRect.anchorMin = new Vector2(0.12f, 0.73f);
+            titleRect.anchorMax = new Vector2(0.88f, 0.88f);
+            titleRect.offsetMin = Vector2.zero;
+            titleRect.offsetMax = Vector2.zero;
+            titleText.text = "確認操作";
+            titleText.alignment = TextAnchor.MiddleCenter;
+            titleText.color = UcgToolUiPalette.MutedWhite;
+            titleText.fontSize = 15;
+            titleText.resizeTextForBestFit = true;
+            titleText.resizeTextMinSize = 11;
+            titleText.resizeTextMaxSize = 15;
+            titleText.raycastTarget = false;
+            if (font != null) titleText.font = font;
         }
 
         void EnsureModalConfirmText(RectTransform panelRect, Font font)
@@ -2147,18 +2929,54 @@ namespace UCG
             }
 
             textRect.anchorMin = new Vector2(0.08f, 0.48f);
-            textRect.anchorMax = new Vector2(0.92f, 0.88f);
+            textRect.anchorMax = new Vector2(0.92f, 0.72f);
             textRect.offsetMin = Vector2.zero;
             textRect.offsetMax = Vector2.zero;
 
             text.alignment = TextAnchor.MiddleCenter;
-            text.color = Color.white;
-            text.fontSize = 30;
+            text.color = UcgToolUiPalette.BrandPinkLight;
+            text.fontSize = 25;
+            text.fontStyle = FontStyle.Bold;
             text.resizeTextForBestFit = true;
-            text.resizeTextMinSize = 18;
-            text.resizeTextMaxSize = 30;
+            text.resizeTextMinSize = 17;
+            text.resizeTextMaxSize = 25;
             text.raycastTarget = false;
             if (font != null) text.font = font;
+        }
+
+        void EnsureModalConfirmSubtitle(RectTransform panelRect, Font font)
+        {
+            const string subtitleName = "Confirm Subtitle";
+            Transform existingSubtitle = panelRect.Find(subtitleName);
+            RectTransform subtitleRect;
+            Text subtitleText;
+            if (existingSubtitle == null)
+            {
+                var subtitleObject = new GameObject(subtitleName, typeof(RectTransform), typeof(Text));
+                subtitleObject.transform.SetParent(panelRect, false);
+                subtitleRect = subtitleObject.GetComponent<RectTransform>();
+                subtitleText = subtitleObject.GetComponent<Text>();
+            }
+            else
+            {
+                subtitleRect = existingSubtitle as RectTransform;
+                subtitleText = existingSubtitle.GetComponent<Text>();
+                if (subtitleText == null) subtitleText = existingSubtitle.gameObject.AddComponent<Text>();
+            }
+
+            subtitleRect.anchorMin = new Vector2(0.10f, 0.36f);
+            subtitleRect.anchorMax = new Vector2(0.90f, 0.48f);
+            subtitleRect.offsetMin = Vector2.zero;
+            subtitleRect.offsetMax = Vector2.zero;
+            subtitleText.text = "確認後會執行目前選擇的操作。";
+            subtitleText.alignment = TextAnchor.MiddleCenter;
+            subtitleText.color = UcgToolUiPalette.MutedWhite;
+            subtitleText.fontSize = 14;
+            subtitleText.resizeTextForBestFit = true;
+            subtitleText.resizeTextMinSize = 10;
+            subtitleText.resizeTextMaxSize = 14;
+            subtitleText.raycastTarget = false;
+            if (font != null) subtitleText.font = font;
         }
 
         void EnsureModalConfirmButton(RectTransform panelRect, Font font)
@@ -2167,7 +2985,6 @@ namespace UCG
             Transform existingButton = panelRect.Find(buttonName);
             RectTransform buttonRect;
             Button button;
-            Image buttonImage;
 
             if (existingButton == null)
             {
@@ -2175,24 +2992,20 @@ namespace UCG
                 buttonObject.transform.SetParent(panelRect, false);
                 buttonRect = buttonObject.GetComponent<RectTransform>();
                 button = buttonObject.GetComponent<Button>();
-                buttonImage = buttonObject.GetComponent<Image>();
             }
             else
             {
                 buttonRect = existingButton as RectTransform;
                 button = existingButton.GetComponent<Button>();
                 if (button == null) button = existingButton.gameObject.AddComponent<Button>();
-                buttonImage = existingButton.GetComponent<Image>();
-                if (buttonImage == null) buttonImage = existingButton.gameObject.AddComponent<Image>();
+                if (existingButton.GetComponent<Image>() == null) existingButton.gameObject.AddComponent<Image>();
             }
 
-            buttonRect.anchorMin = new Vector2(0.32f, 0.12f);
-            buttonRect.anchorMax = new Vector2(0.68f, 0.36f);
+            buttonRect.anchorMin = new Vector2(0.33f, 0.10f);
+            buttonRect.anchorMax = new Vector2(0.67f, 0.31f);
             buttonRect.offsetMin = Vector2.zero;
             buttonRect.offsetMax = Vector2.zero;
-            buttonImage.color = new Color(0.18f, 0.55f, 0.9f, 1f);
-            buttonImage.raycastTarget = true;
-            button.targetGraphic = buttonImage;
+            ApplyPrimaryHudButtonStyle(button);
             button.interactable = true;
 
             Transform existingText = buttonRect.Find("Text");
@@ -2216,10 +3029,11 @@ namespace UCG
             buttonTextRect.anchorMax = Vector2.one;
             buttonTextRect.offsetMin = Vector2.zero;
             buttonTextRect.offsetMax = Vector2.zero;
-            buttonText.text = "確定";
+            buttonText.text = "確認";
             buttonText.alignment = TextAnchor.MiddleCenter;
-            buttonText.color = Color.white;
-            buttonText.fontSize = 28;
+            buttonText.color = UcgToolUiPalette.SoftWhite;
+            buttonText.fontSize = 22;
+            buttonText.fontStyle = FontStyle.Bold;
             buttonText.raycastTarget = false;
             if (font != null) buttonText.font = font;
         }
@@ -2302,7 +3116,9 @@ namespace UCG
             float scale = Mathf.Clamp(sceneAreaScale, 0.75f, 1f);
             float width = Mathf.Clamp(sceneAreaWidth, 420f, 640f);
             float height = Mathf.Clamp(sceneAreaHeight, 170f, 260f);
-            return new Vector2(width * scale, height * scale);
+            return new Vector2(
+                Mathf.Max(MinSceneSafeWidth, width * scale),
+                Mathf.Max(MinSceneSafeHeight, height * scale));
         }
 
         Vector2 GetSceneCardBoardSize()
@@ -2310,15 +3126,23 @@ namespace UCG
             float scale = Mathf.Clamp(sceneAreaScale, 0.75f, 1f);
             float width = Mathf.Clamp(sceneAreaWidth - 40f, 360f, 600f);
             float height = Mathf.Clamp(sceneAreaHeight - 26f, 144f, 238f);
-            return new Vector2(width * scale, height * scale);
+            Vector2 sceneAreaSize = GetSceneAreaSize();
+            return new Vector2(
+                Mathf.Min(width * scale, sceneAreaSize.x - 36f),
+                Mathf.Min(height * scale, sceneAreaSize.y - 24f));
         }
 
         void EnsureSceneZoneMatFrame(RectTransform parent, Vector2 anchoredPosition, Vector2 size)
         {
             if (parent == null) return;
 
-            const string frameName = "Scene Area Mat Frame";
+            const string frameName = "Scene Container";
             Transform existingFrame = parent.Find(frameName);
+            if (existingFrame == null)
+            {
+                existingFrame = parent.Find("Scene Area Mat Frame");
+                if (existingFrame != null) existingFrame.name = frameName;
+            }
             RectTransform frameRect;
             Image frameImage;
 
@@ -2346,20 +3170,207 @@ namespace UCG
             frameRect.localEulerAngles = Vector3.zero;
             frameRect.SetAsFirstSibling();
 
+            frameImage.enabled = false;
             frameImage.color = debugBoardZones
                 ? new Color(0.025f, 0.16f, 0.22f, 0.24f)
-                : UcgToolUiPalette.WithAlpha(UcgToolUiPalette.DeepGlass, sceneAreaAlpha);
+                : Color.clear;
             frameImage.raycastTarget = false;
 
             Outline outline = frameRect.GetComponent<Outline>();
+            outline.enabled = false;
             outline.effectColor = debugBoardZones
                 ? new Color(0.72f, 1f, 1f, 0.9f)
-                : UcgToolUiPalette.WithAlpha(UcgToolUiPalette.GlassBorder, sceneAreaOutlineAlpha);
-            outline.effectDistance = new Vector2(1.3f, -1.3f);
+                : UcgToolUiPalette.WithAlpha(UcgToolUiPalette.GlassBorder, Mathf.Min(sceneAreaOutlineAlpha, 0.14f));
+            outline.effectDistance = new Vector2(0.8f, -0.8f);
 
-            EnsureSceneZoneInnerFrame(frameRect);
+            EnsureSceneContainerStructure(frameRect);
             Text label = EnsureSceneZoneLabel(frameRect);
-            label.text = "SCENE";
+            label.enabled = false;
+            label.gameObject.SetActive(false);
+            label.text = "Scene";
+        }
+
+        void EnsureSceneContainerStructure(RectTransform container)
+        {
+            if (container == null) return;
+
+            RectTransform backgroundLayer = EnsureSceneContainerLayer(container, "Background Layer", 0);
+            RectTransform battleLineLayer = EnsureSceneContainerLayer(container, "Battle Line", 1);
+            RectTransform centerLightLayer = EnsureSceneContainerLayer(container, "Center Light", 2);
+            RectTransform frameLayer = EnsureSceneContainerLayer(container, "Frame", 3);
+            RectTransform cornerLayer = EnsureSceneContainerLayer(container, "Corner Markers", 4);
+            RectTransform overlayLayer = EnsureSceneContainerLayer(container, "Overlay Layer", 5);
+
+            EnsureSceneContainerBackground(backgroundLayer);
+            EnsureSceneContainerBattleLine(battleLineLayer);
+            EnsureSceneContainerCenterLight(centerLightLayer);
+            EnsureSceneContainerFrame(frameLayer);
+            EnsureSceneContainerCornerMarkers(cornerLayer);
+            EnsureSceneContainerOverlay(overlayLayer);
+
+            RetireLegacyVisualChild(container, "Scene Card Inner Frame");
+            RetireLegacyVisualChild(container, "Scene Area Label");
+            RetireLegacyVisualChild(container, "Scene Corner TL H");
+            RetireLegacyVisualChild(container, "Scene Corner TL V");
+            RetireLegacyVisualChild(container, "Scene Corner TR H");
+            RetireLegacyVisualChild(container, "Scene Corner TR V");
+            RetireLegacyVisualChild(container, "Scene Corner BL H");
+            RetireLegacyVisualChild(container, "Scene Corner BL V");
+            RetireLegacyVisualChild(container, "Scene Corner BR H");
+            RetireLegacyVisualChild(container, "Scene Corner BR V");
+            RetireLegacyVisualChild(container, "Scene Battle Line Top");
+            RetireLegacyVisualChild(container, "Scene Battle Line Bottom");
+            RetireLegacyVisualChild(container, "Scene Center Light Core");
+            RetireLegacyVisualChild(container, "Scene Center Light Halo");
+            RetireLegacyVisualChild(container, "Scene Top Hairline");
+            RetireLegacyVisualChild(container, "Scene Bottom Hairline");
+        }
+
+        RectTransform EnsureSceneContainerLayer(RectTransform container, string layerName, int siblingIndex)
+        {
+            Transform existingLayer = container.Find(layerName);
+            RectTransform layerRect;
+            if (existingLayer == null)
+            {
+                var layerObject = new GameObject(layerName, typeof(RectTransform));
+                layerObject.transform.SetParent(container, false);
+                layerRect = layerObject.GetComponent<RectTransform>();
+            }
+            else
+            {
+                layerRect = existingLayer as RectTransform;
+            }
+
+            layerRect.anchorMin = Vector2.zero;
+            layerRect.anchorMax = Vector2.one;
+            layerRect.pivot = new Vector2(0.5f, 0.5f);
+            layerRect.offsetMin = Vector2.zero;
+            layerRect.offsetMax = Vector2.zero;
+            layerRect.localScale = Vector3.one;
+            layerRect.localEulerAngles = Vector3.zero;
+            layerRect.SetSiblingIndex(Mathf.Clamp(siblingIndex, 0, container.childCount - 1));
+            return layerRect;
+        }
+
+        void EnsureSceneContainerBackground(RectTransform layer)
+        {
+            if (layer == null) return;
+
+            Color grid = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.FocusCyan, debugBoardZones ? 0.40f : 0.050f);
+            Color gridSoft = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.SoftWhite, debugBoardZones ? 0.30f : 0.026f);
+            Color dot = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.FocusCyan, debugBoardZones ? 0.45f : 0.080f);
+
+            EnsureSceneContainerImage(layer, "Grid Horizontal Top", new Vector2(0.08f, 0.68f), new Vector2(0.92f, 0.68f), Vector2.zero, new Vector2(0f, 1f), grid);
+            EnsureSceneContainerImage(layer, "Grid Horizontal Center", new Vector2(0.06f, 0.5f), new Vector2(0.94f, 0.5f), Vector2.zero, new Vector2(0f, 1f), gridSoft);
+            EnsureSceneContainerImage(layer, "Grid Horizontal Bottom", new Vector2(0.08f, 0.32f), new Vector2(0.92f, 0.32f), Vector2.zero, new Vector2(0f, 1f), grid);
+            EnsureSceneContainerImage(layer, "Grid Vertical Left", new Vector2(0.28f, 0.16f), new Vector2(0.28f, 0.84f), Vector2.zero, new Vector2(1f, 0f), gridSoft);
+            EnsureSceneContainerImage(layer, "Grid Vertical Center", new Vector2(0.5f, 0.14f), new Vector2(0.5f, 0.86f), Vector2.zero, new Vector2(1f, 0f), grid);
+            EnsureSceneContainerImage(layer, "Grid Vertical Right", new Vector2(0.72f, 0.16f), new Vector2(0.72f, 0.84f), Vector2.zero, new Vector2(1f, 0f), gridSoft);
+            EnsureSceneContainerImage(layer, "Hologram Dot Top", new Vector2(0.5f, 0.78f), new Vector2(0.5f, 0.78f), Vector2.zero, new Vector2(4f, 4f), dot);
+            EnsureSceneContainerImage(layer, "Hologram Dot Bottom", new Vector2(0.5f, 0.22f), new Vector2(0.5f, 0.22f), Vector2.zero, new Vector2(4f, 4f), dot);
+        }
+
+        void EnsureSceneContainerFrame(RectTransform layer)
+        {
+            if (layer == null) return;
+
+            Color cyan = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.FocusCyan, debugBoardZones ? 0.90f : 0.40f);
+            Color cyanSoft = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.FocusCyan, debugBoardZones ? 0.70f : 0.18f);
+            Color pinkSoft = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.BrandPinkLight, debugBoardZones ? 0.70f : 0.14f);
+
+            EnsureSceneContainerImage(layer, "Frame Top Line", new Vector2(0.08f, 1f), new Vector2(0.92f, 1f), new Vector2(0f, -9f), new Vector2(0f, 1.4f), cyan);
+            EnsureSceneContainerImage(layer, "Frame Bottom Line", new Vector2(0.08f, 0f), new Vector2(0.92f, 0f), new Vector2(0f, 9f), new Vector2(0f, 1.4f), cyan);
+            EnsureSceneContainerImage(layer, "Frame Left Line", new Vector2(0f, 0.20f), new Vector2(0f, 0.80f), new Vector2(9f, 0f), new Vector2(1.4f, 0f), cyanSoft);
+            EnsureSceneContainerImage(layer, "Frame Right Line", new Vector2(1f, 0.20f), new Vector2(1f, 0.80f), new Vector2(-9f, 0f), new Vector2(1.4f, 0f), cyanSoft);
+            EnsureSceneContainerImage(layer, "Frame Top Left Notch", new Vector2(0.20f, 1f), new Vector2(0.32f, 1f), new Vector2(0f, -14f), new Vector2(0f, 1f), pinkSoft);
+            EnsureSceneContainerImage(layer, "Frame Bottom Right Notch", new Vector2(0.68f, 0f), new Vector2(0.80f, 0f), new Vector2(0f, 14f), new Vector2(0f, 1f), pinkSoft);
+        }
+
+        void EnsureSceneContainerCornerMarkers(RectTransform layer)
+        {
+            if (layer == null) return;
+
+            Color cyan = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.FocusCyan, debugBoardZones ? 0.96f : 0.62f);
+            Color pink = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.BrandPinkLight, debugBoardZones ? 0.92f : 0.42f);
+
+            EnsureSceneContainerImage(layer, "Corner TL H", new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(30f, -9f), new Vector2(56f, 2f), cyan);
+            EnsureSceneContainerImage(layer, "Corner TL V", new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(9f, -30f), new Vector2(2f, 56f), pink);
+            EnsureSceneContainerImage(layer, "Corner TR H", new Vector2(1f, 1f), new Vector2(1f, 1f), new Vector2(-30f, -9f), new Vector2(56f, 2f), cyan);
+            EnsureSceneContainerImage(layer, "Corner TR V", new Vector2(1f, 1f), new Vector2(1f, 1f), new Vector2(-9f, -30f), new Vector2(2f, 56f), cyan);
+            EnsureSceneContainerImage(layer, "Corner BL H", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(30f, 9f), new Vector2(56f, 2f), pink);
+            EnsureSceneContainerImage(layer, "Corner BL V", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(9f, 30f), new Vector2(2f, 56f), cyan);
+            EnsureSceneContainerImage(layer, "Corner BR H", new Vector2(1f, 0f), new Vector2(1f, 0f), new Vector2(-30f, 9f), new Vector2(56f, 2f), pink);
+            EnsureSceneContainerImage(layer, "Corner BR V", new Vector2(1f, 0f), new Vector2(1f, 0f), new Vector2(-9f, 30f), new Vector2(2f, 56f), pink);
+        }
+
+        void EnsureSceneContainerCenterLight(RectTransform layer)
+        {
+            if (layer == null) return;
+
+            Color cyan = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.FocusCyan, debugBoardZones ? 0.75f : 0.15f);
+            Color cyanSoft = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.FocusCyan, debugBoardZones ? 0.55f : 0.085f);
+            Color pink = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.BrandPinkLight, debugBoardZones ? 0.70f : 0.10f);
+
+            EnsureSceneContainerImage(layer, "Center Light Horizontal", new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(88f, 2f), cyanSoft);
+            EnsureSceneContainerImage(layer, "Center Light Vertical", new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(2f, 42f), cyanSoft);
+            EnsureSceneContainerImage(layer, "Center Light Core", new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(7f, 7f), cyan);
+            EnsureSceneContainerImage(layer, "Center Light Pink Spark", new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(3f, 3f), pink);
+        }
+
+        void EnsureSceneContainerBattleLine(RectTransform layer)
+        {
+            if (layer == null) return;
+
+            Color line = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.FocusCyan, debugBoardZones ? 0.76f : 0.11f);
+            Color edge = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.BrandPinkLight, debugBoardZones ? 0.66f : 0.06f);
+
+            EnsureSceneContainerImage(layer, "Battle Line Opponent", new Vector2(0.5f, 0.56f), new Vector2(0.5f, 1f), new Vector2(0f, -16f), new Vector2(1.2f, 0f), line);
+            EnsureSceneContainerImage(layer, "Battle Line Player", new Vector2(0.5f, 0f), new Vector2(0.5f, 0.44f), new Vector2(0f, 16f), new Vector2(1.2f, 0f), line);
+            EnsureSceneContainerImage(layer, "Battle Line Top Spark", new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -10f), new Vector2(8f, 8f), edge);
+            EnsureSceneContainerImage(layer, "Battle Line Bottom Spark", new Vector2(0.5f, 0f), new Vector2(0.5f, 0f), new Vector2(0f, 10f), new Vector2(8f, 8f), edge);
+        }
+
+        void EnsureSceneContainerOverlay(RectTransform layer)
+        {
+            if (layer == null) return;
+
+            EnsureSceneContainerImage(layer, "Overlay Highlight", Vector2.zero, Vector2.one, Vector2.zero, Vector2.zero, Color.clear);
+            EnsureSceneContainerImage(layer, "Overlay Target Rim", new Vector2(0.04f, 0.10f), new Vector2(0.96f, 0.90f), Vector2.zero, Vector2.zero, Color.clear);
+        }
+
+        RectTransform EnsureSceneContainerImage(RectTransform parent, string objectName, Vector2 anchorMin, Vector2 anchorMax, Vector2 anchoredPosition, Vector2 sizeDelta, Color color)
+        {
+            Transform existing = parent.Find(objectName);
+            RectTransform rect;
+            Image image;
+
+            if (existing == null)
+            {
+                var imageObject = new GameObject(objectName, typeof(RectTransform), typeof(Image));
+                imageObject.transform.SetParent(parent, false);
+                rect = imageObject.GetComponent<RectTransform>();
+                image = imageObject.GetComponent<Image>();
+            }
+            else
+            {
+                rect = existing as RectTransform;
+                image = existing.GetComponent<Image>();
+                if (image == null) image = existing.gameObject.AddComponent<Image>();
+            }
+
+            rect.anchorMin = anchorMin;
+            rect.anchorMax = anchorMax;
+            rect.pivot = new Vector2(0.5f, 0.5f);
+            rect.anchoredPosition = anchoredPosition;
+            rect.sizeDelta = sizeDelta;
+            rect.localScale = Vector3.one;
+            rect.localEulerAngles = Vector3.zero;
+            rect.gameObject.SetActive(true);
+
+            image.enabled = color.a > 0.001f;
+            image.color = color;
+            image.raycastTarget = false;
+            return rect;
         }
 
         void EnsureSceneZoneInnerFrame(RectTransform parent)
@@ -2391,14 +3402,88 @@ namespace UCG
             frameRect.SetAsFirstSibling();
             frameImage.color = debugBoardZones
                 ? new Color(0.04f, 0.24f, 0.28f, 0.24f)
-                : UcgToolUiPalette.WithAlpha(UcgToolUiPalette.DeepGlass, 0.055f);
+                : Color.clear;
             frameImage.raycastTarget = false;
 
             Outline outline = frameRect.GetComponent<Outline>();
             outline.effectColor = debugBoardZones
                 ? new Color(0.78f, 1f, 1f, 0.82f)
-                : UcgToolUiPalette.WithAlpha(UcgToolUiPalette.GlassBorder, 0.22f);
-            outline.effectDistance = new Vector2(1.1f, -1.1f);
+                : UcgToolUiPalette.WithAlpha(UcgToolUiPalette.GlassBorder, 0.14f);
+            outline.effectDistance = new Vector2(0.7f, -0.7f);
+        }
+
+        void EnsureSceneZoneCornerMarkers(RectTransform parent)
+        {
+            if (parent == null) return;
+
+            Color cyan = debugBoardZones
+                ? new Color(0.72f, 1f, 1f, 0.92f)
+                : UcgToolUiPalette.WithAlpha(UcgToolUiPalette.FocusCyan, 0.32f);
+            Color pink = debugBoardZones
+                ? new Color(1f, 0.46f, 0.74f, 0.9f)
+                : UcgToolUiPalette.WithAlpha(UcgToolUiPalette.BrandPinkLight, 0.23f);
+
+            EnsureSceneZoneCornerMarker(parent, "Scene Corner TL H", new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(18f, -14f), new Vector2(34f, 2f), cyan);
+            EnsureSceneZoneCornerMarker(parent, "Scene Corner TL V", new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(14f, -14f), new Vector2(2f, 20f), pink);
+            EnsureSceneZoneCornerMarker(parent, "Scene Corner TR H", new Vector2(1f, 1f), new Vector2(1f, 1f), new Vector2(-18f, -14f), new Vector2(34f, 2f), cyan);
+            EnsureSceneZoneCornerMarker(parent, "Scene Corner TR V", new Vector2(1f, 1f), new Vector2(1f, 1f), new Vector2(-14f, -14f), new Vector2(2f, 20f), pink);
+            EnsureSceneZoneCornerMarker(parent, "Scene Corner BL H", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(18f, 14f), new Vector2(34f, 2f), cyan);
+            EnsureSceneZoneCornerMarker(parent, "Scene Corner BL V", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(14f, 14f), new Vector2(2f, 20f), pink);
+            EnsureSceneZoneCornerMarker(parent, "Scene Corner BR H", new Vector2(1f, 0f), new Vector2(1f, 0f), new Vector2(-18f, 14f), new Vector2(34f, 2f), cyan);
+            EnsureSceneZoneCornerMarker(parent, "Scene Corner BR V", new Vector2(1f, 0f), new Vector2(1f, 0f), new Vector2(-14f, 14f), new Vector2(2f, 20f), pink);
+        }
+
+        void EnsureSceneZoneBattleLines(RectTransform parent)
+        {
+            if (parent == null) return;
+
+            Color cyan = debugBoardZones
+                ? new Color(0.72f, 1f, 1f, 0.95f)
+                : UcgToolUiPalette.WithAlpha(UcgToolUiPalette.FocusCyan, 0.12f);
+            Color pink = debugBoardZones
+                ? new Color(1f, 0.46f, 0.74f, 0.9f)
+                : UcgToolUiPalette.WithAlpha(UcgToolUiPalette.BrandPinkLight, 0.07f);
+
+            EnsureSceneZoneCornerMarker(parent, "Scene Battle Line Top", new Vector2(0.5f, 1f), new Vector2(0.5f, 0f), new Vector2(0f, -4f), new Vector2(1.2f, 34f), cyan);
+            EnsureSceneZoneCornerMarker(parent, "Scene Battle Line Bottom", new Vector2(0.5f, 0f), new Vector2(0.5f, 1f), new Vector2(0f, 4f), new Vector2(1.2f, 34f), cyan);
+            EnsureSceneZoneCornerMarker(parent, "Scene Center Light Core", new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(6f, 6f), pink);
+            EnsureSceneZoneCornerMarker(parent, "Scene Center Light Halo", new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(44f, 3f), UcgToolUiPalette.WithAlpha(UcgToolUiPalette.FocusCyan, debugBoardZones ? 0.72f : 0.055f));
+            EnsureSceneZoneCornerMarker(parent, "Scene Top Hairline", new Vector2(0.24f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -9f), new Vector2(112f, 1.2f), UcgToolUiPalette.WithAlpha(UcgToolUiPalette.FocusCyan, debugBoardZones ? 0.72f : 0.10f));
+            EnsureSceneZoneCornerMarker(parent, "Scene Bottom Hairline", new Vector2(0.76f, 0f), new Vector2(0.5f, 0f), new Vector2(0f, 9f), new Vector2(112f, 1.2f), UcgToolUiPalette.WithAlpha(UcgToolUiPalette.BrandPinkLight, debugBoardZones ? 0.72f : 0.055f));
+        }
+
+        void EnsureSceneZoneCornerMarker(RectTransform parent, string markerName, Vector2 anchor, Vector2 pivot, Vector2 anchoredPosition, Vector2 size, Color color)
+        {
+            Transform existing = parent.Find(markerName);
+            RectTransform markerRect;
+            Image markerImage;
+
+            if (existing == null)
+            {
+                var markerObject = new GameObject(markerName, typeof(RectTransform), typeof(Image));
+                markerObject.transform.SetParent(parent, false);
+                markerRect = markerObject.GetComponent<RectTransform>();
+                markerImage = markerObject.GetComponent<Image>();
+            }
+            else
+            {
+                markerRect = existing as RectTransform;
+                markerImage = existing.GetComponent<Image>();
+                if (markerImage == null) markerImage = existing.gameObject.AddComponent<Image>();
+            }
+
+            markerRect.anchorMin = anchor;
+            markerRect.anchorMax = anchor;
+            markerRect.pivot = pivot;
+            markerRect.anchoredPosition = anchoredPosition;
+            markerRect.sizeDelta = size;
+            markerRect.localScale = Vector3.one;
+            markerRect.localEulerAngles = Vector3.zero;
+            markerRect.SetAsLastSibling();
+
+            markerImage.color = color;
+            markerImage.raycastTarget = false;
+            markerImage.enabled = color.a > 0.001f;
         }
 
         Text EnsureSceneZoneLabel(RectTransform parent)
@@ -2706,7 +3791,7 @@ namespace UCG
                 playerSidePileGroup,
                 "Player Deck Zone",
                 zoneSize,
-                "牌庫",
+                "提示",
                 font,
                 out playerDeckZoneText);
             playerDiscardAnchor = EnsureBattlefieldZoneFrame(
@@ -2714,7 +3799,7 @@ namespace UCG
                 playerSidePileGroup,
                 "Player Discard Zone",
                 zoneSize,
-                "棄牌區",
+                "提示",
                 font,
                 out playerDiscardZoneText);
             opponentDeckAnchor = EnsureBattlefieldZoneFrame(
@@ -2722,7 +3807,7 @@ namespace UCG
                 opponentSidePileGroup,
                 "Opponent Deck Zone",
                 zoneSize,
-                "牌庫",
+                "提示",
                 font,
                 out opponentDeckZoneText);
             opponentDiscardAnchor = EnsureBattlefieldZoneFrame(
@@ -2730,7 +3815,7 @@ namespace UCG
                 opponentSidePileGroup,
                 "Opponent Discard Zone",
                 zoneSize,
-                "棄牌區",
+                "提示",
                 font,
                 out opponentDiscardZoneText);
             ApplyBoardZoneRootLayout(root);
@@ -2750,8 +3835,8 @@ namespace UCG
             float width = pileSlotWidth > 0f ? pileSlotWidth : portraitSize.x;
             float height = pileSlotHeight > 0f ? pileSlotHeight : portraitSize.y;
             return new Vector2(
-                Mathf.Clamp(width, 150f, 210f),
-                Mathf.Clamp(height, 206f, 286f));
+                Mathf.Clamp(width, 96f, 116f),
+                Mathf.Clamp(height, 108f, 136f));
         }
 
         float GetEffectiveSidePileScale()
@@ -2885,29 +3970,27 @@ namespace UCG
                 Mathf.Max(requestedSize.y, zoneSize.y * 4f + desiredGap * 3f + verticalPadding * 2f),
                 rootHeight);
 
-            float visibleRight = GetSceneLayerPileRightReference(root, requestedSize.x, zoneSize);
+            float battleAreaRight = GetBattleAreaRightBoundaryInReference(root, zoneSize);
             float viewportRight = GetVisibleBattlefieldRightInReference(
                 root,
                 root.rect.width > 0f ? root.rect.width : 1040f);
-            float rightSafeMargin = 20f;
-            float baseX = visibleRight == float.MinValue
+            float battleAreaPadding = GetBattleAreaPilePadding();
+            float baseX = battleAreaRight == float.MinValue
                 ? pileRegionPos.x
-                : visibleRight - requestedSize.x * 0.5f - rightSafeMargin;
-            float maxSafeX = viewportRight == float.MinValue
-                ? baseX + Mathf.Max(0f, sidePileColumnNudgeX)
-                : viewportRight - requestedSize.x * 0.5f - rightSafeMargin;
+                : battleAreaRight + battleAreaPadding + requestedSize.x * 0.5f;
+            float maxSafeX = baseX;
             float afterNudgeX = baseX + sidePileColumnNudgeX;
-            float safeX = Mathf.Min(afterNudgeX, maxSafeX);
+            float safeX = maxSafeX;
 
             Vector2 beforePosition = pileSideRegionRoot.anchoredPosition;
             _lastPileRegionNudgeMethod = "ApplyPileSideRegionSafeVisibilityLayout";
             _lastPileRegionXBeforeMethod = beforePosition.x;
             _lastPileRegionXBeforeNudge = baseX;
-            _lastPileRegionXNudgeValue = sidePileColumnNudgeX;
+            _lastPileRegionXNudgeValue = safeX - baseX;
             _lastPileRegionXAfterNudge = afterNudgeX;
             _lastPileRegionXMaxSafeClamp = maxSafeX;
             _lastPileRegionXAfterClamp = safeX;
-            _lastPileRegionVisibleRight = visibleRight;
+            _lastPileRegionVisibleRight = battleAreaRight;
             _lastPileRegionViewportRight = viewportRight;
             _lastPileRegionClampApplied = Mathf.Abs(safeX - afterNudgeX) > 0.1f;
             _lastPileRegionLayoutFrame = Time.frameCount;
@@ -2919,7 +4002,7 @@ namespace UCG
             pileSideRegionRoot.localScale = Vector3.one;
             pileSideRegionRoot.localEulerAngles = Vector3.zero;
             pileSideRegionRoot.gameObject.SetActive(true);
-            pileSideRegionRoot.SetAsLastSibling();
+            pileSideRegionRoot.SetAsFirstSibling();
             EnsureVisibleCanvasGroup(pileSideRegionRoot, 1f);
             EnsureBoardRegionVisual(pileSideRegionRoot, "Pile Side Region");
             _lastPileRegionXAfterApply = pileSideRegionRoot.anchoredPosition.x;
@@ -3071,11 +4154,47 @@ namespace UCG
         {
             if (!IsBoardZoneRootUnderBattlefieldContent(root))
             {
-                return GetVisibleBattlefieldRightInReference(root, root != null && root.rect.width > 0f ? root.rect.width : 1040f);
+                float battleAreaRight = GetBattleAreaRightBoundaryInReference(root, zoneSize);
+                return battleAreaRight == float.MinValue
+                    ? GetVisibleBattlefieldRightInReference(root, root != null && root.rect.width > 0f ? root.rect.width : 1040f)
+                    : battleAreaRight + GetBattleAreaPilePadding() + regionWidth;
             }
 
             float columnX = GetSceneLayerPileColumnX(root, zoneSize);
             return columnX == float.MinValue ? float.MinValue : columnX + regionWidth * 0.5f + 20f;
+        }
+
+        float GetBattleAreaPilePadding()
+        {
+            return Mathf.Max(
+                MinSidePileLaneGap,
+                Mathf.Max(Mathf.Max(sidePileMinGapFromLane, combatToPileGapX), sidePileToLaneGap));
+        }
+
+        float GetBattleAreaRightBoundaryInReference(RectTransform reference, Vector2 zoneSize)
+        {
+            if (reference == null) return float.MinValue;
+
+            float right = float.MinValue;
+
+            float laneRight = GetRightmostLaneRightInReference(reference);
+            if (laneRight != float.MinValue)
+            {
+                right = Mathf.Max(right, laneRight);
+            }
+
+            RectTransform sceneFrame = GetSceneZoneFrameRect();
+            if (sceneFrame != null && sceneFrame.gameObject.activeInHierarchy)
+            {
+                right = Mathf.Max(right, GetRectInReferenceSpace(reference, sceneFrame).xMax);
+            }
+
+            if (right == float.MinValue && battlefieldManager != null && battlefieldManager.content != null)
+            {
+                right = GetRectInReferenceSpace(reference, battlefieldManager.content).xMax;
+            }
+
+            return right;
         }
 
         float GetSceneLayerPileColumnX(RectTransform root, Vector2 zoneSize)
@@ -3085,7 +4204,7 @@ namespace UCG
             float laneRight = GetRightmostLaneRightInReference(root);
             if (laneRight == float.MinValue) return float.MinValue;
 
-            float gap = Mathf.Max(0f, Mathf.Max(Mathf.Max(sidePileMinGapFromLane, combatToPileGapX), sidePileToLaneGap));
+            float gap = Mathf.Max(MinSidePileLaneGap, Mathf.Max(Mathf.Max(sidePileMinGapFromLane, combatToPileGapX), sidePileToLaneGap));
             float desiredX = laneRight + gap + zoneSize.x * 0.5f;
             if (root.rect.width <= 0f) return desiredX;
 
@@ -3159,7 +4278,7 @@ namespace UCG
             float maxLaneRight = GetRightmostLaneRightInReference(root);
 
             if (maxLaneRight == float.MinValue) return float.MinValue;
-            float sectionGap = Mathf.Max(0f, Mathf.Max(Mathf.Max(sidePileMinGapFromLane, combatToPileGapX), combatToPileGap));
+            float sectionGap = Mathf.Max(MinSidePileLaneGap, Mathf.Max(Mathf.Max(sidePileMinGapFromLane, combatToPileGapX), combatToPileGap));
             return maxLaneRight + sectionGap + zoneSize.x * 0.5f;
         }
 
@@ -3185,13 +4304,24 @@ namespace UCG
 
             if (lanes == null) return;
 
+            float horizontalOverhang = GetHorizontalCardRightOverhang();
             for (int i = 0; i < lanes.Count; i++)
             {
                 UcgBattleLane lane = lanes[i];
                 if (lane == null || !lane.gameObject.activeInHierarchy) continue;
 
-                playerRightEdge = Mathf.Max(playerRightEdge, GetRectRightInReference(root, lane.playerSlot));
-                opponentRightEdge = Mathf.Max(opponentRightEdge, GetRectRightInReference(root, lane.opponentSlot));
+                playerRightEdge = Mathf.Max(playerRightEdge, GetRectRightInReference(root, lane.playerSlot) + horizontalOverhang);
+                opponentRightEdge = Mathf.Max(opponentRightEdge, GetRectRightInReference(root, lane.opponentSlot) + horizontalOverhang);
+            }
+        }
+
+        void EnsureCardMoveAnimationSystem()
+        {
+            if (_cardMoveAnimationSystem != null) return;
+            _cardMoveAnimationSystem = GetComponent<UcgCardMoveAnimationSystem>();
+            if (_cardMoveAnimationSystem == null)
+            {
+                _cardMoveAnimationSystem = gameObject.AddComponent<UcgCardMoveAnimationSystem>();
             }
         }
 
@@ -3774,7 +4904,7 @@ namespace UCG
 
             return $"{label}:\n"
                 + $"name={rect.name}\n"
-                + $"parentName={(rect.parent != null ? rect.parent.name : "none")}\n"
+                + $"parent={(rect.parent != null ? rect.parent.name : "none")}\n"
                 + $"parentPath={FormatParentPath(rect)}\n"
                 + $"anchorMin={FormatVector2(rect.anchorMin)}\n"
                 + $"anchorMax={FormatVector2(rect.anchorMax)}\n"
@@ -3796,7 +4926,7 @@ namespace UCG
             return "PileNudge:\n"
                 + $"sidePileColumnNudgeX={sidePileColumnNudgeX:0.###}\n"
                 + $"appliedMethod={_lastPileRegionNudgeMethod}\n"
-                + $"activeLayout={(useFixedReferenceBoardLayout ? "ReferenceBoardLayout" : "DynamicBoardLayout")}\n"
+                + $"layoutMode={(useFixedReferenceBoardLayout ? "ReferenceBoardLayout" : "DynamicBoardLayout")}\n"
                 + $"layoutFrame={_lastPileRegionLayoutFrame}\n"
                 + $"visibleRight={FormatDebugFloat(_lastPileRegionVisibleRight)}\n"
                 + $"viewportRight={FormatDebugFloat(_lastPileRegionViewportRight)}\n"
@@ -3860,9 +4990,22 @@ namespace UCG
             Image image = zone.GetComponent<Image>();
             if (image != null)
             {
-                image.color = debugBoardZones
-                    ? new Color(0.18f, 0.06f, 0.30f, 0.86f)
-                    : UcgToolUiPalette.WithAlpha(UcgToolUiPalette.DeepGlass, Mathf.Max(sidePileBackgroundAlpha, 0.28f));
+                if (debugBoardZones)
+                {
+                    image.color = new Color(0.18f, 0.06f, 0.30f, 0.86f);
+                }
+                else
+                {
+                    Color accent = zone.name.Contains("Discard") ? UcgToolUiPalette.BrandPinkLight : UcgToolUiPalette.FocusCyan;
+                    ApplyGlassSurface(
+                        zone,
+                        image,
+                        accent,
+                        Mathf.Clamp(sidePileBackgroundAlpha, 0.72f, 0.82f),
+                        Mathf.Clamp(sidePileOutlineAlpha, 0.18f, 0.26f),
+                        0.11f,
+                        false);
+                }
                 image.raycastTarget = false;
             }
 
@@ -3870,10 +5013,23 @@ namespace UCG
             if (outline != null)
             {
                 outline.enabled = true;
-                outline.effectColor = debugBoardZones
-                    ? new Color(1f, 0.92f, 0.12f, 1f)
-                    : UcgToolUiPalette.WithAlpha(UcgToolUiPalette.GlassBorder, Mathf.Min(Mathf.Max(sidePileOutlineAlpha, 0.26f), 0.34f));
-                outline.effectDistance = debugBoardZones ? new Vector2(3.2f, -3.2f) : new Vector2(1.2f, -1.2f);
+                if (debugBoardZones)
+                {
+                    outline.effectColor = new Color(1f, 0.92f, 0.12f, 1f);
+                    outline.effectDistance = new Vector2(3.2f, -3.2f);
+                }
+            }
+
+            Shadow shadow = EnsureUiShadow(zone.gameObject);
+            if (shadow != null)
+            {
+                if (debugBoardZones)
+                {
+                    shadow.effectColor = new Color(0f, 0f, 0f, 0.42f);
+                    shadow.effectDistance = new Vector2(0f, -4f);
+                    shadow.useGraphicAlpha = true;
+                    SetGlassSurfaceOverlayAlpha(zone, 0f);
+                }
             }
 
             Transform frameTransform = zone.Find("Card Frame");
@@ -3882,7 +5038,7 @@ namespace UCG
             {
                 frameImage.color = debugBoardZones
                     ? new Color(0.95f, 0.82f, 0.06f, 0.46f)
-                    : UcgToolUiPalette.WithAlpha(UcgToolUiPalette.DeepGlass, 0.12f);
+                    : UcgToolUiPalette.WithAlpha(UcgToolUiPalette.DeepGlass, 0.30f);
                 frameImage.raycastTarget = false;
             }
 
@@ -3892,9 +5048,11 @@ namespace UCG
                 frameOutline.enabled = true;
                 frameOutline.effectColor = debugBoardZones
                     ? new Color(1f, 0.96f, 0.18f, 1f)
-                    : UcgToolUiPalette.WithAlpha(UcgToolUiPalette.GlassBorder, 0.24f);
-                frameOutline.effectDistance = debugBoardZones ? new Vector2(2f, -2f) : new Vector2(0.9f, -0.9f);
+                    : UcgToolUiPalette.WithAlpha(UcgToolUiPalette.GlassBorder, 0.12f);
+                frameOutline.effectDistance = debugBoardZones ? new Vector2(2f, -2f) : new Vector2(0.7f, -0.7f);
             }
+
+            EnsureZoneInfoCardDecor(zone, zone.name.Contains("Discard"));
 
             Text label = zone.Find("Zone Label") != null ? zone.Find("Zone Label").GetComponent<Text>() : null;
             if (label != null)
@@ -3910,26 +5068,34 @@ namespace UCG
                 {
                     label.text = GetOpponentPileZoneLabel(zone);
                     label.gameObject.SetActive(true);
-                    label.fontSize = 16;
-                    label.resizeTextMaxSize = 16;
+                    label.fontSize = 12;
+                    label.resizeTextMaxSize = 12;
                     label.color = UcgToolUiPalette.MutedWhite;
                 }
                 else if (zone == playerDeckAnchor)
                 {
-                    label.text = "牌庫";
+                    label.text = "提示";
                     label.gameObject.SetActive(true);
-                    label.fontSize = 16;
-                    label.resizeTextMaxSize = 16;
+                    label.fontSize = 12;
+                    label.resizeTextMaxSize = 12;
                     label.color = UcgToolUiPalette.MutedWhite;
                 }
                 else if (zone == playerDiscardAnchor)
                 {
-                    label.text = "棄牌區";
+                    label.text = "提示";
                     label.gameObject.SetActive(true);
-                    label.fontSize = 16;
-                    label.resizeTextMaxSize = 16;
+                    label.fontSize = 12;
+                    label.resizeTextMaxSize = 12;
                     label.color = UcgToolUiPalette.MutedWhite;
                 }
+            }
+
+            if (label != null && !debugBoardZones)
+            {
+                label.fontSize = 12;
+                label.resizeTextMinSize = 9;
+                label.resizeTextMaxSize = 12;
+                label.color = UcgToolUiPalette.MutedWhite;
             }
 
             Text count = zone.Find("Zone Count") != null ? zone.Find("Zone Count").GetComponent<Text>() : null;
@@ -3937,7 +5103,7 @@ namespace UCG
             {
                 count.gameObject.SetActive(true);
                 count.fontSize = debugBoardZones ? 20 : 36;
-                count.resizeTextMinSize = debugBoardZones ? 10 : 18;
+                count.resizeTextMinSize = debugBoardZones ? 10 : 20;
                 count.resizeTextMaxSize = debugBoardZones ? 20 : 36;
                 count.color = debugBoardZones
                     ? new Color(1f, 1f, 1f, 1f)
@@ -3949,8 +5115,8 @@ namespace UCG
 
         string GetOpponentPileZoneLabel(RectTransform zone)
         {
-            if (zone == opponentDeckAnchor) return "牌庫";
-            if (zone == opponentDiscardAnchor) return "棄牌區";
+            if (zone == opponentDeckAnchor) return "提示";
+            if (zone == opponentDiscardAnchor) return "提示";
             return "";
         }
 
@@ -4019,7 +5185,7 @@ namespace UCG
         RectTransform EnsurePileSideRegionRoot(RectTransform root)
         {
             pileSideRegionRoot = EnsureBoardRegionRoot(root, "Pile Side Region", pileRegionPos, pileRegionSize);
-            if (pileSideRegionRoot != null) pileSideRegionRoot.SetAsLastSibling();
+            if (pileSideRegionRoot != null) pileSideRegionRoot.SetAsFirstSibling();
             return pileSideRegionRoot;
         }
 
@@ -4120,9 +5286,9 @@ namespace UCG
 
         RectTransform GetBoardZoneParentRoot()
         {
-            if (battlefieldManager != null && battlefieldManager.content != null)
+            if (battlefieldManager != null && battlefieldManager.viewport != null)
             {
-                return battlefieldManager.content;
+                return battlefieldManager.viewport;
             }
 
             if (battlefieldManager != null)
@@ -4140,7 +5306,7 @@ namespace UCG
             if (battlefieldManager != null
                 && (rootRect.parent == battlefieldManager.content || rootRect.parent == battlefieldManager.transform))
             {
-                rootRect.SetAsLastSibling();
+                rootRect.SetAsFirstSibling();
                 return;
             }
 
@@ -4292,32 +5458,51 @@ namespace UCG
             EnsureVisibleCanvasGroup(rect, 1f);
             rect.SetAsLastSibling();
             image.enabled = true;
-            ApplyRoundedPanelImage(image);
-            image.color = debugBoardZones
-                ? new Color(0.025f, 0.18f, 0.24f, 0.74f)
-                : UcgToolUiPalette.WithAlpha(UcgToolUiPalette.DeepGlass, Mathf.Max(sidePileBackgroundAlpha, 0.28f));
-            image.raycastTarget = false;
+            if (debugBoardZones)
+            {
+                ApplyRoundedPanelImage(image);
+                image.color = new Color(0.025f, 0.18f, 0.24f, 0.74f);
+                image.raycastTarget = false;
 
-            Outline outline = rect.GetComponent<Outline>();
-            outline.enabled = true;
-            outline.effectColor = debugBoardZones
-                ? new Color(0.85f, 1f, 1f, 1f)
-                : UcgToolUiPalette.WithAlpha(UcgToolUiPalette.GlassBorder, Mathf.Min(Mathf.Max(sidePileOutlineAlpha, 0.26f), 0.34f));
-            outline.effectDistance = debugBoardZones ? new Vector2(1.9f, -1.9f) : new Vector2(1.2f, -1.2f);
+                Outline debugOutline = rect.GetComponent<Outline>();
+                debugOutline.enabled = true;
+                debugOutline.effectColor = new Color(0.85f, 1f, 1f, 1f);
+                debugOutline.effectDistance = new Vector2(1.9f, -1.9f);
 
-            Shadow shadow = EnsureUiShadow(rect.gameObject);
-            shadow.effectColor = new Color(0f, 0.08f, 0.16f, 0.16f);
-            shadow.effectDistance = new Vector2(0f, -3f);
-            shadow.useGraphicAlpha = true;
+                Shadow debugShadow = EnsureUiShadow(rect.gameObject);
+                debugShadow.effectColor = new Color(4f / 255f, 9f / 255f, 18f / 255f, 0.34f);
+                debugShadow.effectDistance = new Vector2(0f, -5f);
+                debugShadow.useGraphicAlpha = true;
+                SetGlassSurfaceOverlayAlpha(rect, 0f);
+            }
+            else
+            {
+                Color accent = objectName.Contains("Discard") ? UcgToolUiPalette.BrandPinkLight : UcgToolUiPalette.FocusCyan;
+                ApplyGlassSurface(
+                    rect,
+                    image,
+                    accent,
+                    Mathf.Clamp(sidePileBackgroundAlpha, 0.80f, 0.90f),
+                    Mathf.Clamp(sidePileOutlineAlpha, 0.24f, 0.34f),
+                    0.15f,
+                    false);
+            }
 
             EnsureZoneInnerFrame(rect);
+            EnsureZoneInfoCardDecor(rect, objectName.Contains("Discard"));
             bool hasLabel = !string.IsNullOrWhiteSpace(label);
-            Text titleText = EnsureZoneText(rect, "Zone Label", new Vector2(0.1f, 0.67f), new Vector2(0.9f, 0.87f), font, 16, UcgToolUiPalette.MutedWhite);
+            Text titleText = EnsureZoneText(rect, "Zone Label", new Vector2(0.14f, 0.70f), new Vector2(0.86f, 0.88f), font, 11, UcgToolUiPalette.MutedWhite);
             titleText.text = label;
             titleText.gameObject.SetActive(hasLabel || debugBoardZones);
+            titleText.resizeTextMinSize = 9;
+            titleText.resizeTextMaxSize = 12;
             countText = hasLabel
-                ? EnsureZoneText(rect, "Zone Count", new Vector2(0.12f, 0.25f), new Vector2(0.88f, 0.57f), font, 36, UcgToolUiPalette.BrandPinkLight)
-                : EnsureZoneText(rect, "Zone Count", new Vector2(0.18f, 0.33f), new Vector2(0.82f, 0.63f), font, 36, UcgToolUiPalette.BrandPinkLight);
+                ? EnsureZoneText(rect, "Zone Count", new Vector2(0.12f, 0.17f), new Vector2(0.88f, 0.64f), font, 40, UcgToolUiPalette.BrandPinkLight)
+                : EnsureZoneText(rect, "Zone Count", new Vector2(0.18f, 0.20f), new Vector2(0.82f, 0.66f), font, 40, UcgToolUiPalette.BrandPinkLight);
+            countText.resizeTextMinSize = 20;
+            countText.resizeTextMaxSize = 40;
+            titleText.transform.SetAsLastSibling();
+            countText.transform.SetAsLastSibling();
             EnsureBoardZoneDebugText(rect, font);
             return rect;
         }
@@ -4415,8 +5600,8 @@ namespace UCG
                 if (existingFrame.GetComponent<Outline>() == null) existingFrame.gameObject.AddComponent<Outline>();
             }
 
-            frameRect.anchorMin = new Vector2(0.09f, 0.08f);
-            frameRect.anchorMax = new Vector2(0.91f, 0.92f);
+            frameRect.anchorMin = new Vector2(0.08f, 0.17f);
+            frameRect.anchorMax = new Vector2(0.92f, 0.68f);
             frameRect.offsetMin = Vector2.zero;
             frameRect.offsetMax = Vector2.zero;
             frameRect.gameObject.SetActive(true);
@@ -4424,15 +5609,94 @@ namespace UCG
             ApplyRoundedPanelImage(frameImage);
             frameImage.color = debugBoardZones
                 ? new Color(0.04f, 0.26f, 0.32f, 0.32f)
-                : UcgToolUiPalette.WithAlpha(UcgToolUiPalette.DeepGlass, 0.12f);
+                : UcgToolUiPalette.WithAlpha(UcgToolUiPalette.DeepGlass, 0.10f);
             frameImage.raycastTarget = false;
 
             Outline outline = frameRect.GetComponent<Outline>();
             outline.enabled = true;
             outline.effectColor = debugBoardZones
                 ? new Color(0.85f, 1f, 1f, 0.95f)
-                : UcgToolUiPalette.WithAlpha(UcgToolUiPalette.GlassBorder, 0.24f);
-            outline.effectDistance = debugBoardZones ? new Vector2(1.1f, -1.1f) : new Vector2(0.9f, -0.9f);
+                : UcgToolUiPalette.WithAlpha(UcgToolUiPalette.GlassBorder, 0.18f);
+            outline.effectDistance = debugBoardZones ? new Vector2(1.1f, -1.1f) : new Vector2(0.6f, -0.6f);
+
+            Shadow shadow = EnsureUiShadow(frameRect.gameObject);
+            shadow.effectColor = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.GlassShadow, 0.08f);
+            shadow.effectDistance = new Vector2(0f, -1.5f);
+            shadow.useGraphicAlpha = true;
+        }
+
+        void EnsureZoneInfoCardDecor(RectTransform parent, bool isDiscard)
+        {
+            if (parent == null) return;
+
+            Color accent = isDiscard ? UcgToolUiPalette.BrandPinkLight : UcgToolUiPalette.FocusCyan;
+            RectTransform valueGlow = EnsureZoneDecorImage(
+                parent,
+                "Zone Value Glow",
+                new Vector2(0.16f, 0.24f),
+                new Vector2(0.84f, 0.58f),
+                Vector2.zero,
+                Vector2.zero,
+                UcgToolUiPalette.WithAlpha(UcgToolUiPalette.BrandPink, debugBoardZones ? 0.18f : 0.030f),
+                true);
+            RectTransform accentLine = EnsureZoneDecorImage(
+                parent,
+                "Zone Accent Line",
+                new Vector2(0.16f, 0.90f),
+                new Vector2(0.84f, 0.90f),
+                Vector2.zero,
+                new Vector2(0f, 2f),
+                UcgToolUiPalette.WithAlpha(accent, debugBoardZones ? 0.9f : 0.26f),
+                false);
+            RectTransform accentDot = EnsureZoneDecorImage(
+                parent,
+                "Zone Accent Dot",
+                new Vector2(0.5f, 0.095f),
+                new Vector2(0.5f, 0.095f),
+                new Vector2(-3f, -3f),
+                new Vector2(3f, 3f),
+                UcgToolUiPalette.WithAlpha(accent, debugBoardZones ? 1f : 0.40f),
+                true);
+
+            if (valueGlow != null) valueGlow.SetSiblingIndex(Mathf.Min(1, parent.childCount - 1));
+            if (accentLine != null) accentLine.SetSiblingIndex(Mathf.Min(2, parent.childCount - 1));
+            if (accentDot != null) accentDot.SetSiblingIndex(Mathf.Min(3, parent.childCount - 1));
+        }
+
+        RectTransform EnsureZoneDecorImage(RectTransform parent, string objectName, Vector2 anchorMin, Vector2 anchorMax, Vector2 offsetMin, Vector2 offsetMax, Color color, bool rounded)
+        {
+            if (parent == null) return null;
+
+            Transform existing = parent.Find(objectName);
+            RectTransform rect;
+            Image image;
+
+            if (existing == null)
+            {
+                var decorObject = new GameObject(objectName, typeof(RectTransform), typeof(Image));
+                decorObject.transform.SetParent(parent, false);
+                rect = decorObject.GetComponent<RectTransform>();
+                image = decorObject.GetComponent<Image>();
+            }
+            else
+            {
+                rect = existing as RectTransform;
+                image = existing.GetComponent<Image>();
+                if (image == null) image = existing.gameObject.AddComponent<Image>();
+            }
+
+            rect.anchorMin = anchorMin;
+            rect.anchorMax = anchorMax;
+            rect.offsetMin = offsetMin;
+            rect.offsetMax = offsetMax;
+            rect.localScale = Vector3.one;
+            rect.localEulerAngles = Vector3.zero;
+
+            if (rounded) ApplyRoundedPanelImage(image);
+            image.enabled = color.a > 0.001f;
+            image.color = color;
+            image.raycastTarget = false;
+            return rect;
         }
 
         void EnsureBoardZoneDebugText(RectTransform parent, Font font)
@@ -4538,8 +5802,7 @@ namespace UCG
             panelRect.sizeDelta = new Vector2(720f, 620f);
             panelRect.SetAsLastSibling();
 
-            panelImage.color = new Color(0.03f, 0.06f, 0.08f, 0.94f);
-            panelImage.raycastTarget = true;
+            ApplyGlassSurface(panelRect, panelImage, UcgToolUiPalette.BrandPinkLight, 0.82f, 0.28f, 0.18f, true);
 
             discardPilePanel = panelRect;
             discardPilePanelText = EnsureDiscardPilePanelText(panelRect);
@@ -4574,7 +5837,7 @@ namespace UCG
             textRect.offsetMax = new Vector2(-34f, -34f);
 
             text.alignment = TextAnchor.UpperLeft;
-            text.color = Color.white;
+            text.color = UcgToolUiPalette.BodyWhite;
             Font placeholderFont = LoadPlaceholderFont();
             if (placeholderFont != null) text.font = placeholderFont;
             text.fontSize = 24;
@@ -4613,10 +5876,7 @@ namespace UCG
             buttonRect.anchoredPosition = new Vector2(-22f, -18f);
             buttonRect.sizeDelta = new Vector2(128f, 52f);
 
-            var image = button.GetComponent<Image>();
-            image.color = new Color(0.18f, 0.24f, 0.32f, 0.92f);
-            image.raycastTarget = true;
-            button.targetGraphic = image;
+            ApplyTopHudButtonStyle(button);
             button.onClick.RemoveListener(HideDiscardPilePanel);
             button.onClick.AddListener(HideDiscardPilePanel);
 
@@ -4735,31 +5995,32 @@ namespace UCG
                 if (text == null) text = existingText.gameObject.AddComponent<Text>();
             }
 
-            textRect.anchorMin = new Vector2(0.5f, 0f);
-            textRect.anchorMax = new Vector2(0.5f, 0f);
-            textRect.pivot = new Vector2(0.5f, 0.5f);
-            textRect.anchoredPosition = new Vector2(0f, 1596f);
-            textRect.sizeDelta = new Vector2(600f, 36f);
+            textRect.anchorMin = new Vector2(0.5f, 1f);
+            textRect.anchorMax = new Vector2(0.5f, 1f);
+            textRect.pivot = new Vector2(0.5f, 1f);
+            textRect.anchoredPosition = new Vector2(0f, -142f);
+            textRect.sizeDelta = new Vector2(440f, 30f);
 
             text.alignment = TextAnchor.MiddleCenter;
-            text.color = new Color(1f, 1f, 1f, 0.94f);
+            text.color = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.SoftWhite, 0.88f);
             Font placeholderFont = LoadPlaceholderFont();
             if (placeholderFont != null)
             {
                 text.font = placeholderFont;
             }
-            text.fontSize = 16;
+            text.fontSize = 13;
             text.resizeTextForBestFit = true;
-            text.resizeTextMinSize = 11;
-            text.resizeTextMaxSize = 16;
+            text.resizeTextMinSize = 10;
+            text.resizeTextMaxSize = 13;
             text.raycastTarget = false;
             gameResultText = text;
-            EnsureHudBackplate(
+            Image panelImage = EnsureHudBackplate(
                 "Game Result HUD Panel",
                 textRect,
-                UcgToolUiPalette.WithAlpha(UcgToolUiPalette.DeepGlass, 0.24f),
-                UcgToolUiPalette.WithAlpha(UcgToolUiPalette.GlassBorder, 0.12f),
-                new Vector2(14f, 6f));
+                UcgToolUiPalette.WithAlpha(UcgToolUiPalette.DeepGlass, 0.54f),
+                UcgToolUiPalette.WithAlpha(UcgToolUiPalette.GlassBorder, 0.20f),
+                new Vector2(18f, 8f));
+            StyleNavigationPillPanel(panelImage != null ? panelImage.transform as RectTransform : null);
             ResetGameResultText();
 
             return text;
@@ -4769,7 +6030,7 @@ namespace UCG
         {
             if (gameResultText != null)
             {
-                gameResultText.text = "勝利路數：我方 0｜對手 0";
+                gameResultText.text = "勝負：我方 0 / 對手 0";
                 SetGameResultHudVisible(false);
             }
         }
@@ -4841,9 +6102,9 @@ namespace UCG
                 : _topPromptActionText;
             string helperText = GetTopPromptHelperText(actionText);
 
-            return $"<size=17><color={UcgToolUiPalette.SoftWhiteHex}>{phaseText}</color></size>\n"
-                + $"<size=24><color={UcgToolUiPalette.BrandPinkLightHex}>{actionText}</color></size>\n"
-                + $"<size=13><color={UcgToolUiPalette.MutedWhiteHex}>{helperText}</color></size>";
+            return $"<size=13><color={UcgToolUiPalette.SoftWhiteHex}>{phaseText}</color></size>\n"
+                + $"<size=23><color={UcgToolUiPalette.BrandPinkLightHex}>{actionText}</color></size>\n"
+                + $"<size=12><color={UcgToolUiPalette.MutedWhiteHex}>{helperText}</color></size>";
         }
 
         void SetTopPromptProgress(float progress, bool visible)
@@ -4869,7 +6130,7 @@ namespace UCG
         string GetTopPromptPhaseText()
         {
             if (IsGameOver) return "遊戲結束";
-            if (phaseManager == null) return "對戰準備";
+            if (phaseManager == null) return "準備中";
 
             switch (phaseManager.CurrentPhase)
             {
@@ -4877,7 +6138,7 @@ namespace UCG
                 case UcgGamePhase.BattleEffect:
                     return "效果處理階段";
                 case UcgGamePhase.BattleJudgement:
-                    return "判定階段";
+                    return "戰鬥判定階段";
                 default:
                     return phaseManager.GetPhaseDisplayName();
             }
@@ -4885,65 +6146,63 @@ namespace UCG
 
         string GetDefaultTopPromptActionText()
         {
-            if (IsGameOver) return "請確認對戰結果";
-            if (phaseManager == null) return "請準備開始對戰";
+            if (IsGameOver) return "查看本局結果";
+            if (phaseManager == null) return "準備開始對戰";
 
             switch (phaseManager.CurrentPhase)
             {
                 case UcgGamePhase.SceneSetup:
-                    return "請選擇一張場景卡";
+                    return "請設置可用的場景卡";
                 case UcgGamePhase.CharacterSetup:
                     return "請選擇一張角色卡";
                 case UcgGamePhase.Upgrade:
-                    return "請選擇您想升級的角色";
+                    return "可以升級已登場角色，也可以直接結束升級";
                 case UcgGamePhase.Open:
-                    return "請確認翻開的卡牌";
+                    return "公開雙方設置的卡牌";
                 case UcgGamePhase.EnterEffect:
                 case UcgGamePhase.BattleEffect:
-                    return "請選擇效果目標";
+                    return "正在處理卡牌效果";
                 case UcgGamePhase.BattleJudgement:
-                    return "正在比較雙方 BP";
+                    return "正在判定雙方 BP";
                 case UcgGamePhase.End:
-                    return "正在清理本回合效果";
+                    return "回合結束，整理戰場狀態";
                 case UcgGamePhase.Draw:
-                    return "正在補充手牌";
+                    return "抽 1 張牌";
                 default:
-                    return "請依照高亮提示操作";
+                    return "依照提示完成目前操作";
             }
         }
 
         string GetTopPromptHelperText(string actionText)
         {
-            if (IsGameOver) return "可以重新開始或切換測試";
+            if (IsGameOver) return "對戰已結束，請查看勝負結果。";
             if (!string.IsNullOrWhiteSpace(actionText))
             {
-                if (actionText.Contains("升級")) return "疊放到同名角色上，或點擊結束升級階段";
-                if (actionText.Contains("效果") || actionText.Contains("目標")) return "依照高亮提示完成操作";
-                if (actionText.Contains("放回") || actionText.Contains("放到牌庫") || actionText.Contains("放到底")) return "選擇後會依效果放回指定位置";
-                if (actionText.Contains("場景")) return "拖放到中央場景區；沒有合適卡牌可略過";
-                if (actionText.Contains("角色卡")) return "放到目前開放的 Lane 上";
-                if (actionText.Contains("BP")) return "勝利的 Lane 會保留，失敗的 Lane 會橫置";
+                if (actionText.Contains("選擇") || actionText.Contains("設置")) return "選好卡牌後，依照亮起的區域完成操作。";
+                if (actionText.Contains("Lane") || actionText.Contains("路")) return "請選擇要處理的路線。";
+                if (actionText.Contains("角色")) return "請選擇可放置或可處理的角色區。";
+                if (actionText.Contains("BP")) return "比較同一路雙方 BP，決定戰鬥結果。";
             }
 
-            if (phaseManager == null) return "文字提示說明目標，高亮提示顯示可操作區域";
+            if (phaseManager == null) return "正在初始化對戰資料。";
 
             switch (phaseManager.CurrentPhase)
             {
                 case UcgGamePhase.SceneSetup:
-                    return "拖放到中央場景區；沒有合適卡牌可略過";
+                    return "場景卡會影響之後的判定與效果。";
                 case UcgGamePhase.CharacterSetup:
-                    return "放到目前開放的 Lane 上";
+                    return "角色卡設置後會在該路進行戰鬥。";
                 case UcgGamePhase.Upgrade:
-                    return "疊放到同名角色上，或點擊結束升級階段";
+                    return "升級會覆蓋同一路角色，請確認 BP 與效果。";
                 case UcgGamePhase.EnterEffect:
                 case UcgGamePhase.BattleEffect:
-                    return "依照高亮提示完成操作";
+                    return "效果會依照規則順序依序處理。";
                 case UcgGamePhase.BattleJudgement:
-                    return "勝利的 Lane 會保留，失敗的 Lane 會橫置";
+                    return "BP 較高的一方贏得該路判定。";
                 case UcgGamePhase.End:
-                    return "準備進入下一回合";
+                    return "整理完成後會進入下一回合。";
                 default:
-                    return "文字提示說明目標，高亮提示顯示可操作區域";
+                    return "依照提示完成目前操作。";
             }
         }
 
@@ -4985,14 +6244,14 @@ namespace UCG
             if (string.IsNullOrWhiteSpace(line)) return "";
 
             line = line.Trim();
-            int dividerIndex = line.LastIndexOf('｜');
+            int dividerIndex = line.LastIndexOf('\uFF5C');
             if (dividerIndex >= 0 && dividerIndex < line.Length - 1)
             {
                 string tail = line.Substring(dividerIndex + 1).Trim();
                 if (IsActionPromptLine(tail)) return tail;
             }
 
-            int colonIndex = line.IndexOf('：');
+            int colonIndex = line.IndexOf('\uFF1A');
             if (colonIndex >= 0 && colonIndex < line.Length - 1)
             {
                 string tail = line.Substring(colonIndex + 1).Trim();
@@ -5005,19 +6264,19 @@ namespace UCG
         bool IsActionPromptLine(string line)
         {
             if (string.IsNullOrWhiteSpace(line)) return false;
-            if (line.Contains("本回合先攻") || line.Contains("勝利路數") || line.Contains("遊戲結束")) return false;
-            if (line.StartsWith("對手") && !line.Contains("請選擇對手")) return false;
-            if (line.Contains("準備進入") || line.Contains("正在比較") || line.Contains("已完成")) return false;
+            if (line.Contains("done") || line.Contains("complete") || line.Contains("game over")) return false;
+            if (line.StartsWith("Opponent") && !line.Contains("select")) return false;
+            if (line.Contains("finished") || line.Contains("judgement") || line.Contains("returned")) return false;
 
-            return line.Contains("請選擇")
-                || line.Contains("請先選擇")
-                || line.Contains("請依序選擇")
-                || line.Contains("可以升級")
-                || line.Contains("可以設置")
-                || line.Contains("點擊完成")
-                || line.Contains("放回牌庫")
-                || line.Contains("放到底")
-                || line.Contains("選擇目標");
+            return line.Contains("提示")
+                || line.Contains("提示")
+                || line.Contains("提示")
+                || line.Contains("提示")
+                || line.Contains("提示")
+                || line.Contains("提示")
+                || line.Contains("提示")
+                || line.Contains("提示")
+                || line.Contains("提示");
         }
 
         void SetGameResultHudVisible(bool visible)
@@ -5062,15 +6321,10 @@ namespace UCG
             panelRect.anchorMin = new Vector2(0f, 1f);
             panelRect.anchorMax = new Vector2(0f, 1f);
             panelRect.pivot = new Vector2(0f, 1f);
-            panelRect.anchoredPosition = new Vector2(36f, -118f);
-            panelRect.sizeDelta = new Vector2(420f, 156f);
+            panelRect.anchoredPosition = new Vector2(28f, -112f);
+            panelRect.sizeDelta = new Vector2(360f, 124f);
 
-            panelImage.color = new Color(0.025f, 0.055f, 0.08f, 0.68f);
-            panelImage.raycastTarget = false;
-            var panelOutline = panelRect.GetComponent<Outline>();
-            if (panelOutline == null) panelOutline = panelRect.gameObject.AddComponent<Outline>();
-            panelOutline.effectColor = new Color(0.5f, 0.86f, 1f, 0.2f);
-            panelOutline.effectDistance = new Vector2(2f, -2f);
+            StyleCompactInfoPanel(panelRect, panelImage);
 
             cardInfoPanel.infoText = EnsureCardInfoText(panelRect);
             cardInfoPanel.Clear();
@@ -5099,20 +6353,21 @@ namespace UCG
 
             textRect.anchorMin = Vector2.zero;
             textRect.anchorMax = Vector2.one;
-            textRect.offsetMin = new Vector2(16f, 12f);
-            textRect.offsetMax = new Vector2(-16f, -12f);
+            textRect.offsetMin = new Vector2(18f, 10f);
+            textRect.offsetMax = new Vector2(-12f, -10f);
 
             text.alignment = TextAnchor.MiddleLeft;
-            text.color = Color.white;
+            text.color = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.MutedWhite, 0.82f);
             Font placeholderFont = LoadPlaceholderFont();
             if (placeholderFont != null)
             {
                 text.font = placeholderFont;
             }
-            text.fontSize = 18;
+            text.fontSize = 13;
             text.resizeTextForBestFit = true;
-            text.resizeTextMinSize = 11;
-            text.resizeTextMaxSize = 18;
+            text.resizeTextMinSize = 8;
+            text.resizeTextMaxSize = 13;
+            text.lineSpacing = 0.92f;
             text.raycastTarget = false;
 
             return text;
@@ -5232,20 +6487,8 @@ namespace UCG
             Image panelImage = tutorialGuide.GetComponent<Image>();
             if (panelImage != null)
             {
-                ApplyRoundedPanelImage(panelImage);
-                panelImage.color = UcgToolUiPalette.DeepGlass;
-                panelImage.raycastTarget = false;
+                ApplyGlassSurface(panelRect, panelImage, UcgToolUiPalette.BrandPinkLight, 0.82f, 0.28f, 0.18f, false);
             }
-
-            Outline panelOutline = tutorialGuide.GetComponent<Outline>();
-            if (panelOutline == null) panelOutline = tutorialGuide.gameObject.AddComponent<Outline>();
-            panelOutline.effectColor = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.BrandPink, 0.34f);
-            panelOutline.effectDistance = new Vector2(2f, -2f);
-
-            Shadow panelShadow = EnsureUiShadow(tutorialGuide.gameObject);
-            panelShadow.effectColor = new Color(15f / 255f, 23f / 255f, 42f / 255f, 0.28f);
-            panelShadow.effectDistance = new Vector2(0f, -8f);
-            panelShadow.useGraphicAlpha = true;
 
             CanvasGroup panelGroup = tutorialGuide.GetComponent<CanvasGroup>();
             if (panelGroup == null) panelGroup = tutorialGuide.gameObject.AddComponent<CanvasGroup>();
@@ -5268,7 +6511,7 @@ namespace UCG
                 text.resizeTextMaxSize = 30;
                 text.alignment = TextAnchor.MiddleCenter;
                 text.lineSpacing = 1.18f;
-                text.color = UcgToolUiPalette.SoftWhite;
+                text.color = UcgToolUiPalette.BodyWhite;
                 text.raycastTarget = false;
             }
         }
@@ -5300,7 +6543,7 @@ namespace UCG
             textRect.offsetMax = new Vector2(-22f, -42f);
 
             text.alignment = TextAnchor.MiddleCenter;
-            text.color = Color.white;
+            text.color = UcgToolUiPalette.BodyWhite;
             Font placeholderFont = LoadPlaceholderFont();
             if (placeholderFont != null)
             {
@@ -5465,8 +6708,6 @@ namespace UCG
             buttonRect.anchoredPosition = new Vector2(-36f, -64f);
             buttonRect.sizeDelta = new Vector2(178f, 48f);
 
-            var image = restartButton.GetComponent<Image>();
-            image.raycastTarget = true;
             ApplyTopHudButtonStyle(restartButton);
             restartButton.onClick.RemoveListener(RestartDemo);
             restartButton.onClick.AddListener(RestartDemo);
@@ -5501,13 +6742,11 @@ namespace UCG
             buttonRect.anchoredPosition = new Vector2(-36f, -118f);
             buttonRect.sizeDelta = new Vector2(178f, 48f);
 
-            var image = switchTestButton.GetComponent<Image>();
-            image.raycastTarget = true;
             ApplyTopHudButtonStyle(switchTestButton);
             switchTestButton.onClick.RemoveListener(SwitchTestMode);
             switchTestButton.onClick.AddListener(SwitchTestMode);
 
-            EnsureButtonLabelWithIcon(buttonRect, "⇄", "切換測試");
+            EnsureButtonLabelWithIcon(buttonRect, "S", "Switch Test");
         }
 
         void EnsureSkipTutorialButton()
@@ -5537,14 +6776,12 @@ namespace UCG
             buttonRect.anchoredPosition = new Vector2(-36f, -172f);
             buttonRect.sizeDelta = new Vector2(178f, 48f);
 
-            var image = skipTutorialButton.GetComponent<Image>();
-            image.raycastTarget = true;
             ApplyTopHudButtonStyle(skipTutorialButton);
             skipTutorialButton.onClick.RemoveListener(SkipTutorialMode);
             skipTutorialButton.onClick.AddListener(SkipTutorialMode);
             skipTutorialButton.gameObject.SetActive(true);
 
-            EnsureButtonLabelWithIcon(buttonRect, "»", "跳過教學");
+            EnsureButtonLabelWithIcon(buttonRect, "罈", "略過教學");
         }
 
         void EnsureBoardDebugToggleButton()
@@ -5584,7 +6821,7 @@ namespace UCG
             _boardDebugToggleButton.onClick.AddListener(ToggleBoardDebugZones);
             _boardDebugToggleButton.gameObject.SetActive(ShouldShowBoardDebugToggleButton());
 
-            EnsureButtonLabel(buttonRect, "切換 Board Debug");
+            EnsureButtonLabel(buttonRect, "版面除錯");
 #else
             if (_boardDebugToggleButton != null)
             {
@@ -5684,8 +6921,8 @@ namespace UCG
                 15,
                 new Color(1f, 0.96f, 0.72f, 0.96f));
 
-            EnsureEffectTestToolButton(_effectTestToolPanel, "Effect Test Previous Card Button", new Vector2(-62f, 58f), new Vector2(104f, 32f), "上一張", SelectPreviousEffectTestCard);
-            EnsureEffectTestToolButton(_effectTestToolPanel, "Effect Test Next Card Button", new Vector2(62f, 58f), new Vector2(104f, 32f), "下一張", SelectNextEffectTestCard);
+            EnsureEffectTestToolButton(_effectTestToolPanel, "Effect Test Previous Card Button", new Vector2(-62f, 58f), new Vector2(104f, 32f), "Prev", SelectPreviousEffectTestCard);
+            EnsureEffectTestToolButton(_effectTestToolPanel, "Effect Test Next Card Button", new Vector2(62f, 58f), new Vector2(104f, 32f), "Next", SelectNextEffectTestCard);
             EnsureEffectTestToolButton(_effectTestToolPanel, "Effect Test Player Hand Button", new Vector2(-62f, 16f), new Vector2(104f, 34f), "+我方手牌", AddEffectTestCardToPlayerHand);
             EnsureEffectTestToolButton(_effectTestToolPanel, "Effect Test Opponent Hand Button", new Vector2(62f, 16f), new Vector2(104f, 34f), "+對手手牌", AddEffectTestCardToOpponentHand);
             EnsureEffectTestToolButton(_effectTestToolPanel, "Effect Test Player Discard Button", new Vector2(-62f, -28f), new Vector2(104f, 34f), "+我方棄牌", AddEffectTestCardToPlayerDiscard);
@@ -5774,7 +7011,7 @@ namespace UCG
         void UpdateEffectTestSelectedCardText()
         {
             if (_effectTestSelectedCardText == null) return;
-            _effectTestSelectedCardText.text = $"測試卡：{GetSelectedEffectTestCardId()}";
+            _effectTestSelectedCardText.text = $"目前卡牌：{GetSelectedEffectTestCardId()}";
         }
 
         string GetSelectedEffectTestCardId()
@@ -5837,7 +7074,7 @@ namespace UCG
             string cardId = GetSelectedEffectTestCardId();
             if (string.IsNullOrWhiteSpace(cardId))
             {
-                ShowPlayStatus("效果測試：尚未選擇卡片。", 1.2f);
+                ShowPlayStatus("請先選擇一張測試卡。", 1.2f);
                 return null;
             }
 
@@ -5848,7 +7085,7 @@ namespace UCG
             }
             if (source == null)
             {
-                ShowPlayStatus($"效果測試：找不到 {cardId}。", 1.2f);
+                ShowPlayStatus($"找不到測試卡：{cardId}", 1.2f);
                 Debug.LogWarning($"Effect test card not found: {cardId}");
                 return null;
             }
@@ -5861,13 +7098,13 @@ namespace UCG
         void ShowEffectTestInjectionResult(UcgCardData card, string destination)
         {
             string cardName = GetCardDisplayName(card);
-            string message = $"效果測試：已將 {cardName} 加入{destination}。";
+            string message = $"已將 {cardName} 加入{destination}。";
             ShowPlayStatus(message, 1.2f);
             if (playResultText != null)
             {
                 playResultText.text = message;
             }
-            Debug.Log($"EffectTestTool: card={card?.id}, destination={destination}");
+            Debug.Log($"Effect test injected {cardName} to {destination}.");
         }
 
         void RunEffectSelfTestFromDebugTool()
@@ -5875,8 +7112,8 @@ namespace UCG
 #if UNITY_EDITOR || DEVELOPMENT_BUILD
             bool passed = UcgDemoEffectSelfTest.RunAndLog();
             string message = passed
-                ? "效果自動檢查：PASS。"
-                : "效果自動檢查：FAIL，請查看 Console。";
+                ? "效果自動測試：PASS"
+                : "效果自動測試：FAIL，請查看 Console。";
             ShowPlayStatus(message, 1.4f);
             if (playResultText != null)
             {
@@ -6003,7 +7240,7 @@ namespace UCG
             _isOpeningCameraIntro = false;
 
             string resultMessage = string.IsNullOrWhiteSpace(_openingFirstPlayerMessage)
-                ? (turnOrderManager != null ? turnOrderManager.GetOpeningFirstPlayerText() : "正面，我方先攻！")
+                ? (turnOrderManager != null ? turnOrderManager.GetOpeningFirstPlayerText() : "提示")
                 : _openingFirstPlayerMessage;
 
             if (playResultText != null)
@@ -6012,7 +7249,7 @@ namespace UCG
             }
             if (tutorialGuide != null)
             {
-                tutorialGuide.ShowPhasePrompt($"{resultMessage}\n準備進入第 1 回合。");
+                tutorialGuide.ShowPhasePrompt($"提示");
             }
 
             yield return new WaitForSecondsRealtime(1.35f);
@@ -6026,6 +7263,7 @@ namespace UCG
 
             phaseManager.SetPhase(UcgGamePhase.SceneSetup);
             EnterCurrentPhase();
+            LogHandRaycastState("OpeningHand");
         }
 
         void ShowOpeningBattlefieldOverview()
@@ -6085,6 +7323,11 @@ namespace UCG
                 effectFeedbackText.color = color;
                 effectFeedbackText.text = "";
             }
+            if (_effectFeedbackToastTitleText != null)
+            {
+                _effectFeedbackToastTitleText.text = "";
+            }
+            SetEffectFeedbackToastAlpha(0f, 0f);
         }
 
         void EnsureTutorialFinishClickLayer()
@@ -6183,8 +7426,8 @@ namespace UCG
             _deckOperationSelectionRoot.localEulerAngles = Vector3.zero;
 
             var rootImage = _deckOperationSelectionRoot.GetComponent<Image>();
-            rootImage.color = new Color(15f / 255f, 23f / 255f, 42f / 255f, 0.46f);
-            rootImage.raycastTarget = true;
+            rootImage.color = new Color(3f / 255f, 6f / 255f, 12f / 255f, 0.12f);
+            rootImage.raycastTarget = false;
 
             Canvas overlayCanvas = _deckOperationSelectionRoot.GetComponent<Canvas>();
             overlayCanvas.overrideSorting = true;
@@ -6192,6 +7435,7 @@ namespace UCG
 
             RectTransform panelRect = EnsureDeckOperationPanel(_deckOperationSelectionRoot);
             _deckOperationSelectionTitle = EnsureDeckOperationTitle(panelRect);
+            SetDeckOperationSelectionTitle(_deckOperationSelectionTitle != null ? _deckOperationSelectionTitle.text : null);
             _deckOperationCardsRoot = EnsureDeckOperationCardsRoot(panelRect);
             _deckOperationNoSelectionButton = EnsureDeckOperationNoSelectionButton(panelRect);
             if (_deckOperationNoSelectionButton != null)
@@ -6227,15 +7471,228 @@ namespace UCG
             panelRect.anchorMin = new Vector2(0.5f, 0.5f);
             panelRect.anchorMax = new Vector2(0.5f, 0.5f);
             panelRect.pivot = new Vector2(0.5f, 0.5f);
-            panelRect.anchoredPosition = new Vector2(GetRevealSelectionOffsetX(), -40f);
-            panelRect.sizeDelta = new Vector2(900f, 420f);
-            panelImage.color = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.DeepGlass, 0.24f);
-            panelImage.raycastTarget = true;
-
-            var outline = panelRect.GetComponent<Outline>();
-            outline.effectColor = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.GlassBorder, 0.24f);
-            outline.effectDistance = new Vector2(1f, -1f);
+            panelRect.anchoredPosition = new Vector2(GetRevealSelectionOffsetX(), -36f);
+            panelRect.sizeDelta = new Vector2(680f, 304f);
+            ApplyFloatingCardSelectionStateContainer(panelRect, panelImage);
+            EnsureCardSelectionModalStructure(panelRect);
             return panelRect;
+        }
+
+        void ApplyFloatingCardSelectionStateContainer(RectTransform panelRect, Image panelImage)
+        {
+            if (panelRect == null) return;
+
+            if (panelImage == null) panelImage = panelRect.GetComponent<Image>();
+            if (panelImage != null)
+            {
+                panelImage.enabled = false;
+                panelImage.color = Color.clear;
+                panelImage.raycastTarget = false;
+            }
+
+            Outline outline = panelRect.GetComponent<Outline>();
+            if (outline != null)
+            {
+                outline.enabled = false;
+                outline.effectColor = Color.clear;
+            }
+
+            Shadow shadow = panelRect.GetComponent<Shadow>();
+            if (shadow != null)
+            {
+                shadow.enabled = false;
+                shadow.effectColor = Color.clear;
+            }
+
+            SetGlassSurfaceOverlayAlpha(panelRect, 0f);
+            SetCardSelectionModalDecorVisible(panelRect, false);
+        }
+
+        void EnsureCardSelectionModalStructure(RectTransform panelRect)
+        {
+            if (panelRect == null) return;
+
+            SetCardSelectionModalDecorVisible(panelRect, false);
+
+            RectTransform labelPlate = EnsureHudAccentImage(
+                panelRect,
+                "Card Selection Floating Label",
+                new Vector2(0.5f, 1f),
+                new Vector2(0.5f, 1f),
+                new Vector2(-205f, -62f),
+                new Vector2(205f, -8f),
+                Color.clear);
+            if (labelPlate != null)
+            {
+                labelPlate.gameObject.SetActive(true);
+                labelPlate.SetSiblingIndex(0);
+                Image labelImage = labelPlate.GetComponent<Image>();
+                if (labelImage != null) ApplyRoundedPanelImage(labelImage);
+
+                Outline labelOutline = labelPlate.GetComponent<Outline>();
+                if (labelOutline == null) labelOutline = labelPlate.gameObject.AddComponent<Outline>();
+                labelOutline.enabled = false;
+                labelOutline.effectColor = Color.clear;
+                labelOutline.effectDistance = new Vector2(1f, -1f);
+                labelOutline.useGraphicAlpha = true;
+
+                Shadow labelShadow = EnsureUiShadow(labelPlate.gameObject);
+                if (labelShadow != null)
+                {
+                    labelShadow.enabled = false;
+                    labelShadow.effectColor = Color.clear;
+                    labelShadow.effectDistance = Vector2.zero;
+                    labelShadow.useGraphicAlpha = true;
+                }
+
+                RectTransform topHighlight = EnsureHudAccentImage(
+                    labelPlate,
+                    "Floating Label Top Highlight",
+                    new Vector2(0.10f, 0.82f),
+                    new Vector2(0.90f, 0.90f),
+                    Vector2.zero,
+                    Vector2.zero,
+                    Color.clear);
+                if (topHighlight != null) topHighlight.gameObject.SetActive(true);
+
+                RectTransform bottomAccent = EnsureHudAccentImage(
+                    labelPlate,
+                    "Floating Label Bottom Accent",
+                    new Vector2(0.18f, 0.05f),
+                    new Vector2(0.82f, 0.09f),
+                    Vector2.zero,
+                    Vector2.zero,
+                    UcgToolUiPalette.WithAlpha(UcgToolUiPalette.BrandPinkLight, 0.12f));
+                if (bottomAccent != null) bottomAccent.gameObject.SetActive(true);
+            }
+
+            EnsureCardSelectionFocusZone(panelRect);
+
+            RectTransform cardAxis = EnsureHudAccentImage(
+                panelRect,
+                "Card Selection Card Axis",
+                new Vector2(0.24f, 0.24f),
+                new Vector2(0.76f, 0.24f),
+                Vector2.zero,
+                new Vector2(0f, 1.2f),
+                UcgToolUiPalette.WithAlpha(UcgToolUiPalette.FocusCyan, 0.07f));
+            if (cardAxis != null) cardAxis.gameObject.SetActive(true);
+        }
+
+        void EnsureCardSelectionFocusZone(RectTransform panelRect)
+        {
+            if (panelRect == null) return;
+
+            RectTransform zone = EnsureHudAccentImage(
+                panelRect,
+                "Card Selection Focus Zone",
+                new Vector2(0.5f, 0.5f),
+                new Vector2(0.5f, 0.5f),
+                new Vector2(-335f, -148f),
+                new Vector2(335f, -36f),
+                UcgToolUiPalette.WithAlpha(UcgToolUiPalette.FocusCyan, 0.34f));
+            if (zone == null) return;
+
+            zone.gameObject.SetActive(true);
+            zone.SetSiblingIndex(0);
+            Image zoneImage = zone.GetComponent<Image>();
+            if (zoneImage != null)
+            {
+                zoneImage.sprite = GetCardSelectionFocusZoneSprite();
+                zoneImage.type = Image.Type.Simple;
+                zoneImage.preserveAspect = false;
+                zoneImage.raycastTarget = false;
+            }
+
+            RectTransform core = EnsureHudAccentImage(
+                panelRect,
+                "Card Selection Focus Zone Core",
+                new Vector2(0.5f, 0.5f),
+                new Vector2(0.5f, 0.5f),
+                new Vector2(-190f, -125f),
+                new Vector2(190f, -68f),
+                UcgToolUiPalette.WithAlpha(UcgToolUiPalette.SoftWhite, 0.18f));
+            if (core == null) return;
+
+            core.gameObject.SetActive(true);
+            core.SetSiblingIndex(Mathf.Min(1, panelRect.childCount - 1));
+            Image coreImage = core.GetComponent<Image>();
+            if (coreImage != null)
+            {
+                coreImage.sprite = GetCardSelectionFocusZoneSprite();
+                coreImage.type = Image.Type.Simple;
+                coreImage.preserveAspect = false;
+                coreImage.raycastTarget = false;
+            }
+        }
+
+        Sprite GetCardSelectionFocusZoneSprite()
+        {
+            if (_cardSelectionFocusZoneSprite != null) return _cardSelectionFocusZoneSprite;
+
+            const int width = 256;
+            const int height = 64;
+            var texture = new Texture2D(width, height, TextureFormat.RGBA32, false)
+            {
+                name = "UCG Card Selection Focus Zone",
+                wrapMode = TextureWrapMode.Clamp,
+                filterMode = FilterMode.Bilinear,
+                hideFlags = HideFlags.HideAndDontSave
+            };
+
+            for (int y = 0; y < height; y++)
+            {
+                float ny = (y + 0.5f) / height * 2f - 1f;
+                for (int x = 0; x < width; x++)
+                {
+                    float nx = (x + 0.5f) / width * 2f - 1f;
+                    float radius = Mathf.Sqrt(nx * nx + ny * ny);
+                    float edge = Mathf.SmoothStep(0.30f, 1f, radius);
+                    float alpha = Mathf.Clamp01(1f - edge);
+                    alpha *= alpha;
+                    texture.SetPixel(x, y, new Color(1f, 1f, 1f, alpha));
+                }
+            }
+
+            texture.Apply(false, true);
+            _cardSelectionFocusZoneSprite = Sprite.Create(
+                texture,
+                new Rect(0f, 0f, width, height),
+                new Vector2(0.5f, 0.5f),
+                100f);
+            _cardSelectionFocusZoneSprite.name = "UCG Card Selection Focus Zone Sprite";
+            _cardSelectionFocusZoneSprite.hideFlags = HideFlags.HideAndDontSave;
+            return _cardSelectionFocusZoneSprite;
+        }
+
+        void SetCardSelectionModalDecorVisible(RectTransform panelRect, bool visible)
+        {
+            if (panelRect == null) return;
+
+            string[] decorNames =
+            {
+                "Card Selection Neo Bar Left",
+                "Card Selection Neo Bar Right",
+                "Card Selection Header Rule",
+                "Card Selection Card Rail",
+                "Card Selection Bottom Rule",
+                "Selection Panel Top Hairline",
+                "Selection Panel Bottom Accent",
+                "Card Selection Floating Label",
+                "Card Selection Card Ground Light",
+                "Card Selection Focus Zone",
+                "Card Selection Focus Zone Core",
+                "Card Selection Card Axis"
+            };
+
+            for (int i = 0; i < decorNames.Length; i++)
+            {
+                Transform decor = panelRect.Find(decorNames[i]);
+                if (decor != null)
+                {
+                    decor.gameObject.SetActive(visible);
+                }
+            }
         }
 
         Text EnsureDeckOperationTitle(RectTransform parent)
@@ -6262,19 +7719,60 @@ namespace UCG
             titleRect.anchorMin = new Vector2(0.5f, 1f);
             titleRect.anchorMax = new Vector2(0.5f, 1f);
             titleRect.pivot = new Vector2(0.5f, 1f);
-            titleRect.anchoredPosition = new Vector2(0f, -18f);
-            titleRect.sizeDelta = new Vector2(800f, 58f);
-            titleText.text = "選擇 1 張牌";
+            titleRect.anchoredPosition = new Vector2(0f, -11f);
+            titleRect.sizeDelta = new Vector2(366f, 48f);
+            titleText.text = "請選擇卡牌";
             titleText.alignment = TextAnchor.MiddleCenter;
+            titleText.supportRichText = true;
             titleText.color = UcgToolUiPalette.SoftWhite;
-            titleText.fontSize = 23;
+            titleText.fontSize = 18;
+            titleText.lineSpacing = 0.90f;
             titleText.resizeTextForBestFit = true;
-            titleText.resizeTextMinSize = 16;
-            titleText.resizeTextMaxSize = 23;
+            titleText.resizeTextMinSize = 11;
+            titleText.resizeTextMaxSize = 20;
             titleText.raycastTarget = false;
             Font font = LoadPlaceholderFont();
             if (font != null) titleText.font = font;
             return titleText;
+        }
+
+        void SetDeckOperationSelectionTitle(string value)
+        {
+            if (_deckOperationSelectionTitle == null) return;
+
+            _deckOperationSelectionTitle.supportRichText = true;
+            _deckOperationSelectionTitle.text = BuildDeckOperationSelectionTitleMarkup(value);
+        }
+
+        string BuildDeckOperationSelectionTitleMarkup(string value)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                value = "Select 1 card";
+            }
+
+            string[] lines = value.Split(new[] { '\n' }, System.StringSplitOptions.RemoveEmptyEntries);
+            string muted = ColorUtility.ToHtmlStringRGBA(UcgToolUiPalette.MutedWhite);
+            string soft = ColorUtility.ToHtmlStringRGBA(UcgToolUiPalette.SoftWhite);
+            string pink = ColorUtility.ToHtmlStringRGBA(UcgToolUiPalette.BrandPinkLight);
+
+            if (lines.Length <= 1)
+            {
+                return $"<size=11><color=#{muted}>CARD SELECTION</color></size>\n<size=19><color=#{pink}>{lines[0]}</color></size>";
+            }
+
+            string detail = string.Empty;
+            if (lines.Length > 2)
+            {
+                string detailText = lines[2];
+                for (int i = 3; i < lines.Length; i++)
+                {
+                    detailText += " / " + lines[i];
+                }
+
+                detail = $"\n<size=10><color=#{muted}>{detailText}</color></size>";
+            }
+            return $"<size=11><color=#{soft}>{lines[0]}</color></size>\n<size=19><color=#{pink}>{lines[1]}</color></size>{detail}";
         }
 
         RectTransform EnsureDeckOperationCardsRoot(RectTransform parent)
@@ -6297,8 +7795,8 @@ namespace UCG
             cardsRect.anchorMin = new Vector2(0.5f, 0.5f);
             cardsRect.anchorMax = new Vector2(0.5f, 0.5f);
             cardsRect.pivot = new Vector2(0.5f, 0.5f);
-            cardsRect.anchoredPosition = new Vector2(0f, -28f);
-            cardsRect.sizeDelta = new Vector2(860f, 320f);
+            cardsRect.anchoredPosition = new Vector2(0f, -48f);
+            cardsRect.sizeDelta = new Vector2(620f, 238f);
             return cardsRect;
         }
 
@@ -6327,8 +7825,8 @@ namespace UCG
             buttonRect.anchorMin = new Vector2(0.5f, 0f);
             buttonRect.anchorMax = new Vector2(0.5f, 0f);
             buttonRect.pivot = new Vector2(0.5f, 0f);
-            buttonRect.anchoredPosition = new Vector2(0f, 18f);
-            buttonRect.sizeDelta = new Vector2(180f, 52f);
+            buttonRect.anchoredPosition = new Vector2(0f, 20f);
+            buttonRect.sizeDelta = new Vector2(168f, 42f);
 
             ApplyPrimaryHudButtonStyle(button);
             button.onClick.RemoveListener(CompleteDeckOperationNoSelection);
@@ -6414,14 +7912,12 @@ namespace UCG
             buttonRect.anchoredPosition = new Vector2(-36f, -276f);
             buttonRect.sizeDelta = new Vector2(190f, 62f);
 
-            var image = nextTurnButton.GetComponent<Image>();
-            image.raycastTarget = true;
             ApplyPrimaryHudButtonStyle(nextTurnButton);
             nextTurnButton.onClick.RemoveListener(NextTurn);
             nextTurnButton.onClick.AddListener(NextTurn);
             nextTurnButton.gameObject.SetActive(false);
 
-            EnsureButtonLabel(buttonRect, "下一回合");
+            EnsureButtonLabel(buttonRect, "下一步");
         }
 
         void EnsureNextPhaseButton()
@@ -6451,8 +7947,6 @@ namespace UCG
             buttonRect.anchoredPosition = new Vector2(0f, 72f);
             buttonRect.sizeDelta = new Vector2(220f, 58f);
 
-            var image = nextPhaseButton.GetComponent<Image>();
-            image.raycastTarget = true;
             ApplyHudButtonStyle(nextPhaseButton, new Color(0.02f, 0.07f, 0.11f, 0.78f), new Color(0.05f, 0.18f, 0.26f, 0.92f));
             nextPhaseButton.onClick.RemoveListener(NextPhase);
             nextPhaseButton.onClick.AddListener(NextPhase);
@@ -6494,6 +7988,7 @@ namespace UCG
             colors.disabledColor = Color.clear;
             colors.colorMultiplier = 1f;
             nextPhaseButton.colors = colors;
+            SetGlassSurfaceOverlayAlpha(promptRect, 0f);
 
             _advancePromptMainText = EnsureAdvancePromptText(
                 promptRect,
@@ -6685,16 +8180,24 @@ namespace UCG
 
         void EnsureRestartButtonLabel(RectTransform parent)
         {
-            EnsureButtonLabelWithIcon(parent, "↻", "重新開始");
+            EnsureButtonLabelWithIcon(parent, "R", "Restart");
         }
 
         void ApplyTopHudButtonStyle(Button button)
         {
             if (button == null) return;
 
-            Color normalColor = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.DeepGlass, 0.72f);
-            Color highlightedColor = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.DeepGlass, 0.9f);
-            Color pressedColor = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.BrandPink, 0.82f);
+            Color normalColor = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.DeepGlass, 0.82f);
+            Color highlightedColor = Color.Lerp(
+                UcgToolUiPalette.WithAlpha(UcgToolUiPalette.DeepGlass, 0.88f),
+                UcgToolUiPalette.WithAlpha(UcgToolUiPalette.BrandPinkLight, 0.50f),
+                0.18f);
+            highlightedColor.a = 0.88f;
+            Color pressedColor = Color.Lerp(
+                UcgToolUiPalette.WithAlpha(UcgToolUiPalette.DeepGlass, 0.88f),
+                UcgToolUiPalette.WithAlpha(UcgToolUiPalette.BrandPink, 0.58f),
+                0.30f);
+            pressedColor.a = 0.86f;
 
             var image = button.GetComponent<Image>();
             if (image != null)
@@ -6707,23 +8210,24 @@ namespace UCG
 
             var outline = button.GetComponent<Outline>();
             if (outline == null) outline = button.gameObject.AddComponent<Outline>();
-            outline.effectColor = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.BrandPink, 0.34f);
-            outline.effectDistance = new Vector2(1.6f, -1.6f);
+            outline.effectColor = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.BrandPinkLight, 0.24f);
+            outline.effectDistance = new Vector2(1f, -1f);
             outline.useGraphicAlpha = true;
 
             var shadow = EnsureUiShadow(button.gameObject);
-            shadow.effectColor = new Color(15f / 255f, 23f / 255f, 42f / 255f, 0.22f);
+            shadow.effectColor = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.GlassShadow, 0.13f);
             shadow.effectDistance = new Vector2(0f, -3f);
             shadow.useGraphicAlpha = true;
+            SetGlassSurfaceOverlayAlpha(button.transform as RectTransform, normalColor.a);
 
             ColorBlock colors = button.colors;
             colors.normalColor = normalColor;
             colors.highlightedColor = highlightedColor;
             colors.pressedColor = pressedColor;
             colors.selectedColor = highlightedColor;
-            colors.disabledColor = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.DeepGlass, 0.38f);
+            colors.disabledColor = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.DeepGlass, 0.3f);
             colors.colorMultiplier = 1.08f;
-            colors.fadeDuration = 0.08f;
+            colors.fadeDuration = 0.1f;
             button.transition = Selectable.Transition.ColorTint;
             button.colors = colors;
         }
@@ -6732,9 +8236,17 @@ namespace UCG
         {
             if (button == null) return;
 
-            Color normalColor = UcgToolUiPalette.BrandPink;
-            Color highlightedColor = UcgToolUiPalette.BrandPinkLight;
-            Color pressedColor = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.BrandPink, 0.78f);
+            Color normalColor = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.DeepGlass, 0.82f);
+            Color highlightedColor = Color.Lerp(
+                UcgToolUiPalette.WithAlpha(UcgToolUiPalette.DeepGlass, 0.9f),
+                UcgToolUiPalette.WithAlpha(UcgToolUiPalette.BrandPinkLight, 0.72f),
+                0.22f);
+            highlightedColor.a = 0.9f;
+            Color pressedColor = Color.Lerp(
+                UcgToolUiPalette.WithAlpha(UcgToolUiPalette.DeepGlass, 0.86f),
+                UcgToolUiPalette.WithAlpha(UcgToolUiPalette.BrandPink, 0.76f),
+                0.36f);
+            pressedColor.a = 0.82f;
 
             var image = button.GetComponent<Image>();
             if (image != null)
@@ -6747,23 +8259,24 @@ namespace UCG
 
             var outline = button.GetComponent<Outline>();
             if (outline == null) outline = button.gameObject.AddComponent<Outline>();
-            outline.effectColor = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.BrandPinkLight, 0.28f);
-            outline.effectDistance = new Vector2(1.4f, -1.4f);
+            outline.effectColor = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.BrandPinkLight, 0.34f);
+            outline.effectDistance = new Vector2(1f, -1f);
             outline.useGraphicAlpha = true;
 
             var shadow = EnsureUiShadow(button.gameObject);
-            shadow.effectColor = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.BrandPink, 0.22f);
-            shadow.effectDistance = new Vector2(0f, -4f);
+            shadow.effectColor = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.GlassShadow, 0.14f);
+            shadow.effectDistance = new Vector2(0f, -3f);
             shadow.useGraphicAlpha = true;
+            SetGlassSurfaceOverlayAlpha(button.transform as RectTransform, normalColor.a);
 
             ColorBlock colors = button.colors;
             colors.normalColor = normalColor;
             colors.highlightedColor = highlightedColor;
             colors.pressedColor = pressedColor;
             colors.selectedColor = highlightedColor;
-            colors.disabledColor = new Color(148f / 255f, 163f / 255f, 184f / 255f, 0.54f);
+            colors.disabledColor = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.DeepGlass, 0.30f);
             colors.colorMultiplier = 1f;
-            colors.fadeDuration = 0.08f;
+            colors.fadeDuration = 0.1f;
             button.transition = Selectable.Transition.ColorTint;
             button.colors = colors;
         }
@@ -6772,16 +8285,16 @@ namespace UCG
         {
             Text iconText = EnsureButtonChildText(parent, "Icon", new Vector2(0.06f, 0f), new Vector2(0.30f, 1f));
             iconText.text = icon;
-            iconText.fontSize = 18;
-            iconText.resizeTextMinSize = 13;
-            iconText.resizeTextMaxSize = 18;
+            iconText.fontSize = 16;
+            iconText.resizeTextMinSize = 12;
+            iconText.resizeTextMaxSize = 16;
             iconText.color = UcgToolUiPalette.BrandPinkLight;
 
             Text label = EnsureButtonChildText(parent, "Text", new Vector2(0.30f, 0f), new Vector2(0.94f, 1f));
             label.text = text;
-            label.fontSize = 16;
-            label.resizeTextMinSize = 12;
-            label.resizeTextMaxSize = 16;
+            label.fontSize = 14;
+            label.resizeTextMinSize = 11;
+            label.resizeTextMaxSize = 14;
             label.color = UcgToolUiPalette.SoftWhite;
         }
 
@@ -6846,22 +8359,23 @@ namespace UCG
 
             label.text = text;
             label.alignment = TextAnchor.MiddleCenter;
-            label.color = Color.white;
+            label.color = UcgToolUiPalette.SoftWhite;
             Font placeholderFont = LoadPlaceholderFont();
             if (placeholderFont != null)
             {
                 label.font = placeholderFont;
             }
-            label.fontSize = 22;
+            label.fontSize = 20;
+            label.fontStyle = FontStyle.Bold;
             label.resizeTextForBestFit = true;
             label.resizeTextMinSize = 13;
-            label.resizeTextMaxSize = 22;
+            label.resizeTextMaxSize = 20;
             label.raycastTarget = false;
         }
 
         public void RestartDemo()
         {
-            RestartDemo("已重新開始");
+            RestartDemo("提示");
         }
 
         void RestartDemo(string resultMessage)
@@ -6874,7 +8388,9 @@ namespace UCG
             StopSceneSetupSkipRoutine();
             StopTutorialCompletionRoutine();
             StopEffectAutoAdvanceRoutine();
+            ClearTransientInputLocksForRestart();
             ClearPendingActionState();
+            ForceClearDeckOperationSelectionState(false, "RestartDemo");
             ResetGameOverState();
             ResetEffectState();
             ClearSceneSlots();
@@ -6947,6 +8463,7 @@ namespace UCG
             }
 
             ResetDeckAndBuildStartingHand();
+            RestoreHandCardsAfterDeckOperation();
             RefreshZoneInfoUI();
             ResetGameResultText();
 
@@ -6961,7 +8478,7 @@ namespace UCG
         public void SwitchTestMode()
         {
             currentTestMode = GetNextTestMode(currentTestMode);
-            RestartDemo($"目前模式：{GetTestModeName(currentTestMode)}");
+            RestartDemo("Switched test: " + GetTestModeName(currentTestMode));
         }
 
         public void NextTurn()
@@ -7014,7 +8531,7 @@ namespace UCG
             if (_isTutorialFinishWaitingForClick) return;
             if (IsGameOver)
             {
-                RestartDemo("已重新開始");
+                RestartDemo("提示");
                 return;
             }
             if (_isAutoPhaseRunning) return;
@@ -7070,7 +8587,7 @@ namespace UCG
                 {
                     if (playResultText != null)
                     {
-                        playResultText.text = "請先選擇效果目標";
+                        playResultText.text = "請選擇一張角色卡。";
                     }
                     UpdateMainPrompt();
                     return;
@@ -7082,7 +8599,7 @@ namespace UCG
                     ClearActivatedEffectSourceHighlights();
                     if (playResultText != null)
                     {
-                        playResultText.text = "已結束我方戰鬥效果";
+                        playResultText.text = "請選擇可用的場景卡。";
                     }
                     HandleBattleEffectEntry();
                     return;
@@ -7096,6 +8613,7 @@ namespace UCG
         void EnterCurrentPhase()
         {
             ApplyBattlefieldViewForCurrentPhase();
+            CleanupDeckOperationSelectionIfOutsideDeckOperationPhase();
             RefreshInteractionHints();
             if (phaseManager != null && phaseManager.CurrentPhase != UcgGamePhase.BattleEffect)
             {
@@ -7107,6 +8625,7 @@ namespace UCG
             {
                 UpdateTopPhaseHud();
                 _showRestoredCardsMessageOnStart = false;
+                NormalizeAllHandCardViews("AfterTurnStart", true, true, false);
                 if (ShouldPlayTurnStartBannerForCurrentTurn())
                 {
                     BeginTurnStartBannerThenAutoPhase();
@@ -7192,12 +8711,14 @@ namespace UCG
             if (turnOrderManager != null) turnOrderManager.SetCurrentActingPlayer(GetCurrentFirstPlayer());
             if (!IsCurrentFirstPlayer(UcgPlayerSide.Opponent))
             {
+                RestoreHandCardsAfterDeckOperation();
+                RefreshInteractionHints();
                 if (playResultText != null && turnManager != null)
                 {
                     int laneIndex = turnManager.ActiveNewLaneIndex;
                     playResultText.text = laneIndex >= 0
-                        ? $"角色設置階段：請將角色卡放到第 {laneIndex + 1} 路。"
-                        : "角色設置階段：本回合不再開放新的戰鬥區。";
+                        ? $"請選擇角色卡設置到第 {laneIndex + 1} 路。"
+                        : "請選擇一張角色卡。";
                 }
                 return true;
             }
@@ -7215,11 +8736,12 @@ namespace UCG
             {
                 if (BeginOpponentSceneSetupRoutine(true)) return true;
 
-                BeginSceneSetupSkipRoutine("對手目前沒有可設置的場景卡，跳過場景設置。");
+                BeginSceneSetupSkipRoutine("對手沒有可設置的場景卡，略過場景設置。");
                 return true;
             }
 
             bool canPlaceScene = HasLegalSceneCardInHand();
+            RestoreHandCardsAfterDeckOperation();
 
             if (canPlaceScene)
             {
@@ -7236,8 +8758,8 @@ namespace UCG
                 if (playResultText != null)
                 {
                     playResultText.text = IsDigaTutorialModeActive()
-                        ? "現在可以設置場景卡了，有合適的場景就放到中央場景區。"
-                        : "可以設置場景卡，或跳過此階段。";
+                        ? "請設置場景卡，或直接略過場景設置。"
+                        : "請選擇一張場景卡設置到中央場景區。";
                 }
                 return true;
             }
@@ -7245,8 +8767,8 @@ namespace UCG
             int allowedSceneLight = GetAllowedSceneLightCount();
             int currentTurn = turnManager != null ? turnManager.currentTurn : 1;
             string skipMessage = IsDigaTutorialModeActive() && currentTurn <= 2
-                ? "場景設置階段：這回合先專心展開戰鬥區，場景卡稍後再使用。"
-                : $"目前可設置最高 {allowedSceneLight} 燈場景，沒有合適場景，跳過場景設置。";
+                ? "本回合沒有可用場景卡，可以直接略過。"
+                : $"場景設置需要 {allowedSceneLight} 點場景能量；沒有可用場景卡時可以略過。";
             BeginSceneSetupSkipRoutine(skipMessage);
             return true;
         }
@@ -7256,9 +8778,11 @@ namespace UCG
             if (turnOrderManager != null) turnOrderManager.SetCurrentActingPlayer(GetCurrentFirstPlayer());
             if (!IsCurrentFirstPlayer(UcgPlayerSide.Opponent))
             {
+                RestoreHandCardsAfterDeckOperation();
+                RefreshInteractionHints();
                 if (playResultText != null)
                 {
-                    playResultText.text = "升級階段：可以升級已登場角色，也可以直接結束升級。";
+                    playResultText.text = "升級階段：可以升級已登場角色，也可以直接結束。";
                 }
                 return true;
             }
@@ -7289,8 +8813,8 @@ namespace UCG
             if (playResultText != null)
             {
                 playResultText.text =
-                    "判定完成，準備進入下回合。\n" +
-                    "輸掉的一路已經橫置，下一回合開始時會恢復豎置。";
+                    "提示" +
+                    "提示";
             }
 
             RefreshNextPhaseButtonState();
@@ -7323,8 +8847,8 @@ namespace UCG
             if (phaseManager == null || phaseManager.CurrentPhase != UcgGamePhase.EnterEffect) return;
 
             string message = _enterEffectPhaseHadPendingEffects
-                ? "登場效果處理完成"
-                : "這回合沒有可發動的登場效果，進入戰鬥效果階段。";
+                ? "提示"
+                : "提示";
             BeginEffectAutoAdvanceToNextPhase(UcgGamePhase.EnterEffect, message);
         }
 
@@ -7339,10 +8863,10 @@ namespace UCG
             {
                 ClearEffectTargetSelection();
                 string message = opponentResolvedCount > 0
-                    ? "對手戰鬥效果處理完成"
+                    ? "提示"
                     : _battleEffectPhaseHadPendingEffects
-                        ? "戰鬥效果處理完成"
-                        : "這回合沒有可發動的戰鬥效果，進入判定。";
+                        ? "提示"
+                        : "提示";
                 BeginEffectAutoAdvanceToJudgement(message);
                 return true;
             }
@@ -7371,7 +8895,7 @@ namespace UCG
                     {
                         effectManager.RemoveEffect(nextEffect);
                         string skipMessage = string.IsNullOrWhiteSpace(opponentTargetMessage)
-                            ? "對手戰鬥效果需要選擇，暫時略過"
+                            ? "提示"
                             : opponentTargetMessage;
                         ShowPlayStatus(skipMessage, 1.1f);
                     }
@@ -7383,7 +8907,7 @@ namespace UCG
 
             if (playResultText != null)
             {
-                playResultText.text = "戰鬥效果階段：選擇要發動的效果，或點擊上方提示進入判定。";
+                playResultText.text = "提示";
             }
             return true;
         }
@@ -7414,8 +8938,8 @@ namespace UCG
             {
                 string sideText = turnOrderManager != null
                     ? turnOrderManager.GetSideDisplayName(nextEffect.ownerSide)
-                    : (nextEffect.ownerSide == UcgPlayerSide.Player ? "我方" : "對手");
-                playResultText.text = $"登場效果階段：{sideText}處理登場效果";
+                    : (nextEffect.ownerSide == UcgPlayerSide.Player ? "提示" : "提示");
+                playResultText.text = "Effect phase: " + sideText;
             }
 
             int guard = 0;
@@ -7434,10 +8958,10 @@ namespace UCG
                             : 0;
                     Debug.Log(
                         "Enter effect resolving in EnterEffect phase:\n"
-                        + $"card={nextEffect.cardData?.id} {nextEffect.cardData?.cardName}\n"
+                        + $"提示"
                         + $"effect={GetEffectText(nextEffect.cardData)}\n"
-                        + $"category={(rule != null ? rule.effectCategory.ToString() : "null")}\n"
-                        + $"action={(rule != null ? rule.actionType.ToString() : "null")}\n"
+                        + $"card={(nextEffect.cardData != null ? nextEffect.cardData.id : "null")}\n"
+                        + $"cardName={(nextEffect.cardData != null ? nextEffect.cardData.cardName : "null")}\n"
                         + $"stackCount={stackCount}\n"
                         + $"owner={nextEffect.ownerSide}\n"
                         + $"lane={nextEffect.LaneIndex}");
@@ -7461,7 +8985,7 @@ namespace UCG
                         {
                             effectManager.RemoveEffect(nextEffect);
                             string skipMessage = string.IsNullOrWhiteSpace(opponentTargetMessage)
-                                ? "對手登場效果需要選擇，暫時略過"
+                                ? "提示"
                                 : opponentTargetMessage;
                             ShowPlayStatus(skipMessage, 1.1f);
                         }
@@ -7481,26 +9005,26 @@ namespace UCG
                         if (_pendingDeckSelection != null
                             && _pendingDeckSelection.sourceZone == UcgDeckOperationSourceZone.Hand)
                         {
-                            playResultText.text = "登場效果：請選擇 1 張手牌放到底";
+                            playResultText.text = "提示";
                         }
                         else if (_pendingDeckSelection != null
                             && _pendingDeckSelection.sourceZone == UcgDeckOperationSourceZone.DiscardPile)
                         {
-                            playResultText.text = "登場效果：請從棄牌區選擇 1 張牌";
+                            playResultText.text = "提示";
                         }
                         else if (_pendingDeckSelection != null
                             && _pendingDeckSelection.sourceZone == UcgDeckOperationSourceZone.SceneRevealCards)
                         {
-                            playResultText.text = "場景效果：請選擇 1 張可升級的公開卡";
+                            playResultText.text = "提示";
                         }
                         else if (_pendingDeckSelection != null
                             && _pendingDeckSelection.sourceZone == UcgDeckOperationSourceZone.TopDeckReorder)
                         {
-                            playResultText.text = "登場效果：請依序選擇放回牌庫上方的順序";
+                            playResultText.text = "提示";
                         }
                         else
                         {
-                            playResultText.text = "登場效果：請選擇公開的牌";
+                            playResultText.text = "提示";
                         }
                     }
                     return true;
@@ -7557,7 +9081,7 @@ namespace UCG
                     {
                         Debug.Log(
                             "Opponent battle effect skipped in BattleEffect phase:\n"
-                            + $"card={nextEffect.cardData?.id} {nextEffect.cardData?.cardName}\n"
+                            + $"提示"
                             + $"reason={skippedReason}");
                     }
                 }
@@ -7851,14 +9375,14 @@ namespace UCG
             {
                 string selectionMessage = _pendingDeckSelection != null
                     && _pendingDeckSelection.sourceZone == UcgDeckOperationSourceZone.DiscardPile
-                    ? "請先完成棄牌區選牌"
+                    ? "提示"
                     : _pendingDeckSelection != null
                         && _pendingDeckSelection.sourceZone == UcgDeckOperationSourceZone.SceneRevealCards
-                            ? "請先完成場景公開卡選擇"
+                            ? "提示"
                             : _pendingDeckSelection != null
                                 && _pendingDeckSelection.sourceZone == UcgDeckOperationSourceZone.TopDeckReorder
-                                    ? "請先完成牌庫上方重排"
-                                    : "請先完成選牌";
+                                    ? "提示"
+                                    : "提示";
                 ShowPlayStatus(selectionMessage);
                 UpdateMainPrompt();
                 return true;
@@ -7868,7 +9392,7 @@ namespace UCG
             {
                 if (playResultText != null)
                 {
-                    playResultText.text = "請先選擇效果目標";
+                    playResultText.text = "提示";
                 }
                 UpdateMainPrompt();
                 return true;
@@ -7902,7 +9426,7 @@ namespace UCG
 
                     effectManager.RemoveEffect(nextEffect);
                     string skipMessage = string.IsNullOrWhiteSpace(opponentTargetMessage)
-                        ? "對手效果需要選擇，暫時略過"
+                        ? "提示"
                         : opponentTargetMessage;
                     ShowPlayStatus(skipMessage, 1.1f);
                     StopEffectSourceHighlight(nextEffect);
@@ -7929,8 +9453,8 @@ namespace UCG
             }
             HighlightActivatedEffectSources();
             ShowPlayStatus(effectManager.HasPendingEffects
-                ? $"剩餘效果 {effectManager.PendingCount} 個"
-                : "效果處理完畢", 1.2f);
+                ? $"提示"
+                : "提示", 1.2f);
             StopEffectSourceHighlight(nextEffect);
 
             if (phaseManager != null && phaseManager.CurrentPhase == UcgGamePhase.BattleEffect)
@@ -7962,21 +9486,20 @@ namespace UCG
 
         string BuildEffectFeedbackText(string message)
         {
-            if (string.IsNullOrWhiteSpace(message)) return "";
-            if (message.Contains("沒有可發動效果") || message.Contains("請先選擇") || message.Contains("請選擇") || message.Contains("unsupported")) return "";
+            if (message.Contains("no effect") || message.Contains("提示") || message.Contains("請選擇") || message.Contains("unsupported")) return "";
 
             string feedback = message;
-            int separatorIndex = feedback.LastIndexOf('｜');
+            int separatorIndex = feedback.LastIndexOf('\uFF5C');
             if (separatorIndex >= 0 && separatorIndex < feedback.Length - 1)
             {
                 feedback = feedback.Substring(separatorIndex + 1);
             }
 
             feedback = feedback
-                .Replace("開放階段", "登場效果")
-                .Replace("登場時", "登場效果")
-                .Replace("效果發動階段", "戰鬥效果")
-                .Replace("場景出現時", "場景效果");
+                .Replace("提示", "提示")
+                .Replace("card effect", "card effect")
+                .Replace("提示", "提示")
+                .Replace("scene effect", "scene effect");
 
             if (feedback.Length > 34)
             {
@@ -7999,8 +9522,8 @@ namespace UCG
                 string message = _effectFeedbackQueue.Dequeue();
                 if (effectFeedbackText == null) yield break;
 
-                effectFeedbackText.text = message;
-                yield return FadeEffectFeedback(0f, 1f, 0.12f);
+                ApplyEffectFeedbackToastMessage(message);
+                yield return FadeEffectFeedback(0f, 1f, 0.18f);
                 yield return new WaitForSeconds(1.15f);
                 yield return FadeEffectFeedback(1f, 0f, 0.35f);
             }
@@ -8012,9 +9535,43 @@ namespace UCG
                 effectFeedbackText.color = color;
                 effectFeedbackText.text = "";
             }
-            SetEffectFeedbackToastAlpha(0f);
+            if (_effectFeedbackToastTitleText != null) _effectFeedbackToastTitleText.text = "";
+            SetEffectFeedbackToastAlpha(0f, 0f);
             _queuedEffectFeedbackMessages.Clear();
             _effectFeedbackRoutine = null;
+        }
+
+        void ApplyEffectFeedbackToastMessage(string message)
+        {
+            string title = "Effect";
+            string body = message;
+
+            int titleSeparator = message.IndexOf(':');
+            if (titleSeparator > 0 && titleSeparator < message.Length - 1)
+            {
+                title = message.Substring(0, titleSeparator).Trim();
+                body = message.Substring(titleSeparator + 1).Trim();
+            }
+
+            if (string.IsNullOrWhiteSpace(body)) body = message;
+            if (string.IsNullOrWhiteSpace(title)) title = "Effect";
+            if (title.Length > 14)
+            {
+                body = message;
+                title = "Effect";
+            }
+
+            if (_effectFeedbackToastTitleText != null)
+            {
+                _effectFeedbackToastTitleText.text = title;
+            }
+
+            if (_effectFeedbackToastIconText != null)
+            {
+                _effectFeedbackToastIconText.text = "!";
+            }
+
+            effectFeedbackText.text = body;
         }
 
         IEnumerator FadeEffectFeedback(float fromAlpha, float toAlpha, float duration)
@@ -8022,20 +9579,24 @@ namespace UCG
             if (effectFeedbackText == null) yield break;
 
             float elapsed = 0f;
-            Color color = effectFeedbackText.color;
+            float fromOffset = toAlpha > fromAlpha ? -18f : 0f;
+            float toOffset = toAlpha > fromAlpha ? 0f : 12f;
             while (elapsed < duration)
             {
                 elapsed += Time.deltaTime;
                 float t = duration <= 0f ? 1f : Mathf.Clamp01(elapsed / duration);
-                color.a = Mathf.Lerp(fromAlpha, toAlpha, t);
+                float eased = t * t * (3f - 2f * t);
+                Color color = UcgToolUiPalette.BodyWhite;
+                color.a = Mathf.Lerp(fromAlpha, toAlpha, eased);
                 effectFeedbackText.color = color;
-                SetEffectFeedbackToastAlpha(color.a);
+                SetEffectFeedbackToastAlpha(color.a, Mathf.Lerp(fromOffset, toOffset, eased));
                 yield return null;
             }
 
-            color.a = toAlpha;
-            effectFeedbackText.color = color;
-            SetEffectFeedbackToastAlpha(toAlpha);
+            Color finalColor = UcgToolUiPalette.BodyWhite;
+            finalColor.a = toAlpha;
+            effectFeedbackText.color = finalColor;
+            SetEffectFeedbackToastAlpha(toAlpha, toOffset);
         }
 
         void TryAutoAdvanceAfterTutorialEffectResolved(string message)
@@ -8046,8 +9607,8 @@ namespace UCG
             if (effectManager != null && effectManager.HasPendingEffects) return;
 
             string resolvedMessage = string.IsNullOrWhiteSpace(message)
-                ? "效果選擇完成，接著進入判定。"
-                : $"{message}\n效果選擇完成，接著進入判定。";
+                ? "提示"
+                : $"提示";
             BeginEffectAutoAdvanceToJudgement(resolvedMessage);
         }
 
@@ -8163,7 +9724,7 @@ namespace UCG
             if (stepUpLane == null)
             {
                 effectManager.RemoveEffect(effect);
-                message = $"{stepDownMessage}\n目前沒有可獲得 BP 上升的迪卡。";
+                message = $"提示";
                 return true;
             }
 
@@ -8191,7 +9752,7 @@ namespace UCG
             List<UcgCardData> drawPile = GetDrawPileForOwner(effect.ownerSide);
             if (drawPile == null || drawPile.Count == 0)
             {
-                return "布雷薩登場效果：牌庫已空，無法公開。";
+                return "提示";
             }
 
             var revealedCards = new List<UcgCardData>();
@@ -8223,7 +9784,7 @@ namespace UCG
                     + "reorder=keep-original-order");
             }
 
-            return $"布雷薩登場效果：公開 {revealedCards.Count} 張，暫以原順序放回牌庫上方。";
+            return $"提示";
         }
 
         bool BeginBp01043TopDeckReorderSelection(UcgEffectInstance effect, out string message)
@@ -8238,7 +9799,7 @@ namespace UCG
             List<UcgCardData> drawPile = GetDrawPileForOwner(effect.ownerSide);
             if (drawPile == null || drawPile.Count == 0)
             {
-                message = "布雷薩登場效果：牌庫已空，無法公開。";
+                message = "提示";
                 return false;
             }
 
@@ -8256,18 +9817,21 @@ namespace UCG
 
             if (revealedCards.Count == 0)
             {
-                message = "布雷薩登場效果：沒有公開到卡牌。";
+                message = "提示";
                 RefreshZoneInfoUI();
                 return false;
             }
 
+            AdvanceDeckOperationStateVersion();
+            StopDeckOperationRunningCoroutines();
             StopDeckOperationNoValidAutoCloseRoutine();
+            _deckOperationResultAnimationRunning = false;
             EnsureDeckOperationSelectionUI();
             RestoreDeckOperationSelectionUIForRevealCards();
             ClearDeckOperationCards();
 
             _pendingBp01043ReorderEffect = effect;
-            _pendingBp01043ReorderMessage = $"布雷薩登場效果：公開 {revealedCards.Count} 張，請依序選擇放回牌庫上方的順序。";
+            _pendingBp01043ReorderMessage = $"提示";
             _pendingBp01043RevealedCards.Clear();
             _pendingBp01043RevealedCards.AddRange(revealedCards);
 
@@ -8322,7 +9886,7 @@ namespace UCG
             {
                 int selectedCount = _pendingDeckSelection.selectedCards.Count;
                 int totalCount = _pendingBp01043RevealedCards.Count;
-                _deckOperationSelectionTitle.text = $"布雷薩登場效果\n依序點選放回順序：第 {selectedCount + 1}/{totalCount} 張會放回牌庫上方";
+                _deckOperationSelectionTitle.text = $"提示";
             }
 
             for (int i = 0; i < _pendingBp01043RevealedCards.Count; i++)
@@ -8345,18 +9909,18 @@ namespace UCG
             if (_pendingDeckSelection.sourceZone != UcgDeckOperationSourceZone.TopDeckReorder) return;
             if (_pendingBp01043ReorderEffect == null || selectedCard == null)
             {
-                FinishBp01043ReorderSelectionWithOriginalOrder("重排狀態已失效，公開卡以原順序放回。");
+                FinishBp01043ReorderSelectionWithOriginalOrder("提示");
                 return;
             }
 
             if (GetReferenceIndex(_pendingBp01043RevealedCards, selectedCard) < 0)
             {
-                ShowPlayStatus("請選擇這次公開的卡牌。", 1.1f);
+                ShowPlayStatus("只能選擇目前手牌中的卡。", 1.1f);
                 return;
             }
             if (GetReferenceIndex(_pendingDeckSelection.selectedCards, selectedCard) >= 0)
             {
-                ShowPlayStatus("這張卡已經排入順序，請選擇下一張。", 1.1f);
+                ShowPlayStatus("選擇的卡不在手牌中。", 1.1f);
                 return;
             }
 
@@ -8365,7 +9929,7 @@ namespace UCG
             int totalCount = _pendingBp01043RevealedCards.Count;
             if (selectedCount < totalCount)
             {
-                ShowPlayStatus($"已選 {selectedCount}/{totalCount} 張，請選下一張。", 1.1f);
+                ShowPlayStatus($"提示", 1.1f);
                 RenderBp01043ReorderCards();
                 return;
             }
@@ -8403,7 +9967,7 @@ namespace UCG
             }
 
             string reorderMessage = string.IsNullOrWhiteSpace(overrideMessage)
-                ? $"布雷薩登場效果：已依指定順序放回 {orderedCards.Count} 張牌。"
+                ? $"提示"
                 : overrideMessage;
 
             if (debugEffectResolution || debugDeckOperation)
@@ -8445,7 +10009,7 @@ namespace UCG
             {
                 string targetPrompt = effectManager != null
                     ? effectManager.GetTargetPrompt(effect)
-                    : "登場效果階段｜請選擇對手一條 Lane";
+                    : "提示";
                 playResultText.text = CombineEffectMessages(reorderMessage, targetPrompt);
             }
             ShowPlayStatus(reorderMessage, 1.15f);
@@ -8454,9 +10018,13 @@ namespace UCG
 
         void CleanupBp01043ReorderSelectionState()
         {
+            AdvanceDeckOperationStateVersion();
+            StopDeckOperationRunningCoroutines();
+            StopDeckOperationNoValidAutoCloseRoutine();
             ClearBp01043PendingReorderState();
             _pendingDeckSelection = null;
             _isSelectingDeckOperationCard = false;
+            _deckOperationResultAnimationRunning = false;
 
             if (_deckOperationSelectionRoot != null)
             {
@@ -8467,8 +10035,10 @@ namespace UCG
                 _deckOperationNoSelectionButton.gameObject.SetActive(false);
             }
             ClearDeckOperationCards();
+            RestoreHandCardsAfterDeckOperation();
             SetNextPhaseButtonInteractable(true);
             RefreshNextPhaseButtonState();
+            RefreshInteractionHints();
         }
 
         void ClearBp01043PendingReorderState()
@@ -8632,8 +10202,8 @@ namespace UCG
                 if (playResultText != null)
                 {
                     playResultText.text = IsEffectTargetSide(_pendingTargetType, UcgPlayerSide.Player)
-                        ? "此效果需要選擇我方角色"
-                        : "此效果需要選擇對手角色";
+                        ? "提示"
+                        : "提示";
                 }
                 return;
             }
@@ -8679,8 +10249,8 @@ namespace UCG
             StopCurrentEffectSourceHighlight();
             ShowPlayStatus(resolved
                 ? effectManager.HasPendingEffects
-                    ? $"剩餘效果 {effectManager.PendingCount} 個"
-                    : "效果處理完畢"
+                    ? $"提示"
+                    : "提示"
                 : message, 1.2f);
 
             HighlightActivatedEffectSources();
@@ -8720,7 +10290,7 @@ namespace UCG
                 HighlightEffectTargets();
                 if (playResultText != null)
                 {
-                    playResultText.text = "請選擇要交換位置的另一名我方角色。";
+                    playResultText.text = "提示";
                 }
                 UpdateMainPrompt();
                 return;
@@ -8767,7 +10337,7 @@ namespace UCG
                 {
                     if (effectManager != null) effectManager.RemoveEffect(_pendingTargetEffect);
                     ClearEffectTargetSelection();
-                    string noDigaMessage = $"{stepDownMessage}\n目前沒有可獲得 BP 上升的迪卡。";
+                    string noDigaMessage = $"提示";
                     QueueEffectFeedback(noDigaMessage);
                     ContinueAfterTargetEffectResolved(true, noDigaMessage);
                     return;
@@ -8776,7 +10346,7 @@ namespace UCG
                 HighlightEffectTargets();
                 if (playResultText != null)
                 {
-                    playResultText.text = "已完成 BP 降低一階。請選擇我方一名迪卡，讓 BP 上升一階。";
+                    playResultText.text = "提示";
                 }
                 UpdateMainPrompt();
                 return;
@@ -8855,7 +10425,7 @@ namespace UCG
                 LogInteractionRejected("ClickEffectTarget", "InvalidBp01105Target", null, lane);
                 if (playResultText != null)
                 {
-                    playResultText.text = "請選擇可以被這張公開卡合法升級的我方 Lane。";
+                    playResultText.text = "提示";
                 }
                 return;
             }
@@ -8972,7 +10542,7 @@ namespace UCG
             if (Mathf.Abs(lane.laneIndex - effect.lane.laneIndex) != 1) return false;
 
             UcgCardData targetCard = GetLaneTopCard(lane, side);
-            return CardCharacterContains(targetCard, "傑洛");
+            return CardCharacterContains(targetCard, "提示");
         }
 
         bool IsSwapOwnCharactersEffect(UcgEffectInstance effect)
@@ -9034,8 +10604,7 @@ namespace UCG
             if (side != effect.ownerSide) return false;
 
             UcgCardData targetCard = GetLaneTopCard(lane, side);
-            if (targetCard == null) return false;
-            if (targetCard.cardCategory != "超人力霸王") return false;
+            if (targetCard.cardCategory != "Ultraman") return false;
             if (targetCard.level != 2 && targetCard.level != 3) return false;
 
             int stackCount = GetLaneStackCount(lane, side);
@@ -9119,7 +10688,7 @@ namespace UCG
 
         bool ApplyBp05005StepDown(UcgEffectInstance effect, UcgBattleLane targetLane, out string message)
         {
-            message = "無法降低 BP。";
+            message = "提示";
             if (effect == null || targetLane == null) return false;
 
             UcgPlayerSide targetSide = effect.ownerSide;
@@ -9132,7 +10701,7 @@ namespace UCG
             int amount = previousBp - currentBp;
             if (amount >= 0)
             {
-                message = "此角色 BP 已無法再降低。";
+                message = "提示";
                 return false;
             }
 
@@ -9140,7 +10709,7 @@ namespace UCG
                 targetSide,
                 amount,
                 effect.cardData,
-                "登場時效果（BP降低一階）",
+                "提示",
                 0,
                 stackCount,
                 false,
@@ -9148,9 +10717,9 @@ namespace UCG
                 currentBp,
                 previousBp);
 
-            string sideText = targetSide == UcgPlayerSide.Player ? "我方" : "對手";
+            string sideText = targetSide == UcgPlayerSide.Player ? "提示" : "提示";
             string targetName = string.IsNullOrWhiteSpace(targetCard.cardName) ? "角色" : targetCard.cardName;
-            message = $"登場效果階段｜{sideText}第 {targetLane.laneIndex + 1} 路 {targetName} BP 降低一階";
+            message = $"{sideText} lane {targetLane.laneIndex + 1}: {targetName} BP -1000";
             return true;
         }
 
@@ -9160,7 +10729,7 @@ namespace UCG
             string prefixMessage,
             out string message)
         {
-            message = "無法讓迪卡 BP 上升。";
+            message = "提示";
             if (effect == null || targetLane == null || effectManager == null) return false;
 
             UcgPlayerSide targetSide = effect.ownerSide;
@@ -9178,7 +10747,7 @@ namespace UCG
             effectManager.RemoveEffect(effect);
             if (amount <= 0)
             {
-                message = "迪卡 BP 已無法再上升。";
+                message = "提示";
                 return true;
             }
 
@@ -9186,7 +10755,7 @@ namespace UCG
                 targetSide,
                 amount,
                 effect.cardData,
-                "登場時效果（BP上升一階）",
+                "提示",
                 0,
                 stackCount,
                 false,
@@ -9194,9 +10763,9 @@ namespace UCG
                 currentBp,
                 nextBp);
 
-            string sideText = targetSide == UcgPlayerSide.Player ? "我方" : "對手";
+            string sideText = targetSide == UcgPlayerSide.Player ? "提示" : "提示";
             string targetName = string.IsNullOrWhiteSpace(targetCard.cardName) ? "迪卡" : targetCard.cardName;
-            string stepUpMessage = $"登場效果階段｜{sideText}第 {targetLane.laneIndex + 1} 路 {targetName} BP 上升一階";
+            string stepUpMessage = $"{sideText} lane {targetLane.laneIndex + 1}: {targetName} BP +1000";
             message = string.IsNullOrWhiteSpace(prefixMessage)
                 ? stepUpMessage
                 : $"{prefixMessage}\n{stepUpMessage}";
@@ -9209,7 +10778,7 @@ namespace UCG
             UcgBattleLane targetLane,
             out string message)
         {
-            message = "交換位置失敗";
+            message = "提示";
             if (effectManager == null || effect == null || sourceLane == null || targetLane == null)
             {
                 return false;
@@ -9217,7 +10786,7 @@ namespace UCG
 
             if (sourceLane == targetLane)
             {
-                message = "請選擇另一條 Lane 交換位置。";
+                message = "提示";
                 return false;
             }
 
@@ -9225,22 +10794,22 @@ namespace UCG
             UcgCardData targetCard = GetLaneTopCard(targetLane, effect.ownerSide);
             if (sourceCard == null || targetCard == null)
             {
-                message = "目前沒有足夠的我方角色可以交換位置。";
+                message = "提示";
                 return false;
             }
 
             bool swapped = sourceLane.SwapCharacterStackWith(targetLane, effect.ownerSide);
             if (!swapped)
             {
-                message = "交換位置失敗，效果略過。";
+                message = "提示";
                 return false;
             }
 
             effectManager.RemoveEffect(effect);
-            string sideText = effect.ownerSide == UcgPlayerSide.Player ? "我方" : "對手";
+            string sideText = effect.ownerSide == UcgPlayerSide.Player ? "提示" : "提示";
             string sourceName = string.IsNullOrWhiteSpace(sourceCard.cardName) ? "角色" : sourceCard.cardName;
             string targetName = string.IsNullOrWhiteSpace(targetCard.cardName) ? "角色" : targetCard.cardName;
-            message = $"登場效果階段｜{sideText}{sourceName} 與第 {targetLane.laneIndex + 1} 路 {targetName} 交換位置。";
+            message = $"{sideText} {sourceName} targets lane {targetLane.laneIndex + 1}: {targetName}.";
             return true;
         }
 
@@ -9254,7 +10823,7 @@ namespace UCG
             if (!IsLegalBp05008Target(targetLane, effect.ownerSide, effect)) return false;
             if (!CanReturnTopCardToHand(effect.ownerSide))
             {
-                message = "手牌區尚未準備好，效果略過。";
+                message = "提示";
                 return false;
             }
 
@@ -9264,13 +10833,13 @@ namespace UCG
             List<UcgCardData> legalDiscardCards = GetMatchingBp05008DiscardCards(effect.ownerSide, targetTopCard.level);
             if (legalDiscardCards.Count == 0)
             {
-                message = "棄牌區沒有同等級的迪卡可以登場。";
+                message = "提示";
                 return false;
             }
 
             if (!targetLane.RemoveTopCardFromEffect(effect.ownerSide, targetTopCard, out UcgCardData returnedTopCard))
             {
-                message = "最上層卡回手牌失敗，效果略過。";
+                message = "提示";
                 return false;
             }
 
@@ -9283,7 +10852,7 @@ namespace UCG
                     GetTestCardSprite(effect.ownerSide == UcgPlayerSide.Player ? 0 : 1),
                     GetPlacedBattleCardSize(),
                     LoadPlaceholderFont());
-                message = "最上層卡回手牌失敗，效果略過。";
+                message = "提示";
                 return false;
             }
 
@@ -9292,7 +10861,10 @@ namespace UCG
                 _temporaryTypeGrants.Remove(returnedTopCard);
             }
 
+            AdvanceDeckOperationStateVersion();
+            StopDeckOperationRunningCoroutines();
             StopDeckOperationNoValidAutoCloseRoutine();
+            _deckOperationResultAnimationRunning = false;
             EnsureDeckOperationSelectionUI();
             RestoreDeckOperationSelectionUIForRevealCards();
             ClearDeckOperationCards();
@@ -9317,8 +10889,8 @@ namespace UCG
             {
                 string cardName = effect.cardData != null && !string.IsNullOrWhiteSpace(effect.cardData.cardName)
                     ? effect.cardData.cardName
-                    : "登場效果";
-                _deckOperationSelectionTitle.text = $"{cardName}\n從棄牌區選擇一張同等級迪卡登場";
+                    : "提示";
+                _deckOperationSelectionTitle.text = $"提示";
             }
 
             for (int i = 0; i < legalDiscardCards.Count; i++)
@@ -9343,9 +10915,9 @@ namespace UCG
             RefreshNextPhaseButtonState();
 
             string returnedName = string.IsNullOrWhiteSpace(returnedTopCard != null ? returnedTopCard.cardName : "")
-                ? "最上層卡"
+                ? "提示"
                 : returnedTopCard.cardName;
-            message = $"登場效果階段｜第 {targetLane.laneIndex + 1} 路 {returnedName} 回手牌，請從棄牌區選擇同等級迪卡。";
+            message = $"{returnedName} 已加入手牌，請選擇符合條件的棄牌。";
             return true;
         }
 
@@ -9358,22 +10930,22 @@ namespace UCG
             UcgPlayerSide owner = _pendingDeckSelection.owner;
             if (sourceEffect == null || _pendingBp05008DiscardLane == null || selectedCard == null)
             {
-                ShowPlayStatus("棄牌區選擇狀態已失效，效果略過。", 1.1f);
+                ShowPlayStatus("提示", 1.1f);
                 CleanupBp05008DiscardSelectionUi();
-                ContinueAfterTargetEffectResolved(false, "棄牌區選擇狀態已失效，效果略過。");
+                ContinueAfterTargetEffectResolved(false, "提示");
                 return;
             }
 
             if (selectedCard.level != _pendingBp05008ReturnedLevel || !CardCharacterContains(selectedCard, "迪卡"))
             {
-                ShowPlayStatus("只能選擇同等級的迪卡。", 1.1f);
+                ShowPlayStatus("提示", 1.1f);
                 return;
             }
 
             int discardIndex = FindCardIndexInDiscardPile(owner, selectedCard);
             if (discardIndex < 0)
             {
-                ShowPlayStatus("這張卡已不在棄牌區，請重新選擇。", 1.1f);
+                ShowPlayStatus("提示", 1.1f);
                 return;
             }
 
@@ -9386,7 +10958,7 @@ namespace UCG
                 LoadPlaceholderFont());
             if (newTopCard == null)
             {
-                ShowPlayStatus("棄牌區卡牌登場失敗，效果略過。", 1.1f);
+                ShowPlayStatus("提示", 1.1f);
                 return;
             }
 
@@ -9406,11 +10978,11 @@ namespace UCG
             }
 
             string returnedName = string.IsNullOrWhiteSpace(_pendingBp05008ReturnedTopCard != null ? _pendingBp05008ReturnedTopCard.cardName : "")
-                ? "最上層卡"
+                ? "提示"
                 : _pendingBp05008ReturnedTopCard.cardName;
             string replacementName = string.IsNullOrWhiteSpace(selectedCard.cardName) ? "迪卡" : selectedCard.cardName;
-            string sideText = owner == UcgPlayerSide.Player ? "我方" : "對手";
-            string message = $"登場效果階段｜{sideText}第 {_pendingBp05008DiscardLane.laneIndex + 1} 路 {returnedName} 回手牌，棄牌區 {replacementName} 登場到最上層。";
+            string sideText = owner == UcgPlayerSide.Player ? "提示" : "提示";
+            string message = $"{sideText} lane {_pendingBp05008DiscardLane.laneIndex + 1}: returned {returnedName}; played {replacementName} from discard.";
 
             _pendingDeckSelection.resolved = true;
             _pendingDeckSelection.selectedCard = selectedCard;
@@ -9424,8 +10996,12 @@ namespace UCG
 
         void CleanupBp05008DiscardSelectionUi()
         {
+            AdvanceDeckOperationStateVersion();
+            StopDeckOperationRunningCoroutines();
+            StopDeckOperationNoValidAutoCloseRoutine();
             _pendingDeckSelection = null;
             _isSelectingDeckOperationCard = false;
+            _deckOperationResultAnimationRunning = false;
             ClearBp05008DiscardSelectionState();
 
             if (_deckOperationSelectionRoot != null)
@@ -9437,8 +11013,7 @@ namespace UCG
                 _deckOperationNoSelectionButton.gameObject.SetActive(false);
             }
             ClearDeckOperationCards();
-
-            SetHandCardsInteractable(true, null);
+            RestoreHandCardsAfterDeckOperation();
             SetNextPhaseButtonInteractable(true);
             RefreshNextPhaseButtonState();
             RefreshInteractionHints();
@@ -9461,7 +11036,7 @@ namespace UCG
             if (!IsLegalBp05008Target(targetLane, effect.ownerSide, effect)) return false;
             if (!CanReturnTopCardToHand(effect.ownerSide))
             {
-                message = "手牌區尚未準備好，效果略過。";
+                message = "沒有可選擇的手牌，效果結束。";
                 return false;
             }
 
@@ -9470,13 +11045,13 @@ namespace UCG
 
             if (!TryFindMatchingBp05008DiscardCard(effect.ownerSide, targetTopCard.level, out UcgCardData replacementCard, out int discardIndex))
             {
-                message = "棄牌區沒有同等級的迪卡可以登場。";
+                message = "提示";
                 return false;
             }
 
             if (!targetLane.ReplaceTopCardData(effect.ownerSide, replacementCard, out UcgCardData returnedTopCard))
             {
-                message = "替換最上層卡失敗，效果略過。";
+                message = "提示";
                 return false;
             }
 
@@ -9492,7 +11067,7 @@ namespace UCG
 
             if (!AddReturnedTopCardToHand(effect.ownerSide, returnedTopCard))
             {
-                message = "最上層卡回手牌失敗，效果略過。";
+                message = "提示";
                 return false;
             }
 
@@ -9505,12 +11080,12 @@ namespace UCG
             RefreshZoneInfoUI();
             RefreshHandLayout();
 
-            string sideText = effect.ownerSide == UcgPlayerSide.Player ? "我方" : "對手";
+            string sideText = effect.ownerSide == UcgPlayerSide.Player ? "提示" : "提示";
             string returnedName = string.IsNullOrWhiteSpace(returnedTopCard != null ? returnedTopCard.cardName : "")
-                ? "最上層卡"
+                ? "提示"
                 : returnedTopCard.cardName;
             string replacementName = string.IsNullOrWhiteSpace(replacementCard.cardName) ? "迪卡" : replacementCard.cardName;
-            message = $"登場效果階段｜{sideText}第 {targetLane.laneIndex + 1} 路 {returnedName} 回手牌，棄牌區 {replacementName} 登場到最上層。";
+            message = $"{sideText} lane {targetLane.laneIndex + 1}: returned {returnedName}; played {replacementName} from discard.";
             return true;
         }
 
@@ -9634,66 +11209,66 @@ namespace UCG
 
         string GetInvalidEffectTargetMessage(UcgBattleLane lane, UcgPlayerSide side, UcgEffectInstance effect)
         {
-            if (!IsLegalEffectTarget(lane, side)) return "此處沒有可選擇的角色";
+            if (!IsLegalEffectTarget(lane, side)) return "提示";
             if (effect != null && effect.effectId == UcgDemoEffectId.OnRevealChooseAdjacentOwnZeroBpStepUp)
             {
-                return "請選擇與本角色相鄰的傑洛。";
+                return "提示";
             }
             if (effect != null && effect.effectId == UcgDemoEffectId.OnRevealChooseOwnZeroBpStepUp)
             {
-                return "請選擇我方的傑洛。";
+                return "提示";
             }
             if (IsSwapOwnCharactersEffect(effect))
             {
                 return _pendingSwapSourceLane == null
-                    ? "請先選擇此效果的來源角色。"
-                    : "請選擇另一名我方角色交換位置。";
+                    ? "提示"
+                    : "提示";
             }
             if (IsBp05005MultiStepEffect(effect))
             {
                 return _pendingBp05005StepDownLane == null
-                    ? "請選擇 DOUBLE/TRIPLE 且等級 2 或 3、能降低 BP 的我方超人力霸王。"
-                    : "請選擇我方可獲得 BP 上升的迪卡。";
+                    ? "提示"
+                    : "提示";
             }
             if (IsBp05008TopDiscardSwapEffect(effect))
             {
-                return "請選擇 DOUBLE/TRIPLE 且等級 2 或 3、可替換最上層的我方迪卡。";
+                return "提示";
             }
 
             if (effect != null && effect.cardData != null && UcgTutorialCardEffectMap.TryGetTargetFilter(effect.cardData, out _))
             {
-                return "這個目標不符合效果條件。";
+                return "提示";
             }
 
-            return "此處沒有可選擇的角色";
+            return "提示";
         }
 
         string GetNoLegalEffectTargetMessage(UcgEffectInstance effect)
         {
             if (effect != null && effect.effectId == UcgDemoEffectId.OnRevealChooseAdjacentOwnZeroBpStepUp)
             {
-                return "目前沒有相鄰的傑洛可以獲得 BP 上升。";
+                return "提示";
             }
             if (effect != null && effect.effectId == UcgDemoEffectId.OnRevealChooseOwnZeroBpStepUp)
             {
-                return "目前沒有可獲得 BP 上升的傑洛。";
+                return "提示";
             }
             if (IsSwapOwnCharactersEffect(effect))
             {
-                return "目前沒有另一名我方角色可以交換位置。";
+                return "提示";
             }
             if (IsBp05005MultiStepEffect(effect))
             {
                 return _pendingBp05005StepDownLane == null
-                    ? "目前沒有符合條件、可降低 BP 的我方角色。"
-                    : "目前沒有可獲得 BP 上升的迪卡。";
+                    ? "提示"
+                    : "提示";
             }
             if (IsBp05008TopDiscardSwapEffect(effect))
             {
-                return "目前沒有符合條件的迪卡，或棄牌區沒有同等級迪卡。";
+                return "提示";
             }
 
-            return "目前沒有符合條件的角色可以選擇。";
+            return "提示";
         }
 
         void SkipTargetEffectWithNoLegalTarget(UcgEffectInstance effect, string prefixMessage = "")
@@ -9821,7 +11396,7 @@ namespace UCG
                 case UcgGamePhase.Open:
                     if (playResultText != null)
                     {
-                        playResultText.text = "開放階段：雙方角色翻開，準備確認登場效果。";
+                        playResultText.text = "提示";
                     }
                     if (battlefieldManager != null)
                     {
@@ -9846,13 +11421,13 @@ namespace UCG
                                             : 0;
                                     Debug.Log(
                                         "Enter effect queued after reveal:\n"
-                                        + $"card={effect?.cardData?.id} {effect?.cardData?.cardName}\n"
-                                        + $"effect={GetEffectText(effect?.cardData)}\n"
-                                        + $"category={(rule != null ? rule.effectCategory.ToString() : "null")}\n"
-                                        + $"action={(rule != null ? rule.actionType.ToString() : "null")}\n"
+                                        + $"提示"
+                                        + $"提示"
+                                        + $"card={(effect.cardData != null ? effect.cardData.id : "null")}\n"
+                                        + $"cardName={(effect.cardData != null ? effect.cardData.cardName : "null")}\n"
                                         + $"stackCount={stackCount}\n"
-                                        + $"owner={effect?.ownerSide}\n"
-                                        + $"lane={effect?.LaneIndex}");
+                                        + $"提示"
+                                        + $"提示");
                                 }
                             }
                         }
@@ -9860,13 +11435,13 @@ namespace UCG
 
                     int effectCount = effectManager != null ? effectManager.PendingCount : 0;
                     ShowPlayStatus(effectCount > 0
-                        ? $"開放階段：有 {effectCount} 個登場效果待處理。"
-                        : "開放階段：沒有待處理的登場效果。", 1.2f);
+                        ? $"提示"
+                        : "提示", 1.2f);
                     break;
                 case UcgGamePhase.BattleJudgement:
                     if (playResultText != null)
                     {
-                        playResultText.text = "勝負判定階段：正在比較雙方 BP。";
+                        playResultText.text = "提示";
                     }
                     RunBattleJudgement();
                     break;
@@ -9954,7 +11529,7 @@ namespace UCG
                     + $"label={label}\n"
                     + $"countdown={countdownText}\n"
                     + $"autoAdvance={autoAdvance}\n"
-                    + $"hiddenReason={(canShow ? "none" : hiddenReason)}");
+                    + $"hiddenReason={(string.IsNullOrWhiteSpace(hiddenReason) ? "none" : hiddenReason)}");
             }
 
             if (!canShow)
@@ -10293,7 +11868,7 @@ namespace UCG
                 + $"phase={phaseText}\n"
                 + $"label={_currentAdvancePromptLabel}\n"
                 + $"canClick={canClick}\n"
-                + $"reason={(canClick ? "none" : NormalizeInteractionReason(reason))}\n"
+                + $"reason={(string.IsNullOrWhiteSpace(reason) ? "none" : NormalizeInteractionReason(reason))}\n"
                 + $"isCountdownActive={_isAdvanceCountdownActive}\n"
                 + $"isCountdownPaused={_isAdvanceCountdownPaused}\n"
                 + $"isDraggingHandCard={_isPlayerDraggingHandCard}\n"
@@ -10341,7 +11916,7 @@ namespace UCG
                 + $"phase={phaseText}\n"
                 + $"actingPlayer={actingPlayerText}\n"
                 + $"canShow={canShow}\n"
-                + $"hiddenReason={(canShow ? "none" : NormalizeInteractionReason(hiddenReason))}\n"
+                + $"hiddenReason={(string.IsNullOrWhiteSpace(hiddenReason) ? "none" : NormalizeInteractionReason(hiddenReason))}\n"
                 + $"isJudgementInProgress={(phaseManager != null && phaseManager.CurrentPhase == UcgGamePhase.BattleJudgement) || (_isAutoPhaseRunning && context == "JudgementInProgress")}\n"
                 + $"isOpponentActionRunning={_isOpponentActionRunning}\n"
                 + $"isDeckOperationSelecting={isDeckOperationSelecting}\n"
@@ -10354,39 +11929,39 @@ namespace UCG
 
         string GetNextPhaseButtonLabel()
         {
-            if (IsGameOver) return "重新開始";
-            if (_isOpeningFirstPlayerSequence) return "決定先攻中";
-            if (_pendingAction != null) return "確認中";
-            if (_isEffectAutoAdvancing) return "進入判定中";
+            if (IsGameOver) return "結束";
+            if (_isOpeningFirstPlayerSequence) return "等待";
+            if (_pendingAction != null) return "確認";
+            if (_isEffectAutoAdvancing) return "處理中";
             if (_isAutoPhaseRunning || _sceneSetupSkipRoutine != null) return "處理中";
-            if (_isOpponentActionRunning) return "等待對手";
-            if (phaseManager == null) return "下一階段";
+            if (_isOpponentActionRunning) return "對手行動";
+            if (phaseManager == null) return "準備中";
 
             switch (phaseManager.CurrentPhase)
             {
                 case UcgGamePhase.SceneSetup:
-                    return HasLegalSceneCardInHand() ? "跳過場景" : "處理中";
+                    return HasLegalSceneCardInHand() ? "略過場景" : "確認";
                 case UcgGamePhase.CharacterSetup:
-                    return CanAdvanceFromCharacterSetupQuiet() ? "進入升級" : "請先設置角色";
+                    return CanAdvanceFromCharacterSetupQuiet() ? "確認設置" : "選擇角色";
                 case UcgGamePhase.Upgrade:
                     return "結束升級";
                 case UcgGamePhase.EnterEffect:
-                    if (_isSelectingDeckOperationCard) return "選牌中";
-                    if (_isSelectingEffectTarget) return "選擇目標中";
-                    return "處理登場效果";
+                    if (_isSelectingDeckOperationCard) return "選擇卡牌";
+                    if (_isSelectingEffectTarget) return "選擇目標";
+                    return "處理效果";
                 case UcgGamePhase.BattleEffect:
-                    if (_isSelectingDeckOperationCard) return "選牌中";
-                    if (_isSelectingEffectTarget) return "選擇目標中";
-                    return effectManager != null && effectManager.HasPendingEffects ? "結束效果" : "進入判定";
+                    if (_isSelectingDeckOperationCard) return "選擇卡牌";
+                    if (_isSelectingEffectTarget) return "選擇目標";
+                    return effectManager != null && effectManager.HasPendingEffects ? "處理效果" : "進入判定";
                 case UcgGamePhase.End:
-                    return "繼續";
+                    return "結束回合";
                 case UcgGamePhase.Open:
                 case UcgGamePhase.BattleJudgement:
                 case UcgGamePhase.Draw:
                 case UcgGamePhase.Start:
-                    return "處理中";
+                    return "下一步";
                 default:
-                    return "下一階段";
+                    return "下一步";
             }
         }
 
@@ -10452,7 +12027,7 @@ namespace UCG
         {
             if (playResultText != null)
             {
-                playResultText.text = "請等待對手操作完成";
+                playResultText.text = "提示";
             }
         }
 
@@ -10493,7 +12068,7 @@ namespace UCG
             {
                 if (playResultText != null)
                 {
-                    playResultText.text = $"請先將角色牌設置到第 {laneIndex + 1} 路";
+                    playResultText.text = $"提示";
                 }
                 return false;
             }
@@ -10530,7 +12105,7 @@ namespace UCG
                 && lane != null
                 && lane.opponentTopCard == null)
             {
-                message = "請等待對手設置完成";
+                message = "提示";
                 return false;
             }
 
@@ -10774,42 +12349,42 @@ namespace UCG
             {
                 case "OpponentActionInProgress":
                 case "NotPlayerAction":
-                    return "請等待對手操作完成";
+                    return "目前是對手行動，請等待。";
                 case "FirstPlayerResultShowing":
                 case "OpeningFirstPlayerSequence":
-                    return "正在決定先攻";
+                    return "正在顯示先攻判定結果。";
                 case "DeckOperationSelecting":
-                    return "請先完成選牌";
+                    return "請先完成目前的卡牌選擇。";
                 case "HandReturnSelecting":
-                    return "請選擇一張手牌放回牌庫最底下";
+                    return "請先完成手牌選擇。";
                 case "TargetSelecting":
-                    return "請先完成效果目標選擇";
+                    return "請先選擇效果目標。";
                 case "Finished":
-                    return "教學已完成，請點擊畫面任意處繼續";
+                    return "對戰已結束。";
                 case "GameOver":
-                    return "遊戲已結束，請重新開始";
+                    return "目前有確認視窗，請先完成操作。";
                 case "ModalOpen":
-                    return "請先關閉目前視窗";
+                    return "正在處理效果，請稍候。";
                 case "EffectResolving":
-                    return "效果處理中，請稍候";
+                    return "動畫播放中，請稍候。";
                 case "VisualAnimationInProgress":
-                    return "動畫處理中，請稍候";
+                    return "正在自動推進階段。";
                 case "AutoPhaseInProgress":
                 case "AdvanceCountdownBlocked":
-                    return "請等待目前流程完成";
+                    return "正在拖曳手牌。";
                 case "DraggingHandCard":
-                    return "拖曳中，請先放開手牌";
+                    return "正在進行戰鬥判定。";
                 case "JudgementInProgress":
                 case "BattleJudgement":
-                    return "判定中，請稍候";
+                    return "目前階段不能執行此操作。";
                 case "WrongPhase":
-                    return "現在不能放這張牌";
+                    return "請選擇正確的路線。";
                 case "WrongLane":
-                    return "請放到目前可操作的路線";
+                    return "這張卡目前不能使用。";
                 case "InvalidCardType":
-                    return "這張牌不能放到此位置";
+                    return "目前無法執行此操作。";
                 default:
-                    return "現在不能操作";
+                    return "場景卡";
             }
         }
 
@@ -10838,26 +12413,26 @@ namespace UCG
             if (reason == "DraggingHandCard") return "DraggingHandCard";
             if (reason == "VisualAnimationInProgress") return "VisualAnimationInProgress";
 
-            if (reason.Contains("對手")) return "OpponentActionInProgress";
-            if (reason.Contains("先攻")) return "FirstPlayerResultShowing";
-            if (reason.Contains("選擇一張手牌放回牌庫")) return "HandReturnSelecting";
-            if (reason.Contains("選牌")) return "DeckOperationSelecting";
-            if (reason.Contains("目標")) return "TargetSelecting";
-            if (reason.Contains("教學已完成")) return "Finished";
-            if (reason.Contains("遊戲已結束")) return "GameOver";
-            if (reason.Contains("確認") || reason.Contains("視窗")) return "ModalOpen";
-            if (reason.Contains("效果處理")) return "EffectResolving";
-            if (reason.Contains("等待") || reason.Contains("流程")) return "AutoPhaseInProgress";
-            if (reason.Contains("判定")) return "JudgementInProgress";
-            if (reason.Contains("不是有效") || reason.Contains("不能設置到") || reason.Contains("不能放到"))
+            if (reason.Contains("提示")) return "OpponentActionInProgress";
+            if (reason.Contains("效果")) return "FirstPlayerResultShowing";
+            if (reason.Contains("return hand")) return "HandReturnSelecting";
+            if (reason.Contains("提示")) return "DeckOperationSelecting";
+            if (reason.Contains("提示")) return "TargetSelecting";
+            if (reason.Contains("finished")) return "Finished";
+            if (reason.Contains("game over")) return "GameOver";
+            if (reason.Contains("提示") || reason.Contains("提示")) return "ModalOpen";
+            if (reason.Contains("提示")) return "EffectResolving";
+            if (reason.Contains("提示") || reason.Contains("提示")) return "AutoPhaseInProgress";
+            if (reason.Contains("提示")) return "JudgementInProgress";
+            if (reason.Contains("cannot") || reason.Contains("invalid") || reason.Contains("blocked"))
             {
                 return "InvalidCardType";
             }
-            if (reason.Contains("路線") || reason.Contains("Lane") || reason.Contains("戰鬥區") || reason.Contains("尚未開放"))
+            if (reason.Contains("提示") || reason.Contains("Lane") || reason.Contains("提示") || reason.Contains("提示"))
             {
                 return "WrongLane";
             }
-            if (reason.Contains("階段") || reason.Contains("目前"))
+            if (reason.Contains("提示") || reason.Contains("提示"))
             {
                 return "WrongPhase";
             }
@@ -10910,8 +12485,19 @@ namespace UCG
 
         void BeginOpponentSetupRoutine(UcgBattleLane lane, bool opponentFirst)
         {
-            if (lane == null || lane.opponentTopCard != null) return;
-            if (_opponentActionRoutine != null) return;
+            if (lane == null || lane.opponentTopCard != null || _opponentActionRoutine != null)
+            {
+                if (opponentFirst && turnOrderManager != null)
+                {
+                    turnOrderManager.SetCurrentActingPlayer(UcgPlayerSide.Player);
+                    _isOpponentActionRunning = false;
+                    SetHandCardsInteractable(true, null);
+                    SetNextPhaseButtonInteractable(true);
+                    RefreshInteractionHints();
+                    RefreshNextPhaseButtonState();
+                }
+                return;
+            }
             if (turnOrderManager != null) turnOrderManager.SetCurrentActingPlayer(UcgPlayerSide.Opponent);
             _opponentActionRoutine = StartCoroutine(OpponentSetupRoutine(lane, opponentFirst));
         }
@@ -10946,7 +12532,7 @@ namespace UCG
             SetNextPhaseButtonInteractable(false);
             ClearInteractionHints();
 
-            ShowPlayStatus("對手進入場景設置階段");
+            ShowPlayStatus("提示");
 
             yield return new WaitForSecondsRealtime(opponentActionDelaySeconds);
 
@@ -10954,7 +12540,7 @@ namespace UCG
             {
                 RemoveOpponentHiddenCard(sceneCard);
                 ShowPlayStatus(string.IsNullOrWhiteSpace(sceneMessage)
-                    ? $"對手設置場景：{GetCardDisplayName(sceneCard)}"
+                    ? "Opponent set scene: " + GetCardDisplayName(sceneCard)
                     : sceneMessage);
                 if (sfxController != null)
                 {
@@ -10963,7 +12549,7 @@ namespace UCG
             }
             else
             {
-                ShowPlayStatus("對手沒有可設置場景卡");
+                ShowPlayStatus("提示");
             }
 
             yield return new WaitForSecondsRealtime(opponentActionDelaySeconds);
@@ -11062,7 +12648,7 @@ namespace UCG
             SetNextPhaseButtonInteractable(false);
             ClearInteractionHints();
 
-            ShowPlayStatus("對手進入角色設置階段");
+            ShowPlayStatus("提示");
 
             yield return new WaitForSecondsRealtime(opponentActionDelaySeconds);
 
@@ -11102,8 +12688,8 @@ namespace UCG
                 PlayOpponentCardActionFeedback(lane, false);
             }
             ShowPlayStatus(placed
-                ? $"對手在第 {laneNumber} 路設置角色：{GetCardDisplayName(placedCard)}"
-                : "對手沒有可設置角色");
+                ? $"提示"
+                : "提示");
 
             yield return new WaitForSecondsRealtime(opponentActionDelaySeconds);
 
@@ -11116,7 +12702,7 @@ namespace UCG
                 turnOrderManager.SetCurrentActingPlayer(UcgPlayerSide.Player);
                 if (placed)
                 {
-                    ShowPlayStatus("輪到你行動", 1.2f);
+                    ShowPlayStatus("提示", 1.2f);
                 }
             }
             UpdateMainPrompt();
@@ -11151,7 +12737,7 @@ namespace UCG
             SetNextPhaseButtonInteractable(false);
             ClearInteractionHints();
 
-            ShowPlayStatus("對手進入升級階段");
+            ShowPlayStatus("提示");
 
             yield return new WaitForSecondsRealtime(opponentActionDelaySeconds);
 
@@ -11159,7 +12745,7 @@ namespace UCG
 
             if (!upgraded)
             {
-                ShowPlayStatus("對手沒有可升級角色");
+                ShowPlayStatus("提示");
             }
 
             yield return new WaitForSecondsRealtime(opponentActionDelaySeconds);
@@ -11232,8 +12818,8 @@ namespace UCG
             }
 
             ShowPlayStatus(upgraded
-                ? $"對手升級了第 {upgradedLaneNumber} 路角色：{GetCardDisplayName(upgradedCard)}"
-                : "對手沒有可升級角色");
+                ? $"提示"
+                : "提示");
 
             return upgraded;
         }
@@ -11260,11 +12846,11 @@ namespace UCG
 
         string GetCardDisplayName(UcgCardData card)
         {
-            if (card == null) return "未知卡牌";
+            if (card == null) return "提示";
             if (!string.IsNullOrWhiteSpace(card.cardName)) return card.cardName;
             if (!string.IsNullOrWhiteSpace(card.characterName)) return card.characterName;
             if (!string.IsNullOrWhiteSpace(card.id)) return card.id;
-            return "未知卡牌";
+            return "提示";
         }
 
         void ConsumeOpponentHandCard()
@@ -11408,14 +12994,14 @@ namespace UCG
             if (gameResultText != null)
             {
                 SetGameResultHudVisible(true);
-                gameResultText.text = $"勝利路數：我方 {playerWinCount}｜對手 {opponentWinCount}";
+                gameResultText.text = $"提示";
             }
 
             if (_playerWonTutorialLaneIndexes.Count >= 3)
             {
                 if (playResultText != null)
                 {
-                    playResultText.text = $"我方已贏得 {_playerWonTutorialLaneIndexes.Count} 條不同戰鬥區。";
+                    playResultText.text = $"提示";
                 }
 
                 BeginTutorialCompletionRoutine();
@@ -11486,17 +13072,34 @@ namespace UCG
             _judgementVisualRoutine = null;
         }
 
+        void StopVisualAnimationRoutines()
+        {
+            if (_judgementVisualRoutine != null)
+            {
+                StopCoroutine(_judgementVisualRoutine);
+                _judgementVisualRoutine = null;
+            }
+
+            if (_battlefieldCommitAnimationRoutine != null)
+            {
+                StopCoroutine(_battlefieldCommitAnimationRoutine);
+                _battlefieldCommitAnimationRoutine = null;
+            }
+
+            _isResolvingVisualAnimation = false;
+        }
+
         string BuildJudgementHudMessage(List<UcgBattleLane> lanes, int playerWinCount, int opponentWinCount, string demoResultMessage, string nextFirstPlayerMessage, string restedMessage)
         {
             UcgBattleLane focusLane = GetLatestJudgedLane(lanes);
             if (focusLane == null)
             {
-                return $"判定完成\n勝利路數：我方 {playerWinCount}｜對手 {opponentWinCount}";
+                return $"勝負：我方 {playerWinCount} / 對手 {opponentWinCount}";
             }
 
             string resultText = GetLaneResultShortText(focusLane.laneResult);
 
-            return $"第 {focusLane.laneIndex + 1} 路判定｜結果：{resultText}\n"
+            return $"第 {focusLane.laneIndex + 1} 路：{resultText}\n"
                 + $"我方：{FormatBpFormula(focusLane.playerBp, GetPlayerModifierTotal(focusLane))}\n"
                 + $"對手：{FormatBpFormula(focusLane.opponentBp, GetOpponentModifierTotal(focusLane))}";
         }
@@ -11550,13 +13153,13 @@ namespace UCG
             switch (result)
             {
                 case UcgLaneResultType.PlayerWin:
-                    return "我方勝";
+                    return "角色卡";
                 case UcgLaneResultType.OpponentWin:
-                    return "對手勝";
+                    return "卡牌";
                 case UcgLaneResultType.Draw:
-                    return "平手";
+                    return "請選擇 1 張場景卡。";
                 default:
-                    return "無結果";
+                    return "請選擇 1 張角色卡。";
             }
         }
 
@@ -11582,13 +13185,13 @@ namespace UCG
             switch (latestLane.laneResult)
             {
                 case UcgLaneResultType.PlayerWin:
-                    return "對方這一路 BP 較低，角色橫置。";
+                    return "請選擇 1 張卡牌。";
                 case UcgLaneResultType.OpponentWin:
-                    return "我方這一路 BP 較低，角色橫置。";
+                    return "沒有可選擇的場景卡，公開卡將送入棄牌區。";
                 case UcgLaneResultType.Draw:
-                    return "這一路 BP 相同，雙方都不橫置。";
+                    return "沒有可選擇的角色卡，公開卡將送入棄牌區。";
                 default:
-                    return "這一路尚未產生有效判定。";
+                    return "沒有可選擇的卡牌，公開卡將送入棄牌區。";
             }
         }
 
@@ -11610,8 +13213,8 @@ namespace UCG
             ClearInteractionHints();
             HideDiscardPilePanel();
 
-            string winnerText = gameResult == UcgGameResultType.PlayerWin ? "我方勝利" : "對手勝利";
-            string message = $"遊戲結束｜{winnerText}\n我方勝利路數：{playerWinCount}｜對手勝利路數：{opponentWinCount}";
+            string winnerText = gameResult == UcgGameResultType.PlayerWin ? "提示" : "提示";
+            string message = $"Game over: {winnerText}\nPlayer wins: {playerWinCount} / Opponent wins: {opponentWinCount}";
 
             if (playResultText != null)
             {
@@ -11634,11 +13237,11 @@ namespace UCG
                 EnsureGameOverModal();
             }
 
-            string winnerText = gameResult == UcgGameResultType.PlayerWin ? "我方勝利" : "對手勝利";
+            string winnerText = gameResult == UcgGameResultType.PlayerWin ? "提示" : "提示";
             if (_gameOverModalText != null)
             {
                 _gameOverModalText.text =
-                    $"遊戲結束\n\n{winnerText}\n\n我方勝利路數：{playerWinCount}\n對手勝利路數：{opponentWinCount}";
+                    $"Game over\n\n{winnerText}\n\nPlayer wins: {playerWinCount}\nOpponent wins: {opponentWinCount}";
             }
 
             if (_gameOverModalRoot != null)
@@ -11675,6 +13278,9 @@ namespace UCG
         void ResetEffectState()
         {
             StopEffectAutoAdvanceRoutine();
+            ClearTransientInputLocksForRestart();
+            AdvanceDeckOperationStateVersion();
+            StopDeckOperationRunningCoroutines();
             StopDeckOperationNoValidAutoCloseRoutine();
             StopCurrentEffectSourceHighlight();
             if (effectManager != null)
@@ -11682,6 +13288,11 @@ namespace UCG
                 effectManager.Clear();
             }
 
+            _pendingDeckSelection = null;
+            _isSelectingDeckOperationCard = false;
+            _deckOperationResultAnimationRunning = false;
+            ClearDeckOperationCards();
+            ClearHandCardSelectionVisuals();
             ClearEffectTargetSelection();
             ClearBp05008DiscardSelectionState();
             ClearBp01105PendingSelectionState();
@@ -11692,6 +13303,54 @@ namespace UCG
             ClearTemporaryBpModifiers();
             ClearTemporaryTypeGrants();
             ClearSceneBpModifiers();
+        }
+
+        void ClearTransientInputLocksForRestart()
+        {
+            StopVisualAnimationRoutines();
+            if (_cardMoveAnimationSystem != null)
+            {
+                _cardMoveAnimationSystem.StopAllCoroutines();
+            }
+            if (_playStatusRoutine != null)
+            {
+                StopCoroutine(_playStatusRoutine);
+                _playStatusRoutine = null;
+            }
+            if (_drawCardsToHandRoutine != null)
+            {
+                StopCoroutine(_drawCardsToHandRoutine);
+                _drawCardsToHandRoutine = null;
+            }
+            ClearEffectFeedback();
+            ClearDragLayerHandCardResidue();
+            _isPlayerDraggingHandCard = false;
+            _isResolvingVisualAnimation = false;
+            ResetAdvancePromptCountdownForNewDecision();
+        }
+
+        void ClearDragLayerHandCardResidue()
+        {
+            if (dragLayer == null) return;
+
+            for (int i = dragLayer.childCount - 1; i >= 0; i--)
+            {
+                Transform child = dragLayer.GetChild(i);
+                if (child == null) continue;
+
+                var cardView = child.GetComponent<UcgCardView>();
+                if (cardView == null || cardView.IsLockedInBattlefield) continue;
+
+                child.SetParent(null, false);
+                if (Application.isPlaying)
+                {
+                    Destroy(child.gameObject);
+                }
+                else
+                {
+                    DestroyImmediate(child.gameObject);
+                }
+            }
         }
 
         void RestoreRestedCardsForNewTurn()
@@ -11770,6 +13429,7 @@ namespace UCG
         {
             _isPlayerDraggingHandCard = false;
             if (_pendingAction != null) return;
+            NormalizeAllHandCardViews("DragEnded", true, true, true);
             ResetAdvancePromptCountdownForNewDecision();
             RefreshInteractionHints();
             RefreshNextPhaseButtonState();
@@ -11791,7 +13451,7 @@ namespace UCG
             var pendingType = actionType == UcgPlayActionType.Upgrade
                 ? UcgPendingActionType.CharacterUpgrade
                 : UcgPendingActionType.CharacterSetup;
-            string actionText = pendingType == UcgPendingActionType.CharacterUpgrade ? "升級" : "設置到";
+            string actionText = pendingType == UcgPendingActionType.CharacterUpgrade ? "Upgrade" : "Setup";
             int laneNumber = lane.laneIndex + 1;
             _isPlayerDraggingHandCard = false;
             ResetAdvancePromptCountdownForNewDecision();
@@ -11808,7 +13468,7 @@ namespace UCG
                 playActionType = actionType,
                 previousParent = cardHolder,
                 previousSiblingIndex = cardHolder != null ? cardHolder.childCount : 0,
-                confirmMessage = $"確定{actionText}第 {laneNumber} 路嗎？",
+                confirmMessage = $"是否確認設置到第 {lane.laneIndex + 1} 路？",
                 successMessage = successMessage
             };
 
@@ -11838,8 +13498,7 @@ namespace UCG
                 previousParent = cardHolder,
                 previousSiblingIndex = cardHolder != null ? cardHolder.childCount : 0,
                 previousSceneCard = previousSceneCard,
-                previousSceneOwner = previousSceneOwner,
-                confirmMessage = replacing ? "確定替換目前場景卡嗎？" : "確定設置場景卡嗎？"
+                confirmMessage = replacing ? "是否替換目前場景卡？" : "是否設置這張場景卡？",
             };
 
             cardRect.SetParent(cardHolder, false);
@@ -11856,7 +13515,7 @@ namespace UCG
 
             if (_pendingConfirmText != null)
             {
-                _pendingConfirmText.text = string.IsNullOrWhiteSpace(message) ? "確定嗎？" : message;
+                _pendingConfirmText.text = string.IsNullOrWhiteSpace(message) ? "是否確認執行此操作？" : message;
             }
 
             var modalCanvas = _pendingConfirmRoot.GetComponent<Canvas>();
@@ -11882,7 +13541,7 @@ namespace UCG
         {
             if (playResultText != null)
             {
-                playResultText.text = "請先確認或取消目前動作";
+                playResultText.text = "提示";
             }
         }
 
@@ -11951,7 +13610,7 @@ namespace UCG
                 || validatedAction != pending.playActionType)
             {
                 CancelPendingBattlefieldAction(pending, string.IsNullOrWhiteSpace(validationMessage)
-                    ? "現在不能放這張牌"
+                    ? "提示"
                     : validationMessage);
                 return;
             }
@@ -12140,7 +13799,7 @@ namespace UCG
             {
                 _advanceToUpgradeAfterOpponentSetup = true;
                 RequestOpponentSetupAfterPlayerPlacement(lane);
-                message = $"{message}；對手思考中...";
+                message = $"提示";
             }
             else
             {
@@ -12170,7 +13829,7 @@ namespace UCG
                     true))
             {
                 CancelPendingSceneAction(pending, string.IsNullOrWhiteSpace(validationMessage)
-                    ? "現在不能設置場景卡"
+                    ? "提示"
                     : validationMessage);
                 return;
             }
@@ -12246,7 +13905,7 @@ namespace UCG
             if (playResultText != null)
             {
                 playResultText.text = string.IsNullOrWhiteSpace(messageOverride)
-                    ? "已取消本次操作"
+                    ? "提示"
                     : messageOverride;
             }
 
@@ -12274,7 +13933,7 @@ namespace UCG
             if (playResultText != null)
             {
                 playResultText.text = string.IsNullOrWhiteSpace(messageOverride)
-                    ? "已取消場景卡設置"
+                    ? "提示"
                     : messageOverride;
             }
 
@@ -12308,6 +13967,7 @@ namespace UCG
             if (canvasGroup != null)
             {
                 canvasGroup.alpha = 1f;
+                canvasGroup.interactable = true;
                 canvasGroup.blocksRaycasts = true;
             }
 
@@ -12331,11 +13991,17 @@ namespace UCG
                 var card = cardHolder.GetChild(i).GetComponent<UcgCardView>();
                 if (card == null || card == exceptCard) continue;
 
-                var drag = card.GetComponent<UIDragCard>();
-                if (drag != null)
+                if (interactable)
                 {
-                    bool canDrag = interactable && CanPlayerDragHandCard(card, out _);
-                    drag.enabled = canDrag;
+                    RestoreHandCardPointerReception(card, true);
+                }
+                else
+                {
+                    var drag = card.GetComponent<UIDragCard>();
+                    if (drag != null)
+                    {
+                        drag.enabled = false;
+                    }
                 }
             }
         }
@@ -12348,12 +14014,287 @@ namespace UCG
             {
                 var card = cardHolder.GetChild(i).GetComponent<UcgCardView>();
                 if (card == null) continue;
+                RestoreHandCardPointerReception(card, true);
+            }
+        }
 
+        public void NormalizeAllHandCardViews()
+        {
+            NormalizeAllHandCardViews("External", true, true, true);
+        }
+
+        void NormalizeAllHandCardViews(string context, bool restorePointerReception, bool refreshDrag, bool refreshLayout)
+        {
+            if (cardHolder == null) return;
+
+            if (restorePointerReception)
+            {
+                RestoreHandCardsFromDragLayer(context);
+            }
+
+            for (int i = 0; i < cardHolder.childCount; i++)
+            {
+                var card = cardHolder.GetChild(i).GetComponent<UcgCardView>();
+                if (card == null || card.IsLockedInBattlefield) continue;
+
+                RectTransform rect = card.transform as RectTransform;
+                if (rect != null)
+                {
+                    if (restorePointerReception)
+                    {
+                        rect.gameObject.SetActive(true);
+                    }
+                    rect.anchorMin = new Vector2(0.5f, 0.5f);
+                    rect.anchorMax = new Vector2(0.5f, 0.5f);
+                    rect.pivot = new Vector2(0.5f, 0.5f);
+                    if (rect.localScale == Vector3.zero) rect.localScale = Vector3.one;
+                }
+
+                if (restorePointerReception)
+                {
+                    RestoreHandCardPointerReception(card, refreshDrag);
+                }
+                else
+                {
+                    card.SetPointerPreviewSuppressed(false);
+                }
+            }
+
+            if (refreshLayout)
+            {
+                ApplyHandStyleByCount(cardHolder.childCount);
+                UIHandLayout layout = cardHolder.GetComponent<UIHandLayout>();
+                if (layout != null)
+                {
+                    layout.NotifyLayoutChanged(true);
+                }
+            }
+
+            LogHandRaycastState(context);
+        }
+
+        void RestoreHandCardsFromDragLayer(string context)
+        {
+            if (dragLayer == null || cardHolder == null) return;
+
+            for (int i = dragLayer.childCount - 1; i >= 0; i--)
+            {
+                Transform child = dragLayer.GetChild(i);
+                if (child == null) continue;
+
+                var cardView = child.GetComponent<UcgCardView>();
+                if (cardView == null || cardView.IsLockedInBattlefield) continue;
+
+                bool belongsToPlayerHand = deckManager != null
+                    && deckManager.playerHand != null
+                    && cardView.CardData != null
+                    && deckManager.playerHand.Contains(cardView.CardData);
+                if (!belongsToPlayerHand) continue;
+
+                child.SetParent(cardHolder, false);
+                child.SetAsLastSibling();
+
+                var rect = child as RectTransform;
+                if (rect != null)
+                {
+                    rect.localScale = Vector3.one;
+                }
+
+                RestoreHandCardPointerReception(cardView, true);
+                Debug.Log($"[UCG HandRaycast] restored hand card from DragLayer: context={context}, card={FormatDrawSource(cardView.CardData)}");
+            }
+        }
+
+        void RestoreHandCardPointerReception(UcgCardView card, bool refreshDrag)
+        {
+            if (card == null) return;
+
+            card.SetPointerPreviewSuppressed(false);
+
+            var canvasGroup = card.GetComponent<CanvasGroup>();
+            if (canvasGroup != null)
+            {
+                canvasGroup.alpha = 1f;
+                canvasGroup.interactable = true;
+                canvasGroup.blocksRaycasts = true;
+            }
+
+            var image = card.GetComponent<Image>();
+            if (image != null)
+            {
+                image.raycastTarget = true;
+            }
+
+            var button = card.GetComponent<Button>();
+            if (button != null)
+            {
+                button.interactable = true;
+            }
+
+            var hover = card.GetComponent<UIHandCardHover>();
+            if (hover != null)
+            {
+                hover.enabled = true;
+            }
+
+            var cardCanvas = card.GetComponent<Canvas>();
+            if (cardCanvas != null)
+            {
+                var graphicRaycaster = card.GetComponent<GraphicRaycaster>();
+                if (graphicRaycaster == null)
+                {
+                    graphicRaycaster = card.gameObject.AddComponent<GraphicRaycaster>();
+                }
+                graphicRaycaster.enabled = true;
+            }
+
+            if (refreshDrag)
+            {
                 var drag = card.GetComponent<UIDragCard>();
                 if (drag != null)
                 {
                     drag.enabled = CanPlayerDragHandCard(card, out _);
                 }
+            }
+        }
+
+        [System.Diagnostics.Conditional("UNITY_EDITOR")]
+        void LogHandRaycastState(string context)
+        {
+            var output = new System.Text.StringBuilder();
+            output.Append("[UCG HandRaycast] ").Append(context).Append('\n');
+
+            if (cardHolder == null)
+            {
+                output.Append("cardHolder=null");
+                Debug.Log(output.ToString());
+                return;
+            }
+
+            output.Append("handCount=").Append(cardHolder.childCount).Append('\n');
+            for (int i = 0; i < cardHolder.childCount; i++)
+            {
+                Transform child = cardHolder.GetChild(i);
+                RectTransform rect = child as RectTransform;
+                UcgCardView card = child != null ? child.GetComponent<UcgCardView>() : null;
+                UcgCardData cardData = card != null ? card.CardData : null;
+                CanvasGroup canvasGroup = child != null ? child.GetComponent<CanvasGroup>() : null;
+                Image rootImage = child != null ? child.GetComponent<Image>() : null;
+                Image artImage = child != null ? child.Find("Card Art Image")?.GetComponent<Image>() : null;
+                UIDragCard drag = child != null ? child.GetComponent<UIDragCard>() : null;
+                Button button = child != null ? child.GetComponent<Button>() : null;
+                Canvas cardCanvas = child != null ? child.GetComponent<Canvas>() : null;
+
+                output.Append("index=").Append(i)
+                    .Append(" id=").Append(cardData != null ? cardData.id : "null")
+                    .Append(" name=").Append(cardData != null ? cardData.cardName : "null")
+                    .Append(" go=").Append(child != null ? child.name : "null")
+                    .Append(" active=").Append(child != null && child.gameObject.activeInHierarchy)
+                    .Append(" sibling=").Append(child != null ? child.GetSiblingIndex() : -1)
+                    .Append(" anchored=").Append(rect != null ? FormatVector2(rect.anchoredPosition) : "null")
+                    .Append(" size=").Append(rect != null ? FormatVector2(rect.sizeDelta) : "null")
+                    .Append(" scale=").Append(rect != null ? FormatVector3(rect.localScale) : "null")
+                    .Append(" rotationZ=").Append(rect != null ? rect.localEulerAngles.z.ToString("0.##") : "null")
+                    .Append(" cgBlocks=").Append(canvasGroup != null && canvasGroup.blocksRaycasts)
+                    .Append(" cgInteractable=").Append(canvasGroup != null && canvasGroup.interactable)
+                    .Append(" rootRaycast=").Append(rootImage != null && rootImage.raycastTarget)
+                    .Append(" artRaycast=").Append(artImage != null && artImage.raycastTarget)
+                    .Append(" dragEnabled=").Append(drag != null && drag.enabled)
+                    .Append(" buttonInteractable=").Append(button != null && button.interactable)
+                    .Append(" canvasOverride=").Append(cardCanvas != null && cardCanvas.overrideSorting)
+                    .Append(" canvasOrder=").Append(cardCanvas != null ? cardCanvas.sortingOrder : 0)
+                    .Append('\n');
+            }
+
+            Debug.Log(output.ToString());
+        }
+
+        void UpdateHandRaycastDebugProbe()
+        {
+#if UNITY_EDITOR
+            if (!Application.isPlaying || cardHolder == null) return;
+            if (EventSystem.current == null) return;
+
+            var mouse = UnityEngine.InputSystem.Mouse.current;
+            if (mouse == null || !mouse.leftButton.wasPressedThisFrame) return;
+
+            Vector2 screenPosition = mouse.position.ReadValue();
+            Camera eventCamera = GetUiEventCamera();
+            bool insideHolder = RectTransformUtility.RectangleContainsScreenPoint(cardHolder, screenPosition, eventCamera);
+            if (!insideHolder) return;
+
+            RectTransformUtility.ScreenPointToLocalPointInRectangle(cardHolder, screenPosition, eventCamera, out Vector2 localPoint);
+            var results = new List<RaycastResult>();
+            var pointerData = new PointerEventData(EventSystem.current)
+            {
+                position = screenPosition
+            };
+            EventSystem.current.RaycastAll(pointerData, results);
+
+            var output = new System.Text.StringBuilder();
+            output.Append("[UCG HandRaycastStack] screen=")
+                .Append(FormatVector2(screenPosition))
+                .Append(" local=")
+                .Append(FormatVector2(localPoint))
+                .Append(" hitCount=")
+                .Append(results.Count)
+                .Append('\n');
+
+            int max = Mathf.Min(results.Count, 24);
+            for (int i = 0; i < max; i++)
+            {
+                GameObject hit = results[i].gameObject;
+                Transform hitTransform = hit != null ? hit.transform : null;
+                Graphic graphic = hit != null ? hit.GetComponent<Graphic>() : null;
+                Canvas hitCanvas = hit != null ? hit.GetComponentInParent<Canvas>() : null;
+                CanvasGroup canvasGroup = hit != null ? hit.GetComponentInParent<CanvasGroup>() : null;
+                output.Append(i)
+                    .Append(": name=").Append(hit != null ? hit.name : "null")
+                    .Append(" parent=").Append(hitTransform != null && hitTransform.parent != null ? hitTransform.parent.name : "null")
+                    .Append(" sortingOrder=").Append(hitCanvas != null ? hitCanvas.sortingOrder : 0)
+                    .Append(" sibling=").Append(hitTransform != null ? hitTransform.GetSiblingIndex() : -1)
+                    .Append(" raycastTarget=").Append(graphic != null && graphic.raycastTarget)
+                    .Append(" cgBlocks=").Append(canvasGroup == null || canvasGroup.blocksRaycasts)
+                    .Append(" path=").Append(FormatTransformPath(hitTransform))
+                    .Append('\n');
+            }
+
+            Debug.Log(output.ToString());
+#endif
+        }
+
+        Camera GetUiEventCamera()
+        {
+            if (canvas == null || canvas.renderMode == RenderMode.ScreenSpaceOverlay) return null;
+            return canvas.worldCamera;
+        }
+
+        void RestoreHandCardsAfterDeckOperation()
+        {
+            ClearHandCardSelectionVisuals();
+            SetHandCardsInteractable(true, null);
+            RefreshHandCardDragInteractability();
+        }
+
+        void RestoreAllHandCardInteractionAfterDeckOperation(bool refreshLayout, bool refreshHints)
+        {
+            _isSelectingDeckOperationCard = false;
+            _deckOperationResultAnimationRunning = false;
+            ApplyHandReturnSelectionHighlights(false);
+            ClearHandCardSelectionVisuals();
+
+            if (refreshLayout)
+            {
+                RefreshHandLayout(true);
+            }
+
+            SetHandCardsInteractable(true, null);
+            RefreshHandCardDragInteractability();
+
+            if (refreshHints)
+            {
+                RefreshInteractionHints();
+                RefreshNextPhaseButtonState();
             }
         }
 
@@ -12408,14 +14349,14 @@ namespace UCG
 
             if (cardData == null)
             {
-                message = "不是有效卡牌";
+                message = "提示";
                 LogDropValidation(false, cardData, targetLane, target, actionType, message, logResult);
                 return false;
             }
 
             if (deckManager != null && !deckManager.playerHand.Contains(cardData))
             {
-                message = "這張牌不在手牌中";
+                message = "提示";
                 LogDropValidation(false, cardData, targetLane, target, actionType, message, logResult);
                 return false;
             }
@@ -12444,19 +14385,19 @@ namespace UCG
         {
             if (cardData == null)
             {
-                message = "不是有效場景卡";
+                message = "提示";
                 return false;
             }
 
             if (!cardData.IsSceneCard())
             {
-                message = "角色卡不能設置到場景區";
+                message = "提示";
                 return false;
             }
 
             if (phaseManager == null || phaseManager.CurrentPhase != UcgGamePhase.SceneSetup)
             {
-                message = "目前不是場景設置階段";
+                message = "提示";
                 return false;
             }
 
@@ -12469,19 +14410,19 @@ namespace UCG
 
             if (cardData == null)
             {
-                message = "不是有效角色卡";
+                message = "提示";
                 return false;
             }
 
             if (cardData.IsSceneCard())
             {
-                message = "場景卡不能設置到戰鬥區";
+                message = "提示";
                 return false;
             }
 
             if (lane == null)
             {
-                message = "不是有效戰鬥區";
+                message = "提示";
                 return false;
             }
 
@@ -12490,7 +14431,7 @@ namespace UCG
                 int openedLaneCount = battlefieldManager.GetOpenedLaneCount(turnManager.currentTurn);
                 if (lane.laneIndex < 0 || lane.laneIndex >= openedLaneCount)
                 {
-                    message = "此路尚未開放";
+                    message = "目前沒有手牌可放回牌庫底。";
                     return false;
                 }
             }
@@ -12498,7 +14439,7 @@ namespace UCG
             UcgPlayArea playArea = lane.GetPlayerPlayArea();
             if (playArea == null)
             {
-                message = "不是我方可放置位置";
+                message = "提示";
                 return false;
             }
 
@@ -12507,7 +14448,7 @@ namespace UCG
 
             if (phaseManager == null)
             {
-                message = "目前階段尚未初始化";
+                message = "提示";
                 return false;
             }
 
@@ -12515,7 +14456,7 @@ namespace UCG
             {
                 if (topCard != null)
                 {
-                    message = "此路已有角色，角色設置階段不能放第二張";
+                    message = "提示";
                     return false;
                 }
 
@@ -12523,7 +14464,7 @@ namespace UCG
                 {
                     if (lane.laneIndex != turnManager.ActiveNewLaneIndex)
                     {
-                        message = "請放到目前可操作的路線";
+                        message = "提示";
                     }
                     return false;
                 }
@@ -12546,7 +14487,7 @@ namespace UCG
             {
                 if (topCard == null)
                 {
-                    message = "不能升級到空 Lane";
+                    message = "提示";
                     return false;
                 }
 
@@ -12570,8 +14511,8 @@ namespace UCG
             }
 
             message = phaseManager.CurrentPhase == UcgGamePhase.SceneSetup
-                ? "目前是場景設置階段，角色卡不能放到戰鬥區"
-                : "目前階段不能放置角色卡";
+                ? "提示"
+                : "提示";
             return false;
         }
 
@@ -12633,7 +14574,7 @@ namespace UCG
                 (accepted ? "Drop accepted:" : "Drop rejected:") + "\n"
                 + $"card={FormatDrawSource(cardData)}\n"
                 + $"target={targetText}\n"
-                + $"targetLane={(lane != null ? (lane.laneIndex + 1).ToString() : "none")}\n"
+                + $"targetCard={(cardData != null ? FormatDrawSource(cardData) : "none")}\n"
                 + $"action={actionText}\n"
                 + $"phase={phaseText}\n"
                 + $"actingPlayer={actingPlayerText}\n"
@@ -12893,27 +14834,27 @@ namespace UCG
         {
             if (_isTutorialFinishWaitingForClick)
             {
-                message = "教學已完成，請點擊畫面任意處繼續";
+                message = "提示";
                 return false;
             }
 
             if (_isOpeningFirstPlayerSequence)
             {
-                message = "正在決定先攻";
+                message = "提示";
                 return false;
             }
 
             if (_isSelectingDeckOperationCard)
             {
                 message = IsHandReturnSelectionMode()
-                    ? "請選擇一張手牌放回牌庫最底下"
-                    : "請先完成選牌";
+                    ? "提示"
+                    : "提示";
                 return false;
             }
 
             if (IsGameOver)
             {
-                message = "遊戲已結束，請重新開始";
+                message = "提示";
                 return false;
             }
 
@@ -12925,37 +14866,37 @@ namespace UCG
 
             if (sharedSceneSlot == null)
             {
-                message = "場景區尚未建立";
+                message = "提示";
                 return false;
             }
 
             if (_pendingAction != null)
             {
-                message = "請先確認或取消目前動作";
+                message = "提示";
                 return false;
             }
 
             if (_isAutoPhaseRunning || (_isOpponentActionRunning && side == UcgPlayerSide.Player))
             {
-                message = "請等待目前流程完成";
+                message = "提示";
                 return false;
             }
 
             if (cardData == null)
             {
-                message = "不是有效場景卡";
+                message = "提示";
                 return false;
             }
 
             if (!cardData.IsSceneCard())
             {
-                message = "角色卡不能設置到場景區";
+                message = "提示";
                 return false;
             }
 
             if (phaseManager == null || phaseManager.CurrentPhase != UcgGamePhase.SceneSetup)
             {
-                message = "只能在場景牌設置階段設置場景卡";
+                message = "提示";
                 return false;
             }
 
@@ -12963,8 +14904,8 @@ namespace UCG
             if (!allowDigaScriptedOpponentScene && !IsCurrentFirstPlayer(side))
             {
                 message = side == UcgPlayerSide.Player
-                    ? "本回合不是我方場景牌設置時機"
-                    : "本回合不是對手場景牌設置時機";
+                    ? "提示"
+                    : "提示";
                 return false;
             }
 
@@ -12973,13 +14914,13 @@ namespace UCG
                 int tutorialTurn = turnManager != null ? turnManager.currentTurn : 1;
                 if (tutorialTurn <= 2)
                 {
-                    message = $"第 {tutorialTurn} 回合先展開戰鬥區，2 燈場景第 3 回合再使用";
+                    message = $"提示";
                     return false;
                 }
 
                 if (tutorialTurn == 3 && !IsDigaTutorialTargetSceneCard(cardData))
                 {
-                    message = "請使用教學指定的 2 燈場景卡";
+                    message = "提示";
                     return false;
                 }
             }
@@ -12987,24 +14928,24 @@ namespace UCG
             int allowedSceneLight = GetAllowedSceneLightCount();
             if (cardData.sceneTurnCost > allowedSceneLight)
             {
-                message = $"目前可設置最高 {allowedSceneLight} 燈場景，此卡為 {cardData.sceneTurnCost} 燈";
+                message = $"提示";
                 return false;
             }
 
             if (_sceneCardPlacedTurn == (turnManager != null ? turnManager.currentTurn : 1))
             {
-                message = "本回合已設置過場景卡";
+                message = "提示";
                 return false;
             }
 
             UcgCardData currentScene = sharedSceneSlot != null ? sharedSceneSlot.SceneCardData : null;
             if (currentScene != null && cardData.sceneTurnCost < currentScene.sceneTurnCost)
             {
-                message = "新場景燈數低於目前場景，無法替換";
+                message = "提示";
                 return false;
             }
 
-            message = "場景卡設置成功";
+            message = "提示";
             return true;
         }
 
@@ -13068,7 +15009,7 @@ namespace UCG
             message = "";
             if (sceneCard == null || dragCard == null || cardRect == null)
             {
-                message = "不是有效場景卡";
+                message = "提示";
                 return false;
             }
 
@@ -13092,8 +15033,8 @@ namespace UCG
                 sharedSceneSlot.SetHighlight(false, false);
             }
             message = replacing
-                ? "請確認是否替換目前場景卡"
-                : "請確認是否設置場景卡";
+                ? "提示"
+                : "提示";
             return true;
         }
 
@@ -13154,14 +15095,14 @@ namespace UCG
 
         string BuildScenePlacementMessage(UcgPlayerSide newOwner, bool replaced, UcgCardData oldSceneCard, UcgPlayerSide oldOwner, string drawMessage, string enterMessage)
         {
-            string ownerText = newOwner == UcgPlayerSide.Player ? "我方" : "對手";
-            string suffix = string.IsNullOrWhiteSpace(enterMessage) ? "" : $"｜{enterMessage}";
+            string ownerText = newOwner == UcgPlayerSide.Player ? "提示" : "提示";
+            string suffix = string.IsNullOrWhiteSpace(enterMessage) ? "" : " " + enterMessage;
             if (!replaced || oldSceneCard == null)
             {
-                return $"{ownerText}設置場景，{drawMessage}{suffix}";
+                return $"{ownerText} set scene: {drawMessage}{suffix}";
             }
 
-            return $"{ownerText}設置新場景，{oldSceneCard.cardName}送入{GetDiscardOwnerText(oldOwner)}，{drawMessage}{suffix}";
+            return $"{ownerText} replaced scene {oldSceneCard.cardName}; {drawMessage}{suffix}";
         }
 
         string ResolveSceneEnterEffect(UcgCardData sceneCard, UcgPlayerSide owner)
@@ -13173,11 +15114,11 @@ namespace UCG
                 case UcgDemoSceneEffectId.OnEnterDrawOne:
                     if (DrawCardsFromEffect(owner, 1, sceneCard) > 0)
                     {
-                        QueueEffectFeedback($"場景出現時｜{sceneCard.cardName}：抽 1 張牌");
-                        return "場景出現時效果：再抽 1 張牌";
+                        QueueEffectFeedback($"提示");
+                        return "提示";
                     }
 
-                    return "場景出現時效果：牌組已空";
+                    return "這張不是可選擇的場景卡。";
                 default:
                     return "";
             }
@@ -13185,7 +15126,7 @@ namespace UCG
 
         string GetDiscardOwnerText(UcgPlayerSide owner)
         {
-            return owner == UcgPlayerSide.Player ? "我方棄牌區" : "對手棄牌區";
+            return owner == UcgPlayerSide.Player ? "提示" : "提示";
         }
 
         void LogScenePlacement(UcgCardData newSceneCard, UcgPlayerSide newOwner, bool replaced, UcgCardData oldSceneCard, UcgPlayerSide oldOwner)
@@ -13212,11 +15153,11 @@ namespace UCG
                 if (DrawOneCardFromEffect())
                 {
                     RefreshZoneInfoUI();
-                    return "抽 1 張牌";
+                    return "這張不是可選擇的角色卡。";
                 }
 
                 RefreshZoneInfoUI();
-                return "牌組已空，無法抽牌";
+                return "提示";
             }
 
             if (deckManager != null && deckManager.opponentDrawPile.Count > 0)
@@ -13224,19 +15165,19 @@ namespace UCG
                 deckManager.DrawOpponentCard();
                 SyncOpponentZoneCountsFromDeckManager();
                 RefreshZoneInfoUI();
-                return "抽 1 張牌";
+                return "提示";
             }
 
             if (_opponentDeckCount <= 0)
             {
                 RefreshZoneInfoUI();
-                return "對手牌組已空，無法抽牌";
+                return "提示";
             }
 
             _opponentDeckCount--;
             _opponentHandCount++;
             RefreshZoneInfoUI();
-            return "抽 1 張牌";
+            return "提示";
         }
 
         public void NotifySceneCardPlaced(UcgPlayerSide side, UcgCardView sceneCard)
@@ -13245,8 +15186,8 @@ namespace UCG
 
             if (playResultText != null)
             {
-                string ownerText = side == UcgPlayerSide.Player ? "我方" : "對手";
-                playResultText.text = $"{ownerText}已設置場景：{sceneCard.CardData.cardName}";
+                string ownerText = side == UcgPlayerSide.Player ? "提示" : "提示";
+                playResultText.text = $"提示";
             }
 
             RefreshInteractionHints();
@@ -13256,7 +15197,7 @@ namespace UCG
         {
             if (playResultText != null)
             {
-                playResultText.text = string.IsNullOrWhiteSpace(message) ? "不能設置場景卡" : message;
+                playResultText.text = string.IsNullOrWhiteSpace(message) ? "Cannot set scene." : message;
             }
         }
 
@@ -13349,23 +15290,23 @@ namespace UCG
             {
                 case UcgConditionalBpCategory.ParsedOpponentTypeCondition:
                     applies = CardTypeMatchesAny(opponentCard, rule.allowedTypes, rule.keyword);
-                    condition = $"對手 type={FormatAllowedTypes(rule.allowedTypes, rule.keyword)}";
+                    condition = $"提示";
                     break;
                 case UcgConditionalBpCategory.ParsedOpponentCategoryCondition:
                     applies = CardCategoryMatches(opponentCard, rule.keyword);
-                    condition = $"對手 cardCategory={rule.keyword}";
+                    condition = $"提示";
                     break;
                 case UcgConditionalBpCategory.ParsedCharacterNameCondition:
                     int count = CountMatchingCharacters(side, rule.keyword);
                     applies = count > 0;
                     multiplier = rule.repeatPerMatchingCharacter ? count : 1;
-                    condition = $"我方 characterName={rule.keyword} count={count}";
+                    condition = $"提示";
                     break;
                 case UcgConditionalBpCategory.MappedSelfCharacterNameCountBoost:
                     int mappedCount = CountMatchingCharacters(side, rule.keyword);
                     applies = mappedCount > 0;
                     multiplier = rule.repeatPerMatchingCharacter ? mappedCount : 1;
-                    condition = $"我方 characterName={rule.keyword} count={mappedCount}";
+                    condition = $"提示";
                     break;
             }
 
@@ -13411,15 +15352,15 @@ namespace UCG
                 {
                     case UcgConditionalBpCategory.ParsedAllyTypeBoost:
                         applies = CardTypeMatches(targetCard, rule.keyword);
-                        condition = $"隊友 type={rule.keyword}";
+                        condition = $"提示";
                         break;
                     case UcgConditionalBpCategory.ParsedAllyCategoryBoost:
                         applies = CardCategoryMatches(targetCard, rule.keyword);
-                        condition = $"隊友 cardCategory={rule.keyword}";
+                        condition = $"提示";
                         break;
                     case UcgConditionalBpCategory.ParsedCharacterNameCondition:
                         applies = CardCharacterMatches(targetCard, rule.keyword);
-                        condition = $"隊友 characterName={rule.keyword}";
+                        condition = $"提示";
                         break;
                 }
 
@@ -13458,20 +15399,20 @@ namespace UCG
             {
                 case UcgConditionalBpCategory.ParsedSceneTypeBoost:
                     applies = CardTypeMatches(targetCard, rule.keyword);
-                    condition = $"場景指定 type={rule.keyword}";
+                    condition = $"提示";
                     break;
                 case UcgConditionalBpCategory.ParsedSceneCharacterNameBoost:
                     applies = CardCharacterMatches(targetCard, rule.keyword);
-                    condition = $"場景指定 characterName={rule.keyword}";
+                    condition = $"提示";
                     break;
                 case UcgConditionalBpCategory.ParsedFixedBpBoost:
                     if (SceneFixedBpAlreadyApplied(sceneCard)) return;
                     applies = true;
-                    condition = "場景全體";
+                    condition = "提示";
                     break;
                 case UcgConditionalBpCategory.ParsedBpStepUp:
                     applies = true;
-                    condition = "場景全體";
+                    condition = "提示";
                     break;
             }
 
@@ -13527,11 +15468,11 @@ namespace UCG
 
         string BuildBpEffectFeedback(UcgCardData sourceCard, int amount, bool isStepUp)
         {
-            string categoryText = sourceCard != null && sourceCard.IsSceneCard() ? "場景效果" : "角色效果";
-            if (isStepUp) return $"{categoryText}：BP 上升一階";
+            string categoryText = sourceCard != null && sourceCard.IsSceneCard() ? "提示" : "提示";
+            if (isStepUp) return $"提示";
 
             string sign = amount >= 0 ? "+" : "";
-            return $"{categoryText}：BP {sign}{amount}";
+            return $"{categoryText}，P {sign}{amount}";
         }
 
         bool IsConditionalStackRequirementMet(
@@ -13726,10 +15667,10 @@ namespace UCG
                 case UcgDemoSceneEffectId.OpponentAllBpPlus1000:
                 case UcgDemoSceneEffectId.OpponentAllBpPlus2000:
                 case UcgDemoSceneEffectId.OpponentAllBpPlus3000:
-                    AddSceneModifierToLanes(openedLanes, ownerSide, GetSceneBpAmount(sceneCard.sceneEffectId), sceneCard, "場景持續效果");
+                    AddSceneModifierToLanes(openedLanes, ownerSide, GetSceneBpAmount(sceneCard.sceneEffectId), sceneCard, "提示");
                     break;
                 case UcgDemoSceneEffectId.ActiveLanePlayerBpPlus1000:
-                    AddActiveLaneSceneModifier(ownerSide, 1000, sceneCard, "場景持續效果");
+                    AddActiveLaneSceneModifier(ownerSide, 1000, sceneCard, "提示");
                     break;
             }
         }
@@ -13854,7 +15795,7 @@ namespace UCG
 
             if (phaseManager.CurrentPhase == UcgGamePhase.Upgrade && !hasUpgradeTarget && playResultText != null)
             {
-                playResultText.text = "目前沒有可升級角色，可以結束升級";
+                playResultText.text = "提示";
             }
         }
 
@@ -14068,6 +16009,55 @@ namespace UCG
             }
         }
 
+        void ClearHandCardSelectionVisuals()
+        {
+            if (cardHolder == null) return;
+
+            for (int i = 0; i < cardHolder.childCount; i++)
+            {
+                Transform child = cardHolder.GetChild(i);
+                var cardView = child != null ? child.GetComponent<UcgCardView>() : null;
+                if (cardView != null)
+                {
+                    cardView.SetSelected(false);
+                    cardView.SetDragging(false);
+                    cardView.SetBattlefieldLocked(false);
+                    cardView.SetPlayableHighlight(false);
+                    cardView.SetPointerPreviewSuppressed(false);
+                }
+
+                var canvasGroup = child != null ? child.GetComponent<CanvasGroup>() : null;
+                if (canvasGroup != null)
+                {
+                    canvasGroup.alpha = 1f;
+                    canvasGroup.interactable = true;
+                    canvasGroup.blocksRaycasts = true;
+                }
+
+                var hover = child != null ? child.GetComponent<UIHandCardHover>() : null;
+                if (hover != null) hover.enabled = true;
+
+                var clickTarget = child != null ? child.GetComponent<UcgLaneClickTarget>() : null;
+                if (clickTarget != null)
+                {
+                    Destroy(clickTarget);
+                }
+
+                var cardCanvas = child != null ? child.GetComponent<Canvas>() : null;
+                if (cardCanvas != null)
+                {
+                    cardCanvas.overrideSorting = false;
+                    cardCanvas.sortingOrder = 0;
+                }
+
+                var graphicRaycaster = child != null ? child.GetComponent<GraphicRaycaster>() : null;
+                if (graphicRaycaster != null)
+                {
+                    graphicRaycaster.enabled = true;
+                }
+            }
+        }
+
         bool IsHandReturnSelectionMode()
         {
             return _isSelectingDeckOperationCard
@@ -14080,6 +16070,107 @@ namespace UCG
             return cardView != null
                 && cardHolder != null
                 && cardView.transform.parent == cardHolder;
+        }
+
+        void CleanupDeckOperationSelectionIfOutsideDeckOperationPhase()
+        {
+            if (!_isSelectingDeckOperationCard && !_deckOperationResultAnimationRunning) return;
+            if (phaseManager == null) return;
+            if (phaseManager.CurrentPhase == UcgGamePhase.EnterEffect
+                || phaseManager.CurrentPhase == UcgGamePhase.BattleEffect)
+            {
+                return;
+            }
+
+            AdvanceDeckOperationStateVersion();
+            StopDeckOperationRunningCoroutines();
+            StopDeckOperationNoValidAutoCloseRoutine();
+            _pendingDeckSelection = null;
+            _isSelectingDeckOperationCard = false;
+            _deckOperationResultAnimationRunning = false;
+            ApplyHandReturnSelectionHighlights(false);
+
+            if (_deckOperationSelectionRoot != null)
+            {
+                _deckOperationSelectionRoot.gameObject.SetActive(false);
+            }
+            if (_deckOperationNoSelectionButton != null)
+            {
+                _deckOperationNoSelectionButton.gameObject.SetActive(false);
+                _deckOperationNoSelectionButton.onClick.RemoveAllListeners();
+            }
+
+            ClearDeckOperationCards();
+            RestoreHandCardsAfterDeckOperation();
+            SetNextPhaseButtonInteractable(true);
+        }
+
+        void ForceClearDeckOperationSelectionState(bool restoreHandInteractable, string reason)
+        {
+            AdvanceDeckOperationStateVersion();
+            StopDeckOperationRunningCoroutines();
+            StopDeckOperationNoValidAutoCloseRoutine();
+            _pendingDeckSelection = null;
+            _isSelectingDeckOperationCard = false;
+            _deckOperationResultAnimationRunning = false;
+            ApplyHandReturnSelectionHighlights(false);
+
+            if (_deckOperationSelectionRoot != null)
+            {
+                _deckOperationSelectionRoot.gameObject.SetActive(false);
+            }
+            if (_deckOperationNoSelectionButton != null)
+            {
+                _deckOperationNoSelectionButton.gameObject.SetActive(false);
+                _deckOperationNoSelectionButton.onClick.RemoveAllListeners();
+            }
+
+            ClearDeckOperationCards();
+            ClearHandCardSelectionVisuals();
+            if (restoreHandInteractable)
+            {
+                RestoreHandCardsAfterDeckOperation();
+                SetNextPhaseButtonInteractable(true);
+            }
+
+            if (debugEffectResolution)
+            {
+                Debug.Log($"[UCG EffectFlow] cleared deck selection state: reason={reason}");
+            }
+        }
+
+        int AdvanceDeckOperationStateVersion()
+        {
+            _deckOperationStateVersion++;
+            if (_deckOperationStateVersion == int.MaxValue)
+            {
+                _deckOperationStateVersion = 1;
+            }
+
+            return _deckOperationStateVersion;
+        }
+
+        bool IsDeckOperationStateCurrent(int version)
+        {
+            return version == _deckOperationStateVersion;
+        }
+
+        void StopDeckOperationRunningCoroutines()
+        {
+            StopDeckOperationCoroutine(ref _deckOperationNoValidAutoCloseRoutine);
+            StopDeckOperationCoroutine(ref _deckOperationSelectionResultRoutine);
+            StopDeckOperationCoroutine(ref _deckOperationHandReturnRoutine);
+            StopDeckOperationCoroutine(ref _deckOperationDrawThenSelectRoutine);
+            StopDeckOperationCoroutine(ref _deckOperationDrawThenFinishRoutine);
+            StopDeckOperationCoroutine(ref _deckOperationNoSelectionDiscardRoutine);
+            _deckOperationResultAnimationRunning = false;
+        }
+
+        void StopDeckOperationCoroutine(ref Coroutine routine)
+        {
+            if (routine == null) return;
+            StopCoroutine(routine);
+            routine = null;
         }
 
         void ApplyHandReturnSelectionHighlights(bool active)
@@ -14098,8 +16189,8 @@ namespace UCG
 
         void ShowGameOverMessage()
         {
-            string winnerText = CurrentGameResult == UcgGameResultType.PlayerWin ? "我方勝利" : "對手勝利";
-            string message = $"遊戲已結束｜{winnerText}";
+            string winnerText = CurrentGameResult == UcgGameResultType.PlayerWin ? "提示" : "提示";
+            string message = $"提示";
             if (playResultText != null)
             {
                 playResultText.text = message;
@@ -14150,7 +16241,7 @@ namespace UCG
 
             if (latestLane == null || latestLane.laneResult == UcgLaneResultType.Draw || latestLane.laneResult == UcgLaneResultType.None)
             {
-                return $"平局或無結果，{turnOrderManager.GetNextFirstPlayerText()}";
+                return "Next first player: " + turnOrderManager.GetNextFirstPlayerText();
             }
 
             return turnOrderManager.GetNextFirstPlayerText();
@@ -14161,9 +16252,9 @@ namespace UCG
             switch (gameResult)
             {
                 case UcgGameResultType.PlayerWin:
-                    return "Demo 判定：我方目前達成 3 路勝利";
+                    return "這張卡目前不能選擇。";
                 case UcgGameResultType.OpponentWin:
-                    return "Demo 判定：對手目前達成 3 路勝利";
+                    return "提示";
                 default:
                     return fallbackMessage;
             }
@@ -14180,15 +16271,15 @@ namespace UCG
 
             if (_isEffectAutoAdvancing)
             {
-                tutorialGuide.ShowPhasePrompt("效果選擇完成，接著進入判定。");
+                tutorialGuide.ShowPhasePrompt("提示");
                 return;
             }
 
             SyncTutorialStepForCurrentState();
             if (IsGameOver)
             {
-                string winnerText = CurrentGameResult == UcgGameResultType.PlayerWin ? "我方勝利" : "對手勝利";
-                tutorialGuide.ShowPhasePrompt($"遊戲結束｜{winnerText}\n我方勝利路數：{_lastPlayerWinCount}｜對手勝利路數：{_lastOpponentWinCount}");
+                string winnerText = CurrentGameResult == UcgGameResultType.PlayerWin ? "提示" : "提示";
+                tutorialGuide.ShowPhasePrompt($"Game over: {winnerText}\nPlayer wins: {_lastPlayerWinCount} / Opponent wins: {_lastOpponentWinCount}");
                 return;
             }
 
@@ -14204,14 +16295,14 @@ namespace UCG
                 && turnManager != null
                 && turnManager.currentTurn == 2)
             {
-                prompt = "第 2 路開放了，選一張角色卡放上場吧！";
+                prompt = "提示";
             }
             if (IsDigaTutorialModeActive() && phaseManager.CurrentPhase == UcgGamePhase.SceneSetup)
             {
                 int sceneTurn = turnManager != null ? turnManager.currentTurn : 1;
                 prompt = sceneTurn <= 2
-                    ? "這回合先專心展開戰鬥區，場景卡稍後再使用。"
-                    : "現在可以設置場景卡了，有合適的場景就放到中央場景區。";
+                    ? "提示"
+                    : "提示";
             }
             tutorialGuide.ShowPhasePrompt(prompt);
             if (phaseManager.CurrentPhase == UcgGamePhase.End)
@@ -14300,7 +16391,7 @@ namespace UCG
         {
             if (playResultText != null)
             {
-                playResultText.text = $"目前模式：{GetTestModeName(currentTestMode)}";
+                playResultText.text = "Switched test: " + GetTestModeName(currentTestMode);
             }
         }
 
@@ -14409,7 +16500,7 @@ namespace UCG
             }
             else
             {
-                DrawCardsToHand(DemoCardCount, "起手抽 6 張");
+                DrawCardsToHand(DemoCardCount, "提示");
             }
 
             UpdateDeckCountText();
@@ -14439,7 +16530,7 @@ namespace UCG
 
             if (playResultText != null)
             {
-                playResultText.text = drawnCards.Count > 0 ? "教學起手抽 6 張" : "牌組已空，無法抽牌";
+                playResultText.text = drawnCards.Count > 0 ? "Drew 6 cards." : "Deck is empty.";
             }
         }
 
@@ -14472,17 +16563,20 @@ namespace UCG
             if (deckManager == null) return;
 
             var drawnCards = deckManager.DrawCards(count);
+            var drawnViews = new List<UcgCardView>();
             for (int i = 0; i < drawnCards.Count; i++)
             {
-                AddCardToHand(drawnCards[i]);
+                UcgCardView view = AddCardToHand(drawnCards[i]);
+                if (view != null) drawnViews.Add(view);
             }
 
             RefreshHandLayout();
+            StartDrawCardsToHandAnimation(drawnViews);
             UpdateDeckCountText();
 
             if (playResultText != null && !string.IsNullOrEmpty(resultMessage))
             {
-                playResultText.text = drawnCards.Count > 0 ? resultMessage : "牌組已空，無法抽牌";
+                playResultText.text = drawnCards.Count > 0 ? resultMessage : "提示";
             }
         }
 
@@ -14511,13 +16605,16 @@ namespace UCG
             if (owner == UcgPlayerSide.Player)
             {
                 var drawnCards = deckManager.DrawCards(count);
+                var drawnViews = new List<UcgCardView>();
                 drawnCount = drawnCards.Count;
                 for (int i = 0; i < drawnCards.Count; i++)
                 {
-                    AddCardToHand(drawnCards[i]);
+                    UcgCardView view = AddCardToHand(drawnCards[i]);
+                    if (view != null) drawnViews.Add(view);
                 }
 
                 RefreshHandLayout();
+                StartDrawCardsToHandAnimation(drawnViews);
                 UpdateDeckCountText();
             }
             else
@@ -14588,7 +16685,7 @@ namespace UCG
             }
 
             targetName = !string.IsNullOrWhiteSpace(targetCard.cardName) ? targetCard.cardName : "角色";
-            QueueEffectFeedback($"{targetName} 本回合獲得 TYPE {grantedType}");
+            QueueEffectFeedback($"提示");
 
             if (debugEffectResolution)
             {
@@ -14636,14 +16733,14 @@ namespace UCG
             }
 
             message = string.IsNullOrWhiteSpace(condition.failureMessage)
-                ? "條件未達成，效果不發動。"
+                ? "提示"
                 : condition.failureMessage;
 
             if (debugEffectResolution)
             {
                 Debug.Log(
                     "Effect condition not met:\n"
-                    + $"source={FormatDrawSource(effect != null ? effect.cardData : null)}\n"
+                    + $"提示"
                     + $"owner={sourceSide}\n"
                     + $"conditionSide={condition.side}\n"
                     + $"targetSide={targetSide}\n"
@@ -14734,18 +16831,18 @@ namespace UCG
 
         public bool ResolveBp01105SceneActivatedEffect(UcgEffectInstance effect, out string message)
         {
-            message = "場景發動效果處理完成。";
+            message = "提示";
             if (effect == null || effect.cardData == null)
             {
-                message = "場景效果來源不存在，效果略過。";
+                message = "提示";
                 return true;
             }
 
             UcgPlayerSide owner = effect.ownerSide;
-            string sceneName = string.IsNullOrWhiteSpace(effect.cardData.cardName) ? "場景" : effect.cardData.cardName;
+            string sceneName = string.IsNullOrWhiteSpace(effect.cardData.cardName) ? "提示" : effect.cardData.cardName;
             if (!HasBlazarInPlay(owner))
             {
-                message = $"{sceneName}：條件未達成，效果不發動。";
+                message = $"提示";
                 ShowPlayStatus(message, 1.1f);
                 QueueEffectFeedback(message);
                 return true;
@@ -14754,7 +16851,7 @@ namespace UCG
             UcgRevealResult revealResult = RevealTopCards(owner, 5);
             if (revealResult.revealedCards.Count == 0)
             {
-                message = $"{sceneName}：牌庫已空，無法公開。";
+                message = $"提示";
                 ShowPlayStatus(message, 1.1f);
                 QueueEffectFeedback(message);
                 RefreshZoneInfoUI();
@@ -14767,7 +16864,7 @@ namespace UCG
                 if (legalCards.Count > 0)
                 {
                     BeginBp01105SceneRevealSelection(effect, revealResult.revealedCards, legalCards);
-                    message = $"{sceneName}：公開 {revealResult.revealedCards.Count} 張，請選擇可升級的超人力霸王。";
+                    message = $"提示";
                     ShowPlayStatus(message, 1.2f);
                     return true;
                 }
@@ -14787,7 +16884,7 @@ namespace UCG
 
             if (!hasTarget || selectedCard == null || targetLane == null)
             {
-                message = $"{sceneName}：公開 {revealResult.revealedCards.Count} 張，但沒有可登場的超人力霸王；公開卡送入棄牌區。";
+                message = $"提示";
                 ShowPlayStatus(message, 1.2f);
                 QueueEffectFeedback(message);
                 RefreshZoneInfoUI();
@@ -14799,7 +16896,7 @@ namespace UCG
             {
                 ApplyDeckOperationDestination(owner, selectedCard, UcgDeckOperationDestination.Trash);
                 sentToTrash++;
-                message = $"{sceneName}：{selectedCard.cardName} 登場失敗，公開卡送入棄牌區。";
+                message = $"{sceneName}: {selectedCard.cardName} failed to enter; revealed cards go to discard.";
                 ShowPlayStatus(message, 1.2f);
                 QueueEffectFeedback(message);
                 RefreshZoneInfoUI();
@@ -14808,7 +16905,7 @@ namespace UCG
             }
 
             string selectedName = string.IsNullOrWhiteSpace(selectedCard.cardName) ? selectedCard.id : selectedCard.cardName;
-            message = $"{sceneName}：公開 {revealResult.revealedCards.Count} 張，{selectedName} 登場到第 {targetLane.laneIndex + 1} 路；其餘 {sentToTrash} 張送入棄牌區。回合結束時會棄置該卡。";
+            message = $"{sceneName}: {selectedName} 臨時登場，其餘公開卡送入棄牌區。";
             ShowPlayStatus(message, 1.3f);
             QueueEffectFeedback(message);
             RefreshZoneInfoUI();
@@ -14822,7 +16919,10 @@ namespace UCG
             List<UcgCardData> revealedCards,
             List<UcgCardData> legalCards)
         {
+            AdvanceDeckOperationStateVersion();
+            StopDeckOperationRunningCoroutines();
             StopDeckOperationNoValidAutoCloseRoutine();
+            _deckOperationResultAnimationRunning = false;
             EnsureDeckOperationSelectionUI();
             RestoreDeckOperationSelectionUIForRevealCards();
             ClearDeckOperationCards();
@@ -14857,8 +16957,8 @@ namespace UCG
             {
                 string sceneName = effect != null && effect.cardData != null && !string.IsNullOrWhiteSpace(effect.cardData.cardName)
                     ? effect.cardData.cardName
-                    : "場景效果";
-                _deckOperationSelectionTitle.text = $"{sceneName}\n選擇 1 張可合法升級到我方 Lane 的超人力霸王";
+                    : "提示";
+                _deckOperationSelectionTitle.text = $"提示";
             }
 
             for (int i = 0; i < _pendingBp01105RevealedCards.Count; i++)
@@ -14890,13 +16990,13 @@ namespace UCG
             if (_pendingDeckSelection.sourceZone != UcgDeckOperationSourceZone.SceneRevealCards) return;
             if (_pendingBp01105Effect == null || selectedCard == null)
             {
-                CompleteBp01105SceneRevealWithoutSelection("場景效果選擇狀態已失效，公開卡送入棄牌區。", "selection state missing");
+                CompleteBp01105SceneRevealWithoutSelection("selection state missing", "selection state missing");
                 return;
             }
 
             if (!IsUltramanCard(selectedCard) || !HasLegalBp01105LaneForCard(_pendingBp01105Effect.ownerSide, selectedCard))
             {
-                ShowPlayStatus("只能選擇可合法升級的超人力霸王。", 1.1f);
+                ShowPlayStatus("提示", 1.1f);
                 return;
             }
 
@@ -14905,6 +17005,7 @@ namespace UCG
             _pendingDeckSelection.selectedCard = selectedCard;
             _pendingDeckSelection = null;
             _isSelectingDeckOperationCard = false;
+            _deckOperationResultAnimationRunning = false;
 
             if (_deckOperationSelectionRoot != null)
             {
@@ -14929,9 +17030,9 @@ namespace UCG
             if (playResultText != null)
             {
                 string selectedName = string.IsNullOrWhiteSpace(selectedCard.cardName) ? selectedCard.id : selectedCard.cardName;
-                playResultText.text = $"已選擇 {selectedName}。請選擇要升級的我方 Lane。";
+                playResultText.text = $"提示";
             }
-            ShowPlayStatus("請選擇要升級的我方 Lane。", 1.1f);
+            ShowPlayStatus("提示", 1.1f);
             UpdateMainPrompt();
         }
 
@@ -14943,7 +17044,7 @@ namespace UCG
             UcgPlayerSide owner = effect != null ? effect.ownerSide : UcgPlayerSide.Player;
             string sceneName = effect != null && effect.cardData != null && !string.IsNullOrWhiteSpace(effect.cardData.cardName)
                 ? effect.cardData.cardName
-                : "場景";
+                : "提示";
 
             int sentToTrash = SendBp01105UnselectedRevealedCardsToTrash(owner, revealedCards, selectedCard);
             bool placed = selectedCard != null && PlaceBp01105TemporaryUpgrade(owner, targetLane, selectedCard, effect != null ? effect.cardData : null);
@@ -14954,8 +17055,7 @@ namespace UCG
                     ApplyDeckOperationDestination(owner, selectedCard, UcgDeckOperationDestination.Trash);
                     sentToTrash++;
                 }
-
-                string failedMessage = $"{sceneName}：{(selectedCard != null ? selectedCard.cardName : "公開卡")} 登場失敗，公開卡送入棄牌區。";
+                string failedMessage = $"{(selectedCard != null ? GetCardDisplayName(selectedCard) : "Unknown card")} 登場失敗，公開卡送入棄牌區。";
                 LogBp01105SceneEffect(effect, revealedCards, selectedCard, targetLane, sentToTrash, "placement failed after manual selection");
                 CleanupBp01105SelectionState();
                 ClearEffectTargetSelection();
@@ -14966,7 +17066,7 @@ namespace UCG
             }
 
             string selectedName = string.IsNullOrWhiteSpace(selectedCard.cardName) ? selectedCard.id : selectedCard.cardName;
-            string message = $"{sceneName}：公開 {revealedCards.Count} 張，{selectedName} 登場到第 {targetLane.laneIndex + 1} 路；其餘 {sentToTrash} 張送入棄牌區。回合結束時會棄置該卡。";
+            string message = $"提示";
             LogBp01105SceneEffect(effect, revealedCards, selectedCard, targetLane, sentToTrash, "manual resolved");
             CleanupBp01105SelectionState();
             ClearEffectTargetSelection();
@@ -15009,9 +17109,13 @@ namespace UCG
 
         void CleanupBp01105SelectionState()
         {
+            AdvanceDeckOperationStateVersion();
+            StopDeckOperationRunningCoroutines();
+            StopDeckOperationNoValidAutoCloseRoutine();
             ClearBp01105PendingSelectionState();
             _pendingDeckSelection = null;
             _isSelectingDeckOperationCard = false;
+            _deckOperationResultAnimationRunning = false;
 
             if (_deckOperationSelectionRoot != null)
             {
@@ -15022,7 +17126,7 @@ namespace UCG
                 _deckOperationNoSelectionButton.gameObject.SetActive(false);
             }
             ClearDeckOperationCards();
-            SetHandCardsInteractable(true, null);
+            RestoreHandCardsAfterDeckOperation();
             SetNextPhaseButtonInteractable(true);
             RefreshNextPhaseButtonState();
             RefreshInteractionHints();
@@ -15100,7 +17204,7 @@ namespace UCG
 
             for (int i = 0; i < lanes.Count; i++)
             {
-                if (CardCharacterContains(GetLaneTopCard(lanes[i], owner), "布雷薩")) return true;
+                if (CardCharacterContains(GetLaneTopCard(lanes[i], owner), "Blazar")) return true;
             }
 
             return false;
@@ -15211,7 +17315,7 @@ namespace UCG
             if (discardedCount > 0)
             {
                 RefreshZoneInfoUI();
-                QueueEffectFeedback($"場景效果：回合結束，臨時登場的角色送入棄牌區。");
+                QueueEffectFeedback($"提示");
                 if (debugEffectResolution)
                 {
                     Debug.Log($"BP01-105 temporary summons discarded: count={discardedCount}");
@@ -15246,11 +17350,11 @@ namespace UCG
 
             Debug.Log(
                 "BP01-105 scene effect:\n"
-                + $"source={FormatDrawSource(effect != null ? effect.cardData : null)}\n"
-                + $"owner={(effect != null ? effect.ownerSide.ToString() : "unknown")}\n"
+                + $"提示"
+                + $"scene={(effect != null && effect.cardData != null ? effect.cardData.cardName : "unknown")}\n"
                 + $"revealed={FormatCardIdList(revealedCards)}\n"
                 + $"selected={FormatDrawSource(selectedCard)}\n"
-                + $"targetLane={(targetLane != null ? (targetLane.laneIndex + 1).ToString() : "none")}\n"
+                + $"targetLane={(targetLane != null ? targetLane.laneIndex.ToString() : "none")}\n"
                 + $"sentToTrash={sentToTrash}\n"
                 + $"temporarySummons={_temporarySceneSummons.Count}\n"
                 + $"result={result}");
@@ -15258,7 +17362,7 @@ namespace UCG
 
         public bool ResolveDeckOperationFromEffect(UcgEffectInstance effect, UcgDeckOperationRule rule, out string message)
         {
-            message = "牌庫操作暫不支援";
+            message = "提示";
             if (IsGameOver || _isTutorialFinishWaitingForClick || deckManager == null || effect == null || rule == null)
             {
                 return false;
@@ -15288,25 +17392,25 @@ namespace UCG
             if (revealResult.revealedCards.Count == 0)
             {
                 Debug.LogWarning($"DeckOperation failed: deck empty, owner={owner}, source={FormatDrawSource(effect.cardData)}");
-                message = "牌庫已空，無法處理效果";
+                message = "沒有可選擇的手牌，效果結束。";
                 return true;
             }
 
             if (owner == UcgPlayerSide.Opponent)
             {
                 ResolveOpponentDeckOperation(effect, rule, revealResult.revealedCards, handBefore, deckBefore);
-                message = $"對手處理牌庫效果：公開 {revealResult.revealedCards.Count} 張";
+                message = $"提示";
                 return true;
             }
 
             BeginDeckOperationSelection(effect, rule, revealResult.revealedCards, handBefore, deckBefore);
-            message = "請選擇要處理的牌";
+            message = "提示";
             return true;
         }
 
         bool ResolveDrawThenPutHandToBottom(UcgEffectInstance effect, UcgDeckOperationRule rule, UcgPlayerSide owner, int handBefore, int deckBefore, out string message)
         {
-            message = "請選擇 1 張手牌放到牌庫最底下";
+            message = "提示";
             int drawCount = Mathf.Max(1, rule.drawCount);
             var drawnCards = new List<UcgCardData>();
             bool isBlazarDrawBottomEffect = effect != null
@@ -15324,25 +17428,27 @@ namespace UCG
                 Debug.Log(
                     "BP01-037 effect check:\n"
                     + $"rawEffect={GetEffectText(effect.cardData)}\n"
-                    + $"parsedCategory={(parsedRule != null ? parsedRule.effectCategory.ToString() : "null")}\n"
-                    + $"parsedOperation={(parsedRule != null && parsedRule.deckOperation != null ? parsedRule.deckOperation.operationType.ToString() : "null")}\n"
+                    + $"card={(effect.cardData != null ? effect.cardData.id : "null")}\n"
+                    + $"cardName={(effect.cardData != null ? effect.cardData.cardName : "null")}\n"
                     + $"drawCount={drawCount}\n"
-                    + $"handSelectCount={(rule != null ? rule.handSelectCount : 0)}\n"
+                    + $"提示"
                     + $"stackCount={stackCount}\n"
                     + $"canTrigger=true\n"
-                    + $"triggerPhase={(phaseManager != null ? phaseManager.CurrentPhase.ToString() : "unknown")}");
+                    + $"source={(effect.cardData != null ? effect.cardData.id : "unknown")}");
             }
 
             if (owner == UcgPlayerSide.Player)
             {
-                ShowPlayStatus("布雷薩登場效果：抽 2 張牌");
-                QueueEffectFeedback("布雷薩登場效果：抽 2 張牌");
+                ShowPlayStatus("提示");
+                QueueEffectFeedback("提示");
 
                 var drawn = deckManager.DrawCards(drawCount);
+                var drawnViews = new List<UcgCardView>();
                 drawnCards.AddRange(drawn);
                 for (int i = 0; i < drawn.Count; i++)
                 {
-                    AddCardToHand(drawn[i]);
+                    UcgCardView view = AddCardToHand(drawn[i]);
+                    if (view != null) drawnViews.Add(view);
                 }
 
                 RefreshHandLayout();
@@ -15352,20 +17458,29 @@ namespace UCG
                 if (drawnCards.Count == 0)
                 {
                     LogBp01037Execute(effect, drawnCards, null, handBefore, handAfterDraw, deckBefore, deckAfterDraw, false, false, "no cards drawn");
-                    message = "牌庫已空，無法抽牌";
+                    message = "目前沒有手牌可放回牌庫底。";
                     return true;
                 }
 
                 if (deckManager.playerHand.Count == 0)
                 {
                     LogBp01037Execute(effect, drawnCards, null, handBefore, handAfterDraw, deckBefore, deckAfterDraw, false, false, "player hand empty after draw");
-                    message = "手牌為空，無法放回牌庫底";
+                    message = "提示";
                     return true;
                 }
 
-                BeginDeckOperationHandSelection(effect, rule, handBefore, deckBefore, drawnCards);
-                LogBp01037Execute(effect, drawnCards, null, handBefore, handAfterDraw, deckBefore, deckAfterDraw, true, false, "");
-                message = "請從手牌中選擇 1 張放回牌庫最底下";
+                int operationVersion = AdvanceDeckOperationStateVersion();
+                _deckOperationDrawThenSelectRoutine = StartCoroutine(AnimateDrawCardsThenBeginHandReturnSelection(
+                    drawnViews,
+                    effect,
+                    rule,
+                    handBefore,
+                    deckBefore,
+                    drawnCards,
+                    handAfterDraw,
+                    deckAfterDraw,
+                    operationVersion));
+                message = "提示";
                 return true;
             }
 
@@ -15386,17 +17501,192 @@ namespace UCG
             SyncOpponentZoneCountsFromDeckManager();
             RefreshZoneInfoUI();
             LogDrawThenPutHandToBottom(effect, rule, owner, drawnCards, selectedCard, handBefore, deckBefore);
-            message = "對手處理牌庫效果：抽牌後放 1 張到牌庫底";
+            message = "提示";
             return true;
+        }
+
+        void StartDrawCardsToHandAnimation(List<UcgCardView> drawnViews)
+        {
+            if (drawnViews == null || drawnViews.Count == 0) return;
+            if (_drawCardsToHandRoutine != null)
+            {
+                StopCoroutine(_drawCardsToHandRoutine);
+            }
+            _drawCardsToHandRoutine = StartCoroutine(AnimateDrawCardsToHandTracked(drawnViews));
+        }
+
+        IEnumerator AnimateDrawCardsToHandTracked(List<UcgCardView> drawnViews)
+        {
+            yield return AnimateDrawCardsToHand(drawnViews, true);
+            _drawCardsToHandRoutine = null;
+        }
+
+        IEnumerator AnimateDrawCardsThenBeginHandReturnSelection(
+            List<UcgCardView> drawnViews,
+            UcgEffectInstance effect,
+            UcgDeckOperationRule rule,
+            int handBefore,
+            int deckBefore,
+            List<UcgCardData> drawnCards,
+            int handAfterDraw,
+            int deckAfterDraw,
+            int operationVersion)
+        {
+            yield return AnimateDrawCardsToHand(drawnViews, false);
+            if (!IsDeckOperationStateCurrent(operationVersion))
+            {
+                _deckOperationResultAnimationRunning = false;
+                _deckOperationDrawThenSelectRoutine = null;
+                yield break;
+            }
+
+            _deckOperationDrawThenSelectRoutine = null;
+            BeginDeckOperationHandSelection(effect, rule, handBefore, deckBefore, drawnCards);
+            LogBp01037Execute(effect, drawnCards, null, handBefore, handAfterDraw, deckBefore, deckAfterDraw, true, false, "");
+        }
+
+        IEnumerator AnimateDrawCardsToHand(List<UcgCardView> drawnViews, bool restoreInteractable)
+        {
+            if (drawnViews == null || drawnViews.Count == 0 || cardHolder == null)
+            {
+                if (restoreInteractable) RefreshHandCardDragInteractability();
+                yield break;
+            }
+
+            EnsureCardMoveAnimationSystem();
+            if (_cardMoveAnimationSystem == null || playerDeckAnchor == null)
+            {
+                RefreshHandLayout(true);
+                if (restoreInteractable) RefreshHandCardDragInteractability();
+                yield break;
+            }
+
+            SetHandCardsInteractable(false, null);
+            ApplyHandStyleByCount(cardHolder.childCount);
+
+            UIHandLayout layout = cardHolder.GetComponent<UIHandLayout>();
+            if (layout != null)
+            {
+                layout.NotifyLayoutChanged(true);
+            }
+
+            Vector2 sourcePosition = GetRectCenterInParentAnchored(playerDeckAnchor, cardHolder);
+            var targets = new List<HandCardAnimationTarget>();
+            for (int i = 0; i < drawnViews.Count; i++)
+            {
+                UcgCardView view = drawnViews[i];
+                RectTransform rect = view != null ? view.transform as RectTransform : null;
+                if (rect == null) continue;
+
+                targets.Add(new HandCardAnimationTarget
+                {
+                    view = view,
+                    rect = rect,
+                    anchoredPosition = rect.anchoredPosition,
+                    localEulerAngles = rect.localEulerAngles,
+                    localScale = rect.localScale == Vector3.zero ? Vector3.one : rect.localScale,
+                    sizeDelta = rect.sizeDelta
+                });
+            }
+
+            for (int i = 0; i < targets.Count; i++)
+            {
+                HandCardAnimationTarget target = targets[i];
+                if (target.rect == null || target.view == null) continue;
+
+                CanvasGroup canvasGroup = target.rect.GetComponent<CanvasGroup>();
+                if (canvasGroup != null)
+                {
+                    canvasGroup.alpha = 1f;
+                    canvasGroup.interactable = false;
+                    canvasGroup.blocksRaycasts = false;
+                }
+
+                target.view.SetSelected(false);
+                target.view.SetPlayableHighlight(false);
+                target.view.SetFaceDown(true);
+                target.rect.sizeDelta = target.sizeDelta;
+                target.rect.anchoredPosition = sourcePosition;
+                target.rect.localEulerAngles = Vector3.zero;
+                target.rect.localScale = Vector3.one * 0.72f;
+                target.rect.SetAsLastSibling();
+
+                UcgCardMoveAnimationOptions options = UcgCardMoveAnimationOptions.Default;
+                options.duration = 0.52f;
+                options.arcHeight = 86f;
+                options.startFaceDown = true;
+                options.endFaceUp = true;
+                options.flipAtProgress = 0.68f;
+                options.scaleFrom = Vector3.one * 0.72f;
+                options.scaleTo = target.localScale;
+                options.eulerFrom = Vector3.zero;
+                options.eulerTo = target.localEulerAngles;
+
+                yield return _cardMoveAnimationSystem.MoveCardArc(
+                    target.rect,
+                    sourcePosition,
+                    target.anchoredPosition,
+                    options);
+
+                if (target.rect != null)
+                {
+                    target.rect.sizeDelta = target.sizeDelta;
+                    target.rect.anchoredPosition = target.anchoredPosition;
+                    target.rect.localEulerAngles = target.localEulerAngles;
+                    target.rect.localScale = target.localScale;
+                }
+
+                if (target.view != null)
+                {
+                    target.view.SetFaceDown(false);
+                }
+
+                if (canvasGroup != null)
+                {
+                    canvasGroup.alpha = 1f;
+                    canvasGroup.interactable = true;
+                    canvasGroup.blocksRaycasts = true;
+                }
+
+                if (i < targets.Count - 1)
+                {
+                    yield return new WaitForSecondsRealtime(0.08f);
+                }
+            }
+
+            RefreshHandLayout(true);
+            if (restoreInteractable)
+            {
+                RefreshHandCardDragInteractability();
+                LogHandRaycastState("AfterDraw");
+            }
+        }
+
+        struct HandCardAnimationTarget
+        {
+            public UcgCardView view;
+            public RectTransform rect;
+            public Vector2 anchoredPosition;
+            public Vector3 localEulerAngles;
+            public Vector3 localScale;
+            public Vector2 sizeDelta;
+        }
+
+        Vector2 GetRectCenterInParentAnchored(RectTransform source, RectTransform parent)
+        {
+            if (source == null || parent == null) return Vector2.zero;
+            Vector3 worldCenter = source.TransformPoint(source.rect.center);
+            Vector3 localCenter = parent.InverseTransformPoint(worldCenter);
+            return new Vector2(localCenter.x, localCenter.y);
         }
 
         bool ResolveSelectHandToBottomThenDrawSameCount(UcgEffectInstance effect, UcgDeckOperationRule rule, UcgPlayerSide owner, int handBefore, int deckBefore, out string message)
         {
             int maxSelectCount = GetMaxHandSelectionCount(rule);
-            message = $"選擇最多 {maxSelectCount} 張手牌放回牌庫底，然後抽同等數量。";
+            message = $"最多選擇 {maxSelectCount} 張手牌放回牌庫底，然後抽同等數量的牌。";
             if (maxSelectCount <= 0)
             {
-                message = "沒有可處理的手牌張數，效果結束。";
+                message = "沒有可選擇的手牌，效果結束。";
                 return true;
             }
 
@@ -15404,7 +17694,7 @@ namespace UCG
             {
                 if (deckManager == null || deckManager.playerHand == null || deckManager.playerHand.Count == 0)
                 {
-                    message = "目前沒有手牌可放回牌庫底，效果結束。";
+                    message = "目前沒有手牌可放回牌庫底。";
                     ShowPlayStatus(message, 1.1f);
                     QueueEffectFeedback(message);
                     return true;
@@ -15437,8 +17727,8 @@ namespace UCG
             RefreshZoneInfoUI();
             LogSelectHandToBottomThenDrawSameCount(effect, rule, owner, returnedCards, drawnCards, handBefore, deckBefore);
             message = returnedCards.Count > 0
-                ? $"對手處理牌庫效果：放回 {returnedCards.Count} 張後抽 {drawnCards.Count} 張"
-                : "對手沒有手牌可放回，效果結束";
+                ? $"對手放回 {returnedCards.Count} 張手牌，抽 {drawnCards.Count} 張。"
+                : "對手沒有放回手牌。";
             return true;
         }
 
@@ -15483,6 +17773,8 @@ namespace UCG
                 Debug.LogWarning("BP01-037 should not use RevealTopSelect UI.");
             }
 
+            int operationVersion = AdvanceDeckOperationStateVersion();
+            StopDeckOperationRunningCoroutines();
             StopDeckOperationNoValidAutoCloseRoutine();
             if (_deckOperationSelectionRoot == null)
             {
@@ -15509,19 +17801,22 @@ namespace UCG
 
             if (_deckOperationSelectionTitle != null)
             {
-                _deckOperationSelectionTitle.text = BuildDeckOperationSelectionTitle(effect, rule, revealedCards.Count);
+                SetDeckOperationSelectionTitle(BuildDeckOperationSelectionTitle(effect, rule, revealedCards.Count));
             }
 
-            List<UcgCardData> selectableCards = GetSelectableDeckOperationCards(revealedCards, rule.selectionFilter);
+            bool forcePlayerSelection = ShouldForceRevealTopSelectionToWaitForPlayer(effect, rule);
+            List<UcgCardData> selectableCards = forcePlayerSelection
+                ? new List<UcgCardData>(revealedCards)
+                : GetSelectableDeckOperationCards(revealedCards, rule.selectionFilter);
             bool noValidSelection = selectableCards.Count == 0;
             if (noValidSelection && _deckOperationSelectionTitle != null)
             {
-                _deckOperationSelectionTitle.text = BuildDeckOperationNoSelectionTitle(effect, rule, revealedCards.Count);
+                SetDeckOperationSelectionTitle(BuildDeckOperationNoSelectionTitle(effect, rule, revealedCards.Count));
             }
 
             for (int i = 0; i < revealedCards.Count; i++)
             {
-                bool canSelect = IsCardAllowedByDeckSelectionFilter(revealedCards[i], rule.selectionFilter);
+                bool canSelect = forcePlayerSelection || IsCardAllowedByDeckSelectionFilter(revealedCards[i], rule.selectionFilter);
                 CreateDeckOperationCardButton(revealedCards[i], i, revealedCards.Count, canSelect, false);
             }
 
@@ -15546,15 +17841,25 @@ namespace UCG
                 Debug.Log(
                     "DeckOperation selection UI opened:\n"
                     + $"modalActive={_deckOperationSelectionRoot.gameObject.activeInHierarchy}\n"
-                    + $"sortingOrder={(selectionCanvas != null ? selectionCanvas.sortingOrder : 0)}\n"
+                    + $"提示"
                     + $"revealedCardCount={revealedCards.Count}\n"
-                    + $"cardsRootChildren={(_deckOperationCardsRoot != null ? _deckOperationCardsRoot.childCount : 0)}");
+                    + $"提示");
             }
 
-            if (noValidSelection)
+            _deckOperationResultAnimationRunning = false;
+
+            if (noValidSelection && !forcePlayerSelection)
             {
-                _deckOperationNoValidAutoCloseRoutine = StartCoroutine(AutoCompleteDeckOperationNoSelectionAfterDelay(effect));
+                _deckOperationNoValidAutoCloseRoutine = StartCoroutine(AutoCompleteDeckOperationNoSelectionAfterDelay(effect, operationVersion));
             }
+        }
+
+        bool ShouldForceRevealTopSelectionToWaitForPlayer(UcgEffectInstance effect, UcgDeckOperationRule rule)
+        {
+            if (rule == null || rule.operationType != UcgDeckOperationType.RevealTopSelectToHandRestTrash) return false;
+            return effect != null
+                && effect.cardData != null
+                && effect.cardData.id == "BP01-001";
         }
 
         void RestoreDeckOperationSelectionUIForRevealCards()
@@ -15564,21 +17869,21 @@ namespace UCG
             Image rootImage = _deckOperationSelectionRoot.GetComponent<Image>();
             if (rootImage != null)
             {
-                rootImage.color = new Color(15f / 255f, 23f / 255f, 42f / 255f, 0.46f);
-                rootImage.raycastTarget = true;
+                rootImage.color = new Color(3f / 255f, 6f / 255f, 12f / 255f, 0.12f);
+                rootImage.raycastTarget = false;
             }
 
             Transform panelTransform = _deckOperationSelectionRoot.Find("Selection Panel");
             RectTransform panelRect = panelTransform as RectTransform;
             if (panelRect != null)
             {
-                panelRect.anchoredPosition = new Vector2(GetRevealSelectionOffsetX(), -40f);
-                panelRect.sizeDelta = new Vector2(900f, 420f);
+                panelRect.anchoredPosition = new Vector2(GetRevealSelectionOffsetX(), -36f);
+                panelRect.sizeDelta = new Vector2(680f, 304f);
                 Image panelImage = panelRect.GetComponent<Image>();
                 if (panelImage != null)
                 {
-                    panelImage.color = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.DeepGlass, 0.24f);
-                    panelImage.raycastTarget = true;
+                    ApplyFloatingCardSelectionStateContainer(panelRect, panelImage);
+                    EnsureCardSelectionModalStructure(panelRect);
                 }
             }
 
@@ -15590,6 +17895,10 @@ namespace UCG
 
         void BeginDeckOperationHandSelection(UcgEffectInstance effect, UcgDeckOperationRule rule, int handBefore, int deckBefore, List<UcgCardData> drawnCards)
         {
+            AdvanceDeckOperationStateVersion();
+            StopDeckOperationRunningCoroutines();
+            StopDeckOperationNoValidAutoCloseRoutine();
+            _deckOperationResultAnimationRunning = false;
             _isSelectingDeckOperationCard = true;
             _pendingDeckSelection = new UcgCardSelectionContext
             {
@@ -15619,7 +17928,7 @@ namespace UCG
             SetNextPhaseButtonInteractable(false);
             ClearInteractionHints();
             ApplyHandReturnSelectionHighlights(true);
-            ShowPlayStatus(GetHandSelectionPrompt(rule));
+            ShowPlayStatus(GetHandSelectionPromptClean(rule));
             RefreshNextPhaseButtonState();
             if (ShouldDebugDeckOperation(effect) && effect != null && effect.cardData != null && effect.cardData.id == "BP01-037")
             {
@@ -15629,7 +17938,7 @@ namespace UCG
                     + $"modalActive={(_deckOperationSelectionRoot != null && _deckOperationSelectionRoot.gameObject.activeInHierarchy)}\n"
                     + $"handCards={_pendingDeckSelection.revealedCards.Count}\n"
                     + $"drawnCards={FormatCardIdList(drawnCards)}\n"
-                    + $"drawPileCount={(deckManager != null ? deckManager.deck.Count : 0)}");
+                    + $"提示");
             }
         }
 
@@ -15657,8 +17966,8 @@ namespace UCG
                 Image panelImage = panelRect.GetComponent<Image>();
                 if (panelImage != null)
                 {
-                    panelImage.color = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.DeepGlass, 0.72f);
-                    panelImage.raycastTarget = false;
+                    ApplyGlassSurface(panelRect, panelImage, UcgToolUiPalette.BrandPinkLight, 0.68f, 0.30f, 0.14f, false);
+                    SetCardSelectionModalDecorVisible(panelRect, false);
                 }
             }
 
@@ -15671,13 +17980,15 @@ namespace UCG
             {
                 string cardName = effect != null && effect.cardData != null && !string.IsNullOrWhiteSpace(effect.cardData.cardName)
                     ? effect.cardData.cardName
-                    : "效果";
-                _deckOperationSelectionTitle.text = $"{cardName}\n{GetHandSelectionPrompt(_pendingDeckSelection != null ? _pendingDeckSelection.rule : null)}";
+                    : "手牌選擇";
+                UcgDeckOperationRule selectionRule = _pendingDeckSelection != null ? _pendingDeckSelection.rule : null;
+                SetDeckOperationSelectionTitle($"{cardName}\n{GetHandSelectionPrompt(selectionRule)}");
             }
 
             if (_deckOperationNoSelectionButton != null)
             {
                 _deckOperationNoSelectionButton.gameObject.SetActive(true);
+                _deckOperationNoSelectionButton.interactable = true;
                 _deckOperationNoSelectionButton.onClick.RemoveAllListeners();
                 _deckOperationNoSelectionButton.onClick.AddListener(CompleteDeckOperationHandSelectionConfirm);
                 UpdateHandSelectionConfirmButtonLabel();
@@ -15706,10 +18017,27 @@ namespace UCG
         {
             if (IsSelectHandToBottomThenDrawSameCountRule(rule))
             {
-                return $"選擇最多 {GetMaxHandSelectionCount(rule)} 張手牌放回牌庫底，然後抽同等數量。";
+                return $"最多選擇 {GetMaxHandSelectionCount(rule)} 張手牌放回牌庫底，然後抽同等數量的牌。";
             }
 
-            return "請從手牌中選擇 1 張放回牌庫最底下";
+            return "選擇 1 張手牌放回牌庫底。";
+        }
+
+        string GetHandSelectionPromptClean(UcgDeckOperationRule rule)
+        {
+            if (IsSelectHandToBottomThenDrawSameCountRule(rule))
+            {
+                return $"最多選擇 {GetMaxHandSelectionCount(rule)} 張手牌放回牌庫底，然後抽同等數量的牌。";
+            }
+
+            return "選擇 1 張手牌放回牌庫底。";
+        }
+
+        string GetHandSelectionConfirmButtonLabel(int selectedCount, int maxCount)
+        {
+            return selectedCount <= 0
+                ? "選擇 0 張"
+                : $"確認 {selectedCount}/{maxCount}";
         }
 
         void UpdateHandSelectionConfirmButtonLabel()
@@ -15718,10 +18046,12 @@ namespace UCG
 
             int selectedCount = _pendingDeckSelection.selectedCards.Count;
             int maxCount = GetMaxHandSelectionCount(_pendingDeckSelection.rule);
+            /*
             string label = selectedCount <= 0
-                ? "不選擇"
-                : $"完成 {selectedCount}/{maxCount}";
-            EnsureButtonLabel(_deckOperationNoSelectionButton.transform as RectTransform, label);
+                ? "選擇 0 張"
+                : $"確認 {selectedCount}/{maxCount}";
+            */
+            EnsureButtonLabel(_deckOperationNoSelectionButton.transform as RectTransform, GetHandSelectionConfirmButtonLabel(selectedCount, maxCount));
         }
 
         void HideDeckOperationSelectionUIForHandReturn(UcgEffectInstance effect)
@@ -15748,50 +18078,59 @@ namespace UCG
         {
             string cardName = effect != null && effect.cardData != null && !string.IsNullOrWhiteSpace(effect.cardData.cardName)
                 ? effect.cardData.cardName
-                : "效果";
+                : "提示";
             if (rule != null && rule.operationType == UcgDeckOperationType.DrawThenSelectBottom)
             {
-                return $"{cardName}\n選擇 1 張放到牌庫最底下";
+                return $"提示";
             }
             if (rule != null && rule.selectionFilter != UcgDeckSelectionFilter.Any)
             {
                 return $"{cardName}\n{GetDeckOperationSelectionPrompt(rule.selectionFilter)}";
             }
 
-            return $"{cardName}\n從公開的 {revealedCount} 張中選擇 1 張加入手牌";
+            return $"提示";
         }
 
         string BuildDeckOperationNoSelectionTitle(UcgEffectInstance effect, UcgDeckOperationRule rule, int revealedCount)
         {
             string cardName = effect != null && effect.cardData != null && !string.IsNullOrWhiteSpace(effect.cardData.cardName)
                 ? effect.cardData.cardName
-                : "效果";
+                : "提示";
             string noTargetMessage = GetDeckOperationNoValidSelectionMessage(rule != null ? rule.selectionFilter : UcgDeckSelectionFilter.Any);
-            return $"{cardName}\n公開了 {revealedCount} 張，{noTargetMessage}\n稍後全部放到棄牌區";
+            return $"提示";
         }
 
         void CreateDeckOperationCardButton(UcgCardData cardData, int index, int totalCount, bool canSelect, bool selectingFromHand)
         {
             if (_deckOperationCardsRoot == null || cardData == null) return;
 
+            float cardWidth = totalCount > 4 ? 150f : 168f;
+            float cardHeight = totalCount > 4 ? 218f : 244f;
+            float availableWidth = 610f;
+            float spacing = totalCount <= 1 ? 0f : Mathf.Min(188f, (availableWidth - cardWidth) / Mathf.Max(1, totalCount - 1));
+            float startX = -(totalCount - 1) * spacing * 0.5f;
+            Vector2 finalPosition = new Vector2(startX + index * spacing, 0f);
+            Vector2 startPosition = GetDeckOperationCardEntranceStartPosition();
+
             var cardObject = new GameObject($"Revealed Card {index + 1}", typeof(RectTransform), typeof(Image), typeof(CanvasGroup), typeof(Button));
+            cardObject.SetActive(false);
             cardObject.transform.SetParent(_deckOperationCardsRoot, false);
 
             var cardRect = cardObject.GetComponent<RectTransform>();
             cardRect.anchorMin = new Vector2(0.5f, 0.5f);
             cardRect.anchorMax = new Vector2(0.5f, 0.5f);
             cardRect.pivot = new Vector2(0.5f, 0.5f);
-            float spacing = 228f;
-            float startX = -(totalCount - 1) * spacing * 0.5f;
-            Vector2 finalPosition = new Vector2(startX + index * spacing, 0f);
-            cardRect.anchoredPosition = finalPosition;
-            cardRect.sizeDelta = new Vector2(190f, 276f);
+            cardRect.anchoredPosition = startPosition;
+            cardRect.sizeDelta = new Vector2(cardWidth, cardHeight);
+            cardRect.localScale = Vector3.one * 0.72f;
+            cardRect.localEulerAngles = new Vector3(0f, 0f, -10f);
 
             var image = cardObject.GetComponent<Image>();
             image.raycastTarget = true;
             var canvasGroup = cardObject.GetComponent<CanvasGroup>();
-            canvasGroup.alpha = 0f;
+            canvasGroup.alpha = 1f;
             canvasGroup.blocksRaycasts = false;
+            canvasGroup.interactable = false;
 
             var labelObject = new GameObject("PlaceholderText", typeof(RectTransform), typeof(Text));
             labelObject.transform.SetParent(cardObject.transform, false);
@@ -15817,21 +18156,19 @@ namespace UCG
             view.placeholderText = label;
             view.SetInfoPanel(cardInfoPanel);
             view.Initialize(cardData);
-            view.SetFaceDown(false);
+            view.SetFaceDown(true);
             view.SetBattlefieldLocked(true);
             ApplyDeckOperationCardSelectionVisual(cardObject, canSelect, cardData);
+            UcgSelectionCardFocus focus = EnsureDeckOperationCardFocus(cardObject, canSelect, cardData, index);
+            if (focus != null) focus.enabled = false;
 
             var button = cardObject.GetComponent<Button>();
             ColorBlock buttonColors = button.colors;
             buttonColors.normalColor = Color.white;
-            buttonColors.highlightedColor = canSelect
-                ? UcgToolUiPalette.WithAlpha(UcgToolUiPalette.FocusCyan, 0.18f)
-                : Color.white;
-            buttonColors.pressedColor = canSelect
-                ? UcgToolUiPalette.WithAlpha(UcgToolUiPalette.BrandPinkLight, 0.2f)
-                : Color.white;
+            buttonColors.highlightedColor = Color.white;
+            buttonColors.pressedColor = Color.white;
             buttonColors.selectedColor = buttonColors.highlightedColor;
-            buttonColors.disabledColor = new Color(0.86f, 0.86f, 0.86f, 0.94f);
+            buttonColors.disabledColor = new Color(0.68f, 0.68f, 0.72f, 0.78f);
             buttonColors.colorMultiplier = 1f;
             button.colors = buttonColors;
             button.interactable = canSelect;
@@ -15850,7 +18187,12 @@ namespace UCG
                 });
             }
 
-            StartCoroutine(AnimateDeckOperationCardReveal(cardRect, canvasGroup, finalPosition, index));
+            StartCoroutine(AnimateDeckOperationCardReveal(cardRect, canvasGroup, view, finalPosition, index, _deckOperationStateVersion));
+        }
+
+        Vector2 GetDeckOperationCardEntranceStartPosition()
+        {
+            return new Vector2(390f, 44f);
         }
 
         void ApplyDeckOperationCardSelectionVisual(GameObject cardObject, bool canSelect, UcgCardData cardData)
@@ -15860,10 +18202,20 @@ namespace UCG
             var outline = cardObject.GetComponent<Outline>();
             if (outline == null) outline = cardObject.AddComponent<Outline>();
             outline.effectColor = canSelect
-                ? UcgToolUiPalette.WithAlpha(UcgToolUiPalette.FocusCyan, 0.86f)
-                : new Color(1f, 0.38f, 0.48f, 0.62f);
-            outline.effectDistance = canSelect ? new Vector2(3.2f, -3.2f) : new Vector2(2.8f, -2.8f);
+                ? UcgToolUiPalette.WithAlpha(UcgToolUiPalette.FocusCyan, 0.44f)
+                : UcgToolUiPalette.WithAlpha(UcgToolUiPalette.MutedWhite, 0.18f);
+            outline.effectDistance = canSelect ? new Vector2(1.8f, -1.8f) : new Vector2(1.2f, -1.2f);
             outline.useGraphicAlpha = false;
+
+            Shadow shadow = EnsureUiShadow(cardObject);
+            if (shadow != null)
+            {
+                shadow.effectColor = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.GlassShadow, canSelect ? 0.44f : 0.24f);
+                shadow.effectDistance = canSelect ? new Vector2(0f, -12f) : new Vector2(0f, -6f);
+                shadow.useGraphicAlpha = true;
+            }
+
+            EnsureDeckOperationCardChrome(cardObject.transform as RectTransform, canSelect);
 
             bool selectingSceneReveal = _pendingDeckSelection != null
                 && _pendingDeckSelection.sourceZone == UcgDeckOperationSourceZone.SceneRevealCards;
@@ -15876,14 +18228,209 @@ namespace UCG
                 ? GetReferenceIndex(_pendingDeckSelection.selectedCards, cardData)
                 : -1;
             string labelText = selectingTopDeckReorder
-                ? reorderIndex >= 0 ? $"第 {reorderIndex + 1} 張" : "點選順序"
+                ? reorderIndex >= 0 ? $"Position {reorderIndex + 1}" : "Unselected"
                 : selectingSceneReveal
-                    ? canSelect ? "可升級" : "無合法升級目標"
-                    : canSelect ? "可選" : GetDeckOperationInvalidSelectionReason(filter);
+                    ? canSelect ? "Valid" : "Invalid"
+                    : canSelect ? "Selectable" : GetDeckOperationInvalidSelectionReason(filter);
             Color labelColor = canSelect
                 ? UcgToolUiPalette.FocusCyan
-                : new Color(1f, 0.58f, 0.62f, 0.96f);
+                : UcgToolUiPalette.WithAlpha(UcgToolUiPalette.MutedWhite, 0.72f);
             CreateDeckOperationCardStatusLabel(cardObject.transform, labelText, labelColor);
+        }
+
+        UcgSelectionCardFocus EnsureDeckOperationCardFocus(GameObject cardObject, bool canSelect, UcgCardData cardData, int index)
+        {
+            if (cardObject == null) return null;
+
+            var focus = cardObject.GetComponent<UcgSelectionCardFocus>();
+            if (focus == null) focus = cardObject.AddComponent<UcgSelectionCardFocus>();
+
+            bool selected = _pendingDeckSelection != null
+                && cardData != null
+                && _pendingDeckSelection.selectedCards.Contains(cardData);
+            focus.Configure(canSelect, selected, index);
+            return focus;
+        }
+
+        void EnsureDeckOperationCardChrome(RectTransform cardRect, bool canSelect)
+        {
+            if (cardRect == null) return;
+
+            Color accent = canSelect
+                ? UcgToolUiPalette.WithAlpha(UcgToolUiPalette.FocusCyan, 0.36f)
+                : UcgToolUiPalette.WithAlpha(UcgToolUiPalette.MutedWhite, 0.14f);
+            Color pinkAccent = canSelect
+                ? UcgToolUiPalette.WithAlpha(UcgToolUiPalette.BrandPinkLight, 0.22f)
+                : UcgToolUiPalette.WithAlpha(UcgToolUiPalette.MutedWhite, 0.10f);
+
+            EnsureHudAccentImage(
+                cardRect,
+                "Selection Card Ground Shadow",
+                new Vector2(0.12f, -0.035f),
+                new Vector2(0.88f, 0.055f),
+                Vector2.zero,
+                Vector2.zero,
+                UcgToolUiPalette.WithAlpha(UcgToolUiPalette.GlassShadow, canSelect ? 0.34f : 0.16f));
+            EnsureHudAccentImage(
+                cardRect,
+                "Selection Card Top Rim",
+                new Vector2(0.12f, 0.995f),
+                new Vector2(0.88f, 0.995f),
+                Vector2.zero,
+                new Vector2(0f, 1.2f),
+                accent);
+            EnsureHudAccentImage(
+                cardRect,
+                "Selection Card Bottom Rim",
+                new Vector2(0.14f, 0.005f),
+                new Vector2(0.86f, 0.005f),
+                Vector2.zero,
+                new Vector2(0f, 1.2f),
+                pinkAccent);
+            EnsureHudAccentImage(
+                cardRect,
+                "Selection Card Corner TL",
+                new Vector2(0.02f, 0.95f),
+                new Vector2(0.22f, 0.965f),
+                Vector2.zero,
+                Vector2.zero,
+                accent);
+            EnsureHudAccentImage(
+                cardRect,
+                "Selection Card Corner BR",
+                new Vector2(0.78f, 0.035f),
+                new Vector2(0.98f, 0.05f),
+                Vector2.zero,
+                Vector2.zero,
+                pinkAccent);
+        }
+
+        sealed class UcgSelectionCardFocus : MonoBehaviour, IPointerEnterHandler, IPointerExitHandler
+        {
+            RectTransform _rect;
+            Image _image;
+            Shadow _shadow;
+            Outline _outline;
+            CanvasGroup _canvasGroup;
+            bool _canSelect;
+            bool _selected;
+            bool _hover;
+            Vector2 _basePosition;
+            bool _baseCaptured;
+            float _floatPhase;
+
+            public void Configure(bool canSelect, bool selected, int index)
+            {
+                _canSelect = canSelect;
+                _selected = selected;
+                _floatPhase = index * 0.72f;
+                EnsureRefs();
+                CaptureBasePosition();
+                ApplyImmediate();
+            }
+
+            void Awake()
+            {
+                EnsureRefs();
+            }
+
+            void OnEnable()
+            {
+                EnsureRefs();
+                CaptureBasePosition();
+                ApplyImmediate();
+            }
+
+            void EnsureRefs()
+            {
+                if (_rect == null) _rect = transform as RectTransform;
+                if (_image == null) _image = GetComponent<Image>();
+                if (_shadow == null) _shadow = GetComponent<Shadow>();
+                if (_outline == null) _outline = GetComponent<Outline>();
+                if (_canvasGroup == null) _canvasGroup = GetComponent<CanvasGroup>();
+            }
+
+            public void SetBasePositionToCurrent()
+            {
+                EnsureRefs();
+                CaptureBasePosition(true);
+            }
+
+            void CaptureBasePosition(bool force = false)
+            {
+                if (_rect == null || (_baseCaptured && !force)) return;
+                _basePosition = _rect.anchoredPosition;
+                _baseCaptured = true;
+            }
+
+            void ApplyImmediate()
+            {
+                if (_image != null)
+                {
+                    _image.color = _canSelect
+                        ? Color.white
+                        : new Color(0.90f, 0.90f, 0.92f, 1f);
+                }
+            }
+
+            void LateUpdate()
+            {
+                EnsureRefs();
+                if (_rect == null) return;
+                CaptureBasePosition();
+
+                if (_canvasGroup != null && _canvasGroup.alpha < 0.98f) return;
+
+                float floatOffset = Mathf.Sin(Time.unscaledTime * 1.35f + _floatPhase) * (_canSelect ? 5f : 3.5f);
+                float targetScale = _selected ? 1.045f : _hover && _canSelect ? 1.025f : 1f;
+                float targetLift = floatOffset + (_selected ? 12f : _hover && _canSelect ? 8f : 0f);
+                float t = Time.unscaledDeltaTime > 0f ? Mathf.Clamp01(Time.unscaledDeltaTime * 14f) : 1f;
+
+                _rect.localScale = Vector3.Lerp(_rect.localScale, Vector3.one * targetScale, t);
+                _rect.anchoredPosition = Vector2.Lerp(_rect.anchoredPosition, _basePosition + new Vector2(0f, targetLift), t);
+
+                if (_image != null)
+                {
+                    Color targetColor = _canSelect
+                        ? Color.white
+                        : new Color(0.90f, 0.90f, 0.92f, 1f);
+                    _image.color = Color.Lerp(_image.color, targetColor, t);
+                }
+
+                if (_shadow != null)
+                {
+                    float alpha = _selected ? 0.56f : _hover && _canSelect ? 0.50f : _canSelect ? 0.44f : 0.24f;
+                    float offset = _selected ? -18f : _hover && _canSelect ? -15f : _canSelect ? -12f : -6f;
+                    _shadow.effectColor = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.GlassShadow, alpha);
+                    _shadow.effectDistance = new Vector2(0f, offset);
+                    _shadow.useGraphicAlpha = true;
+                }
+
+                if (_outline != null)
+                {
+                    Color accent = _selected || (_hover && _canSelect)
+                        ? UcgToolUiPalette.FocusCyan
+                        : _canSelect
+                            ? UcgToolUiPalette.WithAlpha(UcgToolUiPalette.FocusCyan, 0.44f)
+                            : UcgToolUiPalette.WithAlpha(UcgToolUiPalette.MutedWhite, 0.18f);
+                    _outline.effectColor = _selected || (_hover && _canSelect)
+                        ? UcgToolUiPalette.WithAlpha(accent, 0.68f)
+                        : accent;
+                    _outline.effectDistance = _selected || (_hover && _canSelect)
+                        ? new Vector2(2.2f, -2.2f)
+                        : _canSelect ? new Vector2(1.8f, -1.8f) : new Vector2(1.2f, -1.2f);
+                }
+            }
+
+            public void OnPointerEnter(PointerEventData eventData)
+            {
+                _hover = true;
+            }
+
+            public void OnPointerExit(PointerEventData eventData)
+            {
+                _hover = false;
+            }
         }
 
         void CreateDeckOperationCardStatusLabel(Transform parent, string labelText, Color labelColor)
@@ -15897,16 +18444,16 @@ namespace UCG
             labelRect.anchorMax = new Vector2(0.5f, 1f);
             labelRect.pivot = new Vector2(0.5f, 0f);
             labelRect.anchoredPosition = new Vector2(0f, 8f);
-            labelRect.sizeDelta = new Vector2(156f, 26f);
+            labelRect.sizeDelta = new Vector2(160f, 24f);
 
             var label = labelObject.GetComponent<Text>();
             label.text = labelText;
             label.alignment = TextAnchor.MiddleCenter;
             label.color = labelColor;
-            label.fontSize = 16;
+            label.fontSize = 14;
             label.resizeTextForBestFit = true;
             label.resizeTextMinSize = 12;
-            label.resizeTextMaxSize = 16;
+            label.resizeTextMaxSize = 14;
             label.raycastTarget = false;
             Font font = LoadPlaceholderFont();
             if (font != null) label.font = font;
@@ -15916,12 +18463,13 @@ namespace UCG
             outline.effectDistance = new Vector2(1f, -1f);
         }
 
-        IEnumerator AutoCompleteDeckOperationNoSelectionAfterDelay(UcgEffectInstance effect)
+        IEnumerator AutoCompleteDeckOperationNoSelectionAfterDelay(UcgEffectInstance effect, int operationVersion)
         {
             float delay = Mathf.Max(0.1f, noValidSelectionAutoCloseDelay);
             yield return new WaitForSecondsRealtime(delay);
 
             _deckOperationNoValidAutoCloseRoutine = null;
+            if (!IsDeckOperationStateCurrent(operationVersion)) yield break;
             if (!_isSelectingDeckOperationCard || _pendingDeckSelection == null) yield break;
             if (_pendingDeckSelection.sourceZone != UcgDeckOperationSourceZone.RevealedCards) yield break;
 
@@ -15935,10 +18483,10 @@ namespace UCG
             {
                 Debug.Log(
                     "RevealTopSelect no valid target auto close:\n"
-                    + $"sourceCard={FormatDrawSource(effect != null ? effect.cardData : null)}\n"
+                    + $"提示"
                     + $"delay={delay:0.00}\n"
                     + $"revealed={FormatCardIdList(_pendingDeckSelection.revealedCards)}\n"
-                    + $"destination={(rule != null ? rule.restDestination.ToString() : "unknown")}");
+                    + $"source={(effect != null && effect.cardData != null ? effect.cardData.id : "unknown")}");
             }
 
             CompleteDeckOperationNoSelection();
@@ -15951,38 +18499,68 @@ namespace UCG
             _deckOperationNoValidAutoCloseRoutine = null;
         }
 
-        IEnumerator AnimateDeckOperationCardReveal(RectTransform cardRect, CanvasGroup canvasGroup, Vector2 finalPosition, int index)
+        IEnumerator AnimateDeckOperationCardReveal(RectTransform cardRect, CanvasGroup canvasGroup, UcgCardView cardView, Vector2 finalPosition, int index, int operationVersion)
         {
+            if (!IsDeckOperationStateCurrent(operationVersion)) yield break;
             if (cardRect == null || canvasGroup == null) yield break;
+            EnsureCardMoveAnimationSystem();
 
-            yield return new WaitForSecondsRealtime(index * 0.06f);
-
-            float duration = 0.22f;
-            float elapsed = 0f;
-            Vector2 startPosition = new Vector2(finalPosition.x * 0.35f, finalPosition.y - 18f);
+            Vector2 startPosition = GetDeckOperationCardEntranceStartPosition();
+            UcgSelectionCardFocus focus = cardRect.GetComponent<UcgSelectionCardFocus>();
+            if (focus != null) focus.enabled = false;
+            cardRect.gameObject.SetActive(false);
             cardRect.anchoredPosition = startPosition;
-            cardRect.localScale = Vector3.one * 0.82f;
-            canvasGroup.alpha = 0f;
+            cardRect.localScale = Vector3.one * 0.72f;
+            cardRect.localEulerAngles = new Vector3(0f, 0f, -10f);
+            canvasGroup.alpha = 1f;
+            canvasGroup.blocksRaycasts = false;
+            canvasGroup.interactable = false;
+            if (cardView != null) cardView.SetFaceDown(true);
 
-            while (elapsed < duration)
+            yield return new WaitForSecondsRealtime(index * 0.10f);
+
+            if (!IsDeckOperationStateCurrent(operationVersion)) yield break;
+            if (cardRect == null || canvasGroup == null) yield break;
+            cardRect.anchoredPosition = startPosition;
+            cardRect.localScale = Vector3.one * 0.72f;
+            cardRect.localEulerAngles = new Vector3(0f, 0f, -10f);
+            cardRect.gameObject.SetActive(true);
+
+            UcgCardMoveAnimationOptions options = UcgCardMoveAnimationOptions.Default;
+            options.duration = 0.56f;
+            options.arcHeight = 118f;
+            options.startFaceDown = true;
+            options.endFaceUp = true;
+            options.flipAtProgress = 0.67f;
+            options.scaleFrom = Vector3.one * 0.72f;
+            options.scaleTo = Vector3.one;
+            options.eulerFrom = new Vector3(0f, 0f, -10f);
+            options.eulerTo = Vector3.zero;
+
+            if (_cardMoveAnimationSystem != null)
             {
-                elapsed += Time.unscaledDeltaTime;
-                float t = duration <= 0f ? 1f : Mathf.Clamp01(elapsed / duration);
-                float eased = 1f - Mathf.Pow(1f - t, 3f);
-                cardRect.anchoredPosition = Vector2.Lerp(startPosition, finalPosition, eased);
-                cardRect.localScale = Vector3.one * Mathf.Lerp(0.82f, 1f, eased);
-                canvasGroup.alpha = Mathf.Lerp(0f, 1f, eased);
-                yield return null;
+                yield return _cardMoveAnimationSystem.MoveCardArc(cardRect, startPosition, finalPosition, options);
             }
 
+            if (!IsDeckOperationStateCurrent(operationVersion)) yield break;
+            if (cardRect == null || canvasGroup == null) yield break;
+            if (cardView != null) cardView.SetFaceDown(false);
             cardRect.anchoredPosition = finalPosition;
             cardRect.localScale = Vector3.one;
+            cardRect.localEulerAngles = Vector3.zero;
             canvasGroup.alpha = 1f;
             canvasGroup.blocksRaycasts = true;
+            canvasGroup.interactable = true;
+            if (focus != null)
+            {
+                focus.SetBasePositionToCurrent();
+                focus.enabled = true;
+            }
         }
 
         void ClearDeckOperationCards()
         {
+            ClearDeckOperationAnimationTargets();
             if (_deckOperationCardsRoot == null) return;
 
             for (int i = _deckOperationCardsRoot.childCount - 1; i >= 0; i--)
@@ -16000,12 +18578,39 @@ namespace UCG
             }
         }
 
+        void ClearDeckOperationAnimationTargets()
+        {
+            DestroyDeckOperationAnimationTarget(cardHolder, "Deck Selection Hand Insert Animation Target");
+            DestroyDeckOperationAnimationTarget(_deckOperationCardsRoot, "Deck Selection Hand Insert Animation Target");
+        }
+
+        void DestroyDeckOperationAnimationTarget(Transform parent, string targetName)
+        {
+            if (parent == null || string.IsNullOrWhiteSpace(targetName)) return;
+
+            for (int i = parent.childCount - 1; i >= 0; i--)
+            {
+                Transform child = parent.GetChild(i);
+                if (child == null || child.name != targetName) continue;
+
+                child.SetParent(null, false);
+                if (Application.isPlaying)
+                {
+                    Destroy(child.gameObject);
+                }
+                else
+                {
+                    DestroyImmediate(child.gameObject);
+                }
+            }
+        }
+
         void ToggleDeckOperationHandSelection(UcgCardView selectedCardView)
         {
             if (!_isSelectingDeckOperationCard || _pendingDeckSelection == null || selectedCardView == null) return;
             if (!IsCurrentHandCardView(selectedCardView) || selectedCardView.CardData == null)
             {
-                ShowPlayStatus("請選擇目前手牌中的卡", 1.1f);
+                    ShowPlayStatus("只能選擇目前手牌中的卡。", 1.1f);
                 if (selectedCardView != null) selectedCardView.SetSelected(false);
                 return;
             }
@@ -16015,7 +18620,7 @@ namespace UCG
             {
                 _pendingDeckSelection.selectedCards.Remove(selectedCard);
                 selectedCardView.SetSelected(false);
-                ShowPlayStatus($"已選 {_pendingDeckSelection.selectedCards.Count}/{GetMaxHandSelectionCount(_pendingDeckSelection.rule)} 張。");
+                ShowPlayStatus($"已取消選擇，目前 { _pendingDeckSelection.selectedCards.Count}/{GetMaxHandSelectionCount(_pendingDeckSelection.rule)}。");
                 UpdateHandSelectionConfirmButtonLabel();
                 return;
             }
@@ -16024,13 +18629,13 @@ namespace UCG
             if (_pendingDeckSelection.selectedCards.Count >= maxSelectCount)
             {
                 selectedCardView.SetSelected(false);
-                ShowPlayStatus($"最多只能選擇 {maxSelectCount} 張手牌。", 1.1f);
+                ShowPlayStatus($"最多只能選擇 {maxSelectCount} 張。", 1.1f);
                 return;
             }
 
             _pendingDeckSelection.selectedCards.Add(selectedCard);
             selectedCardView.SetSelected(true);
-            ShowPlayStatus($"已選 {_pendingDeckSelection.selectedCards.Count}/{maxSelectCount} 張。點擊完成後抽同等數量。");
+            ShowPlayStatus($"已選擇 {_pendingDeckSelection.selectedCards.Count}/{maxSelectCount}。");
             UpdateHandSelectionConfirmButtonLabel();
         }
 
@@ -16045,13 +18650,14 @@ namespace UCG
             int minSelectCount = GetMinHandSelectionCount(rule);
             if (selectedCount < minSelectCount)
             {
-                ShowPlayStatus($"至少需要選擇 {minSelectCount} 張手牌。", 1.1f);
+                ShowPlayStatus($"請至少選擇 {minSelectCount} 張。", 1.1f);
                 return;
             }
 
             var selectedCards = new List<UcgCardData>(_pendingDeckSelection.selectedCards);
             int handBefore = _pendingDeckSelection.handBefore;
             int deckBefore = _pendingDeckSelection.deckBefore;
+            int operationVersion = _deckOperationStateVersion;
             _pendingDeckSelection.resolved = true;
             _pendingDeckSelection = null;
             _isSelectingDeckOperationCard = false;
@@ -16078,24 +18684,41 @@ namespace UCG
             }
 
             var drawnCards = new List<UcgCardData>();
+            var drawnViews = new List<UcgCardView>();
             if (returnedCards.Count > 0 && deckManager != null)
             {
                 List<UcgCardData> drawn = deckManager.DrawCards(returnedCards.Count);
                 drawnCards.AddRange(drawn);
                 for (int i = 0; i < drawn.Count; i++)
                 {
-                    AddCardToHand(drawn[i]);
+                    UcgCardView drawnView = AddCardToHand(drawn[i]);
+                    if (drawnView != null) drawnViews.Add(drawnView);
                 }
             }
 
-            SetHandCardsInteractable(true, null);
+            RestoreHandCardsAfterDeckOperation();
             SetNextPhaseButtonInteractable(true);
             RefreshHandLayout();
             RefreshZoneInfoUI();
 
             string message = returnedCards.Count > 0
-                ? $"已將 {returnedCards.Count} 張手牌放回牌庫底，抽 {drawnCards.Count} 張。"
-                : "沒有放回手牌，效果處理完成。";
+                ? $"Returned {returnedCards.Count} card(s) to the deck bottom, then drew {drawnCards.Count} card(s)."
+                : "No cards returned; drew 0 cards.";
+            if (drawnViews.Count > 0)
+            {
+                _deckOperationDrawThenFinishRoutine = StartCoroutine(AnimateSelectHandToBottomThenDrawSameCountDrawThenFinish(
+                    drawnViews,
+                    sourceEffect,
+                    rule,
+                    returnedCards,
+                    drawnCards,
+                    handBefore,
+                    deckBefore,
+                    message,
+                    operationVersion));
+                return;
+            }
+
             ShowPlayStatus(message, 1.15f);
             QueueEffectFeedback(message);
             LogSelectHandToBottomThenDrawSameCount(sourceEffect, rule, UcgPlayerSide.Player, returnedCards, drawnCards, handBefore, deckBefore);
@@ -16111,7 +18734,63 @@ namespace UCG
             }
             else
             {
-                TryAutoAdvanceAfterTutorialEffectResolved("牌庫效果處理完成");
+                TryAutoAdvanceAfterTutorialEffectResolved("提示");
+            }
+            UpdateMainPrompt();
+            RefreshInteractionHints();
+        }
+
+        IEnumerator AnimateSelectHandToBottomThenDrawSameCountDrawThenFinish(
+            List<UcgCardView> drawnViews,
+            UcgEffectInstance sourceEffect,
+            UcgDeckOperationRule rule,
+            List<UcgCardData> returnedCards,
+            List<UcgCardData> drawnCards,
+            int handBefore,
+            int deckBefore,
+            string message,
+            int operationVersion)
+        {
+            if (!IsDeckOperationStateCurrent(operationVersion))
+            {
+                yield break;
+            }
+
+            _deckOperationResultAnimationRunning = true;
+            SetHandCardsInteractable(false, null);
+            SetNextPhaseButtonInteractable(false);
+            RefreshHandLayout(false);
+
+            yield return AnimateDrawCardsToHand(drawnViews, false);
+            if (!IsDeckOperationStateCurrent(operationVersion))
+            {
+                _deckOperationResultAnimationRunning = false;
+                _deckOperationDrawThenFinishRoutine = null;
+                yield break;
+            }
+
+            _deckOperationResultAnimationRunning = false;
+            _deckOperationDrawThenFinishRoutine = null;
+            RestoreHandCardsAfterDeckOperation();
+            SetNextPhaseButtonInteractable(true);
+            RefreshHandLayout(true);
+            RefreshZoneInfoUI();
+            ShowPlayStatus(message, 1.15f);
+            QueueEffectFeedback(message);
+            LogSelectHandToBottomThenDrawSameCount(sourceEffect, rule, UcgPlayerSide.Player, returnedCards, drawnCards, handBefore, deckBefore);
+            StopEffectSourceHighlight(sourceEffect);
+
+            if (phaseManager != null && phaseManager.CurrentPhase == UcgGamePhase.EnterEffect)
+            {
+                HandleEnterEffectEntry();
+            }
+            else if (phaseManager != null && phaseManager.CurrentPhase == UcgGamePhase.BattleEffect)
+            {
+                HandleBattleEffectEntry();
+            }
+            else
+            {
+                TryAutoAdvanceAfterTutorialEffectResolved("提示");
             }
             UpdateMainPrompt();
             RefreshInteractionHints();
@@ -16119,7 +18798,15 @@ namespace UCG
 
         void CompleteDeckOperationSelection(UcgCardData selectedCard)
         {
+            if (selectedCard == null
+                && _pendingDeckSelection != null
+                && _pendingDeckSelection.rule != null
+                && _pendingDeckSelection.rule.operationType == UcgDeckOperationType.RevealTopSelectToHandRestTrash)
+            {
+                return;
+            }
             if (!_isSelectingDeckOperationCard || _pendingDeckSelection == null || selectedCard == null) return;
+            if (_deckOperationResultAnimationRunning) return;
             if (_pendingDeckSelection.sourceZone == UcgDeckOperationSourceZone.DiscardPile)
             {
                 CompleteBp05008DiscardSelection(selectedCard);
@@ -16136,15 +18823,737 @@ namespace UCG
                 return;
             }
 
-            if (!IsCardAllowedByDeckSelectionFilter(selectedCard, _pendingDeckSelection.rule.selectionFilter))
+            bool forcePlayerSelection = ShouldForceRevealTopSelectionToWaitForPlayer(
+                _pendingDeckSelection.sourceEffect,
+                _pendingDeckSelection.rule);
+            if (!forcePlayerSelection && !IsCardAllowedByDeckSelectionFilter(selectedCard, _pendingDeckSelection.rule.selectionFilter))
             {
-                ShowPlayStatus($"只能選擇{GetSelectionFilterDisplayName(_pendingDeckSelection.rule.selectionFilter)}", 1.1f);
+                ShowPlayStatus($"Please select {GetSelectionFilterDisplayName(_pendingDeckSelection.rule.selectionFilter)}", 1.1f);
                 return;
             }
 
+            if (ShouldAnimateDeckSelectionResultToHand(selectedCard))
+            {
+                int operationVersion = _deckOperationStateVersion;
+                _deckOperationSelectionResultRoutine = StartCoroutine(AnimateDeckSelectionResultToHandThenComplete(selectedCard, operationVersion));
+                return;
+            }
+
+            FinishDeckOperationSelection(selectedCard, true);
+        }
+
+        bool ShouldAnimateDeckSelectionResultToHand(UcgCardData selectedCard)
+        {
+            if (selectedCard == null || _pendingDeckSelection == null || _pendingDeckSelection.rule == null) return false;
+            return _pendingDeckSelection.owner == UcgPlayerSide.Player
+                && _pendingDeckSelection.rule.selectedDestination == UcgDeckOperationDestination.Hand
+                && cardHolder != null
+                && _deckOperationCardsRoot != null;
+        }
+
+        IEnumerator AnimateDeckSelectionResultToHandThenComplete(UcgCardData selectedCard, int operationVersion)
+        {
+            if (!IsDeckOperationStateCurrent(operationVersion))
+            {
+                yield break;
+            }
+            if (selectedCard == null || _pendingDeckSelection == null)
+            {
+                yield break;
+            }
+
+            EnsureCardMoveAnimationSystem();
+            RectTransform selectedRect = FindDeckOperationCardRect(selectedCard);
+            if (_cardMoveAnimationSystem == null || selectedRect == null || cardHolder == null)
+            {
+                FinishDeckOperationSelection(selectedCard, true);
+                yield break;
+            }
+
+            _deckOperationResultAnimationRunning = true;
+            StopDeckOperationNoValidAutoCloseRoutine();
+            SetDeckOperationCardsInteractable(false);
+
+            UcgSelectionCardFocus focus = selectedRect.GetComponent<UcgSelectionCardFocus>();
+            if (focus != null) focus.enabled = false;
+
+            selectedRect.SetAsLastSibling();
+            selectedRect.localScale = Vector3.one * 1.05f;
+            selectedRect.localEulerAngles = Vector3.zero;
+
+            if (!TryGetDeckSelectionHandInsertTarget(out HandInsertTarget handTarget))
+            {
+                _deckOperationResultAnimationRunning = false;
+                FinishDeckOperationSelection(selectedCard, true);
+                yield break;
+            }
+
+            UcgCardMoveAnimationOptions feedbackOptions = UcgCardMoveAnimationOptions.Default;
+            feedbackOptions.duration = 0.12f;
+            feedbackOptions.scaleFrom = Vector3.one * 1.05f;
+            feedbackOptions.scaleTo = Vector3.one * 1.09f;
+            yield return _cardMoveAnimationSystem.PlaySelectedFeedback(selectedRect, feedbackOptions);
+            if (!IsDeckOperationStateCurrent(operationVersion))
+            {
+                _deckOperationResultAnimationRunning = false;
+                _deckOperationSelectionResultRoutine = null;
+                yield break;
+            }
+
+            Vector3 handInsertStartScale = PrepareDeckOperationCardForHandInsert(selectedRect, handTarget.sizeDelta);
+
+            UcgCardMoveAnimationOptions moveOptions = UcgCardMoveAnimationOptions.Default;
+            moveOptions.duration = 0.54f;
+            moveOptions.arcHeight = 92f;
+            moveOptions.startFaceDown = false;
+            moveOptions.endFaceUp = true;
+            moveOptions.flipAtProgress = -1f;
+            moveOptions.scaleFrom = handInsertStartScale;
+            moveOptions.scaleTo = handTarget.localScale;
+            moveOptions.eulerFrom = selectedRect.localEulerAngles;
+            moveOptions.eulerTo = handTarget.localEulerAngles;
+            bool selectedDestinationApplied = false;
+            RectTransform handTargetRect = CreateDeckSelectionHandInsertAnimationTarget(selectedRect, handTarget);
+            if (handTargetRect == null)
+            {
+                _deckOperationResultAnimationRunning = false;
+                FinishDeckOperationSelection(selectedCard, true, !selectedDestinationApplied);
+                yield break;
+            }
+
+            Coroutine handInsertVisualGuardRoutine = StartCoroutine(MaintainDeckOperationFlyingCardBackgroundSuppression(selectedRect, operationVersion));
+            yield return _cardMoveAnimationSystem.MoveCardArcToTarget(selectedRect, handTargetRect, moveOptions);
+            if (handInsertVisualGuardRoutine != null)
+            {
+                StopCoroutine(handInsertVisualGuardRoutine);
+            }
+            if (!IsDeckOperationStateCurrent(operationVersion))
+            {
+                if (handTargetRect != null)
+                {
+                    handTargetRect.SetParent(null, false);
+                    Destroy(handTargetRect.gameObject);
+                }
+                _deckOperationResultAnimationRunning = false;
+                _deckOperationSelectionResultRoutine = null;
+                yield break;
+            }
+
+            if (handTargetRect != null)
+            {
+                handTargetRect.SetParent(null, false);
+                Destroy(handTargetRect.gameObject);
+            }
+
+            UcgCardSelectionContext selectionContext = _pendingDeckSelection;
+            if (selectionContext != null && selectionContext.rule != null)
+            {
+                ApplyDeckOperationDestination(selectionContext.owner, selectedCard, selectionContext.rule.selectedDestination);
+                selectionContext.selectedCard = selectedCard;
+                selectionContext.resolved = true;
+                selectedDestinationApplied = true;
+                DestroyDeckOperationTemporaryCard(selectedRect);
+                Debug.Log(
+                    "[UCG EffectFlow] reveal selection selected resolved:\n"
+                    + $"effect={(selectionContext.sourceEffect != null && selectionContext.sourceEffect.cardData != null ? selectionContext.sourceEffect.cardData.id : "unknown")}\n"
+                    + $"selected={FormatDrawSource(selectedCard)}\n"
+                    + $"destination={selectionContext.rule.selectedDestination}");
+            }
+
+            yield return AnimateDeckSelectionRestCardsToDiscard(selectedCard);
+            if (!IsDeckOperationStateCurrent(operationVersion))
+            {
+                _deckOperationResultAnimationRunning = false;
+                _deckOperationSelectionResultRoutine = null;
+                yield break;
+            }
+
+            _deckOperationResultAnimationRunning = false;
+            _deckOperationSelectionResultRoutine = null;
+            FinishDeckOperationSelection(selectedCard, true, !selectedDestinationApplied);
+        }
+
+        RectTransform FindDeckOperationCardRect(UcgCardData card)
+        {
+            if (_deckOperationCardsRoot == null || card == null) return null;
+
+            for (int i = _deckOperationCardsRoot.childCount - 1; i >= 0; i--)
+            {
+                Transform child = _deckOperationCardsRoot.GetChild(i);
+                var cardView = child != null ? child.GetComponent<UcgCardView>() : null;
+                if (cardView != null && ReferenceEquals(cardView.CardData, card))
+                {
+                    return child as RectTransform;
+                }
+            }
+
+            return null;
+        }
+
+        List<RectTransform> FindDeckOperationRestCardRects(UcgCardData selectedCard)
+        {
+            var result = new List<RectTransform>();
+            if (_deckOperationCardsRoot == null) return result;
+
+            for (int i = 0; i < _deckOperationCardsRoot.childCount; i++)
+            {
+                Transform child = _deckOperationCardsRoot.GetChild(i);
+                var cardView = child != null ? child.GetComponent<UcgCardView>() : null;
+                if (cardView == null || cardView.CardData == null) continue;
+                if (selectedCard != null && ReferenceEquals(cardView.CardData, selectedCard)) continue;
+
+                RectTransform rect = child as RectTransform;
+                if (rect != null) result.Add(rect);
+            }
+
+            return result;
+        }
+
+        void DestroyDeckOperationTemporaryCard(RectTransform cardRect)
+        {
+            if (cardRect == null) return;
+
+            cardRect.gameObject.SetActive(false);
+            cardRect.SetParent(null, false);
+            if (Application.isPlaying)
+            {
+                Destroy(cardRect.gameObject);
+            }
+            else
+            {
+                DestroyImmediate(cardRect.gameObject);
+            }
+        }
+
+        RectTransform GetDeckOperationDiscardTarget()
+        {
+            UcgPlayerSide owner = _pendingDeckSelection != null ? _pendingDeckSelection.owner : UcgPlayerSide.Player;
+            return owner == UcgPlayerSide.Player ? playerDiscardAnchor : opponentDiscardAnchor;
+        }
+
+        IEnumerator AnimateDeckSelectionRestCardsToDiscard(UcgCardData selectedCard)
+        {
+            if (_pendingDeckSelection == null || _pendingDeckSelection.rule == null) yield break;
+            if (_pendingDeckSelection.rule.restDestination != UcgDeckOperationDestination.Trash) yield break;
+
+            EnsureCardMoveAnimationSystem();
+            RectTransform discardTarget = GetDeckOperationDiscardTarget();
+            if (_cardMoveAnimationSystem == null || discardTarget == null) yield break;
+
+            List<RectTransform> restCards = FindDeckOperationRestCardRects(selectedCard);
+            for (int i = 0; i < restCards.Count; i++)
+            {
+                RectTransform cardRect = restCards[i];
+                if (cardRect == null) continue;
+
+                UcgSelectionCardFocus focus = cardRect.GetComponent<UcgSelectionCardFocus>();
+                if (focus != null) focus.enabled = false;
+
+                PrepareDeckOperationCardForDiscard(cardRect);
+                cardRect.SetAsLastSibling();
+                UcgCardMoveAnimationOptions discardOptions = UcgCardMoveAnimationOptions.Default;
+                discardOptions.duration = 0.44f;
+                discardOptions.arcHeight = 76f;
+                discardOptions.startFaceDown = false;
+                discardOptions.endFaceUp = true;
+                discardOptions.flipAtProgress = -1f;
+                discardOptions.scaleFrom = cardRect.localScale == Vector3.zero ? Vector3.one : cardRect.localScale;
+                discardOptions.scaleTo = Vector3.one * 0.22f;
+                discardOptions.eulerFrom = cardRect.localEulerAngles;
+                discardOptions.eulerTo = new Vector3(0f, 0f, i % 2 == 0 ? -4f : 4f);
+                discardOptions.useDissolveOnDiscard = true;
+
+                LogDiscardReturnTrace("before-discard-animation-call", cardRect);
+                Coroutine discardTraceRoutine = debugDiscardReturnTrace
+                    ? StartCoroutine(TraceDiscardReturnCard(cardRect, "AnimateDeckSelectionRestCardsToDiscard"))
+                    : null;
+                yield return _cardMoveAnimationSystem.MoveCardToDiscardWithDissolve(cardRect, discardTarget, discardOptions);
+                if (discardTraceRoutine != null) StopCoroutine(discardTraceRoutine);
+                LogDiscardReturnTrace("after-discard-animation-call", cardRect);
+            }
+        }
+
+        IEnumerator TraceDiscardReturnCard(RectTransform cardRect, string sourceMethod)
+        {
+            if (cardRect == null) yield break;
+
+            LogDiscardReturnTrace($"{sourceMethod}:trace-start", cardRect);
+            Vector3 lastScale = cardRect.localScale;
+            Vector2 lastSize = cardRect.sizeDelta;
+            Vector2 lastAnchored = cardRect.anchoredPosition;
+            Vector3 lastWorld = cardRect.position;
+            Transform lastParent = cardRect.parent;
+            bool lastActive = cardRect.gameObject.activeSelf;
+
+            while (cardRect != null)
+            {
+                bool changed = (cardRect.localScale - lastScale).sqrMagnitude > 0.000001f
+                    || Vector2.SqrMagnitude(cardRect.sizeDelta - lastSize) > 0.0001f
+                    || Vector2.SqrMagnitude(cardRect.anchoredPosition - lastAnchored) > 0.01f
+                    || (cardRect.position - lastWorld).sqrMagnitude > 0.01f
+                    || cardRect.parent != lastParent
+                    || cardRect.gameObject.activeSelf != lastActive;
+
+                if (changed)
+                {
+                    LogDiscardReturnTrace($"{sourceMethod}:changed", cardRect);
+                    lastScale = cardRect.localScale;
+                    lastSize = cardRect.sizeDelta;
+                    lastAnchored = cardRect.anchoredPosition;
+                    lastWorld = cardRect.position;
+                    lastParent = cardRect.parent;
+                    lastActive = cardRect.gameObject.activeSelf;
+                }
+
+                yield return null;
+            }
+
+            Debug.Log($"[UCG DiscardTrace] {sourceMethod}:destroyed-or-null");
+        }
+
+        void LogDiscardReturnTrace(string sourceMethod, RectTransform cardRect)
+        {
+            if (!debugDiscardReturnTrace) return;
+
+            if (cardRect == null)
+            {
+                Debug.Log($"[UCG DiscardTrace] {sourceMethod}: cardRect=null");
+                return;
+            }
+
+            UcgCardView cardView = cardRect.GetComponent<UcgCardView>();
+            UcgCardData cardData = cardView != null ? cardView.CardData : null;
+            string cardId = cardData != null ? cardData.id : "<no-card-id>";
+            string cardName = cardData != null ? cardData.cardName : "<no-card-name>";
+            string parentName = cardRect.parent != null ? cardRect.parent.name : "<no-parent>";
+            Vector3 worldScale = cardRect.lossyScale;
+
+            Debug.Log(
+                "[UCG DiscardTrace] "
+                + $"source={sourceMethod} "
+                + $"card={cardId} {cardName} "
+                + $"go={cardRect.gameObject.name} "
+                + $"instance={cardRect.gameObject.GetHashCode()} "
+                + $"parent={parentName} "
+                + $"activeSelf={cardRect.gameObject.activeSelf} "
+                + $"localScale={FormatVector3(cardRect.localScale)} "
+                + $"worldScale={FormatVector3(worldScale)} "
+                + $"sizeDelta={FormatVector2(cardRect.sizeDelta)} "
+                + $"anchoredPosition={FormatVector2(cardRect.anchoredPosition)} "
+                + $"worldPosition={FormatVector3(cardRect.position)}");
+        }
+
+        void PrepareDeckOperationCardForDiscard(RectTransform cardRect)
+        {
+            if (cardRect == null) return;
+
+            LogDiscardReturnTrace("PrepareDeckOperationCardForDiscard:before", cardRect);
+
+            var button = cardRect.GetComponent<Button>();
+            if (button != null)
+            {
+                button.interactable = false;
+                button.onClick.RemoveAllListeners();
+            }
+
+            var canvasGroup = cardRect.GetComponent<CanvasGroup>();
+            if (canvasGroup != null)
+            {
+                canvasGroup.alpha = 1f;
+                canvasGroup.interactable = false;
+                canvasGroup.blocksRaycasts = false;
+            }
+
+            var graphicRaycaster = cardRect.GetComponent<GraphicRaycaster>();
+            if (graphicRaycaster != null)
+            {
+                graphicRaycaster.enabled = false;
+            }
+
+            var cardView = cardRect.GetComponent<UcgCardView>();
+            if (cardView != null)
+            {
+                cardView.SetSelected(false);
+                cardView.SetPlayableHighlight(false);
+                cardView.SetInfoPanel(null);
+                cardView.SetPointerPreviewSuppressed(true);
+            }
+
+            var outline = cardRect.GetComponent<Outline>();
+            if (outline != null)
+            {
+                outline.enabled = false;
+                outline.effectColor = Color.clear;
+                outline.effectDistance = Vector2.zero;
+            }
+
+            LogDiscardReturnTrace("PrepareDeckOperationCardForDiscard:after", cardRect);
+        }
+
+        struct HandInsertTarget
+        {
+            public Vector2 anchoredPosition;
+            public Vector3 localEulerAngles;
+            public Vector3 localScale;
+            public Vector2 sizeDelta;
+        }
+
+        bool TryGetDeckSelectionHandInsertTarget(out HandInsertTarget target)
+        {
+            target = default;
+            if (cardHolder == null) return false;
+
+            int futureCount = Mathf.Max(1, cardHolder.childCount + 1);
+            int targetIndex = futureCount - 1;
+            target.sizeDelta = GetHandCardSizeForCount(futureCount);
+
+            UIHandLayout layout = cardHolder.GetComponent<UIHandLayout>();
+            if (layout == null
+                || !TryGetHandLayoutTarget(layout, targetIndex, futureCount, out Vector2 targetPosition, out float targetRotation, out float targetScale))
+            {
+                target.anchoredPosition = Vector2.zero;
+                target.localEulerAngles = Vector3.zero;
+                target.localScale = Vector3.one;
+                return true;
+            }
+
+            target.anchoredPosition = targetPosition;
+            target.localEulerAngles = new Vector3(0f, 0f, targetRotation);
+            target.localScale = Vector3.one * targetScale;
+            return true;
+        }
+
+        RectTransform CreateDeckSelectionHandInsertAnimationTarget(RectTransform movingCard, HandInsertTarget target)
+        {
+            if (movingCard == null || cardHolder == null) return null;
+
+            Transform parent = movingCard.parent;
+            if (parent == null) return null;
+
+            var targetObject = new GameObject("Deck Selection Hand Insert Animation Target", typeof(RectTransform), typeof(CanvasGroup));
+            targetObject.transform.SetParent(parent, false);
+
+            var targetRect = targetObject.GetComponent<RectTransform>();
+            targetRect.anchorMin = new Vector2(0.5f, 0.5f);
+            targetRect.anchorMax = new Vector2(0.5f, 0.5f);
+            targetRect.pivot = new Vector2(0.5f, 0.5f);
+            targetRect.sizeDelta = target.sizeDelta;
+            targetRect.localScale = target.localScale;
+            targetRect.localEulerAngles = target.localEulerAngles;
+            targetRect.position = cardHolder.TransformPoint(target.anchoredPosition);
+
+            var canvasGroup = targetObject.GetComponent<CanvasGroup>();
+            canvasGroup.alpha = 0f;
+            canvasGroup.interactable = false;
+            canvasGroup.blocksRaycasts = false;
+            return targetRect;
+        }
+
+        void SnapDeckSelectionHandPlaceholderToLayoutTarget(RectTransform placeholderRect)
+        {
+            if (placeholderRect == null || cardHolder == null) return;
+
+            UIHandLayout layout = cardHolder.GetComponent<UIHandLayout>();
+            if (layout == null) return;
+
+            int cardCount = cardHolder.childCount;
+            int targetIndex = Mathf.Clamp(placeholderRect.GetSiblingIndex(), 0, Mathf.Max(0, cardCount - 1));
+            if (!TryGetHandLayoutTarget(layout, targetIndex, cardCount, out Vector2 targetPosition, out float targetRotation, out float targetScale))
+            {
+                return;
+            }
+
+            placeholderRect.anchoredPosition = targetPosition;
+            placeholderRect.localEulerAngles = new Vector3(0f, 0f, targetRotation);
+            placeholderRect.localScale = Vector3.one * targetScale;
+        }
+
+        bool TryGetHandLayoutTarget(UIHandLayout layout, int index, int count, out Vector2 targetPosition, out float targetRotation, out float targetScale)
+        {
+            targetPosition = Vector2.zero;
+            targetRotation = 0f;
+            targetScale = 1f;
+            if (layout == null || count <= 0) return false;
+
+            RectTransform layoutRect = layout.GetComponent<RectTransform>();
+            if (layoutRect == null) return false;
+
+            int safeCount = Mathf.Max(1, count);
+            int safeIndex = Mathf.Clamp(index, 0, safeCount - 1);
+            float baseAngle = layout.totalAngle + layout.perItemExtraAngle * Mathf.Max(0, safeCount - 1);
+            float spreadAngle;
+            if (layout.adaptiveSpread)
+            {
+                if (safeCount <= 1)
+                {
+                    spreadAngle = 0f;
+                }
+                else
+                {
+                    int denom = Mathf.Max(1, layout.cardsForFullSpread - 1);
+                    float t = Mathf.Clamp01((safeCount - 1) / (float)denom);
+                    spreadAngle = Mathf.Lerp(layout.minAngle, baseAngle, t);
+                }
+            }
+            else
+            {
+                spreadAngle = baseAngle;
+            }
+
+            float startAngle = -spreadAngle * 0.5f;
+            float step = safeCount > 1 ? spreadAngle / (safeCount - 1) : 0f;
+            float angle = startAngle + step * safeIndex;
+            float radians = angle * Mathf.Deg2Rad;
+            float yComp = layout.invertY ? -Mathf.Cos(radians) : Mathf.Cos(radians);
+
+            Vector2 center;
+            if (layout.useBottomBaseline)
+            {
+                float bottomY = -layoutRect.rect.height * layoutRect.pivot.y + layout.baselinePadding;
+                float radiusSign = layout.invertY ? -1f : 1f;
+                center = new Vector2(0f, bottomY - radiusSign * layout.radius);
+            }
+            else
+            {
+                center = Vector2.zero;
+            }
+
+            targetPosition = center + new Vector2(Mathf.Sin(radians), yComp) * layout.radius;
+            targetRotation = layout.rotateWithArc ? layout.invertRotation ? -angle : angle : 0f;
+            targetScale = 1f;
+            return true;
+        }
+
+        Vector3 PrepareDeckOperationCardForHandInsert(RectTransform cardRect, Vector2 handTargetSize)
+        {
+            if (cardRect == null) return Vector3.one;
+
+            Vector3 startScale = MatchDeckOperationCardToHandInsertSize(cardRect, handTargetSize);
+
+            UcgSelectionCardFocus focus = cardRect.GetComponent<UcgSelectionCardFocus>();
+            if (focus != null) focus.enabled = false;
+
+            UcgCardView cardView = cardRect.GetComponent<UcgCardView>();
+            if (cardView != null)
+            {
+                cardView.SetSelected(false);
+                cardView.SetPlayableHighlight(false);
+                cardView.SetBattlefieldLocked(false);
+                cardView.SetPointerPreviewSuppressed(true);
+            }
+
+            Button button = cardRect.GetComponent<Button>();
+            if (button != null)
+            {
+                button.interactable = false;
+                button.onClick.RemoveAllListeners();
+            }
+
+            CanvasGroup canvasGroup = cardRect.GetComponent<CanvasGroup>();
+            if (canvasGroup != null)
+            {
+                canvasGroup.alpha = 1f;
+                canvasGroup.interactable = false;
+                canvasGroup.blocksRaycasts = false;
+            }
+
+            Image rootImage = cardRect.GetComponent<Image>();
+            if (rootImage != null)
+            {
+                rootImage.raycastTarget = false;
+                SuppressDeckOperationFlyingCardBackground(cardRect, rootImage);
+            }
+
+            Outline outline = cardRect.GetComponent<Outline>();
+            if (outline != null)
+            {
+                outline.enabled = false;
+                outline.effectColor = Color.clear;
+                outline.effectDistance = Vector2.zero;
+            }
+
+            Shadow shadow = cardRect.GetComponent<Shadow>();
+            if (shadow != null)
+            {
+                shadow.enabled = false;
+                shadow.effectColor = Color.clear;
+                shadow.effectDistance = Vector2.zero;
+            }
+
+            Canvas selectionCanvas = cardRect.GetComponent<Canvas>();
+            if (selectionCanvas != null)
+            {
+                selectionCanvas.overrideSorting = false;
+                selectionCanvas.sortingOrder = 0;
+            }
+
+            GraphicRaycaster graphicRaycaster = cardRect.GetComponent<GraphicRaycaster>();
+            if (graphicRaycaster != null)
+            {
+                graphicRaycaster.enabled = false;
+            }
+
+            HideSelectionOnlyVisual(cardRect, "Selection Card Ground Shadow");
+            HideSelectionOnlyVisual(cardRect, "Selection Card Top Rim");
+            HideSelectionOnlyVisual(cardRect, "Selection Card Bottom Rim");
+            HideSelectionOnlyVisual(cardRect, "Selection Card Corner TL");
+            HideSelectionOnlyVisual(cardRect, "Selection Card Corner BR");
+            HideSelectionOnlyVisual(cardRect, "PlaceholderText");
+            HideSelectionOnlyVisual(cardRect, "Selection Status");
+            HideSelectionOnlyVisual(cardRect, "Card Presentation Shadow");
+            HideSelectionOnlyVisual(cardRect, "Card Presentation Rim");
+            HideSelectionOnlyVisual(cardRect, "Card Presentation Highlight");
+            HideSelectionOnlyVisual(cardRect, "Card Presentation Disabled Wash");
+            HideSelectionOnlyVisual(cardRect, "Placed Card Drop Shadow");
+            HideSelectionOnlyVisual(cardRect, "Placed Card Lift Rim");
+            HideSelectionOnlyVisual(cardRect, "Operation Feedback Overlay");
+            HideSelectionOnlyVisual(cardRect, "Effect Source Highlight");
+
+            return startScale;
+        }
+
+        Vector3 MatchDeckOperationCardToHandInsertSize(RectTransform cardRect, Vector2 targetSize)
+        {
+            if (cardRect == null) return Vector3.one;
+
+            Vector2 currentSize = GetStableRectSize(cardRect);
+            Vector3 currentScale = cardRect.localScale == Vector3.zero ? Vector3.one : cardRect.localScale;
+            if (currentSize.x <= 0f || currentSize.y <= 0f || targetSize.x <= 0f || targetSize.y <= 0f)
+            {
+                return currentScale;
+            }
+
+            float visualWidth = currentSize.x * Mathf.Max(Mathf.Abs(currentScale.x), 0.01f);
+            float visualHeight = currentSize.y * Mathf.Max(Mathf.Abs(currentScale.y), 0.01f);
+            float startScale = Mathf.Min(visualWidth / targetSize.x, visualHeight / targetSize.y);
+            startScale = Mathf.Clamp(startScale, 0.45f, 1.35f);
+
+            cardRect.sizeDelta = targetSize;
+            cardRect.localScale = Vector3.one * startScale;
+
+            UcgCardView cardView = cardRect.GetComponent<UcgCardView>();
+            if (cardView != null)
+            {
+                cardView.SetBaseSize(targetSize);
+            }
+
+            return cardRect.localScale;
+        }
+
+        void SuppressDeckOperationFlyingCardBackground(RectTransform cardRect, Image rootImage)
+        {
+            if (cardRect == null || rootImage == null) return;
+
+            Transform artTransform = cardRect.Find("Card Art Image");
+            Image artImage = artTransform != null ? artTransform.GetComponent<Image>() : null;
+            if (artImage != null)
+            {
+                artImage.enabled = true;
+                artImage.raycastTarget = false;
+            }
+
+            Color color = rootImage.color;
+            color.a = 0f;
+            rootImage.color = color;
+            rootImage.raycastTarget = false;
+        }
+
+        IEnumerator MaintainDeckOperationFlyingCardBackgroundSuppression(RectTransform cardRect, int operationVersion)
+        {
+            while (cardRect != null && IsDeckOperationStateCurrent(operationVersion))
+            {
+                Image rootImage = cardRect.GetComponent<Image>();
+                if (rootImage != null)
+                {
+                    SuppressDeckOperationFlyingCardBackground(cardRect, rootImage);
+                }
+
+                yield return null;
+            }
+        }
+
+        void HideSelectionOnlyVisual(RectTransform cardRect, string childName)
+        {
+            if (cardRect == null || string.IsNullOrWhiteSpace(childName)) return;
+
+            Transform child = cardRect.Find(childName);
+            if (child == null) return;
+
+            Graphic[] graphics = child.GetComponentsInChildren<Graphic>(true);
+            for (int i = 0; i < graphics.Length; i++)
+            {
+                if (graphics[i] == null) continue;
+                graphics[i].color = Color.clear;
+                graphics[i].raycastTarget = false;
+            }
+
+            Outline[] outlines = child.GetComponentsInChildren<Outline>(true);
+            for (int i = 0; i < outlines.Length; i++)
+            {
+                if (outlines[i] == null) continue;
+                outlines[i].enabled = false;
+                outlines[i].effectColor = Color.clear;
+                outlines[i].effectDistance = Vector2.zero;
+            }
+
+            child.gameObject.SetActive(false);
+        }
+
+        Vector2 GetStableRectSize(RectTransform rect)
+        {
+            if (rect == null) return Vector2.zero;
+
+            Vector2 size = rect.rect.size;
+            if (size.x <= 0f || size.y <= 0f)
+            {
+                size = rect.sizeDelta;
+            }
+
+            return new Vector2(Mathf.Abs(size.x), Mathf.Abs(size.y));
+        }
+
+        void SetDeckOperationCardsInteractable(bool interactable)
+        {
+            if (_deckOperationCardsRoot == null) return;
+
+            for (int i = 0; i < _deckOperationCardsRoot.childCount; i++)
+            {
+                Transform child = _deckOperationCardsRoot.GetChild(i);
+                if (child == null) continue;
+
+                var button = child.GetComponent<Button>();
+                if (button != null) button.interactable = interactable;
+
+                var canvasGroup = child.GetComponent<CanvasGroup>();
+                if (canvasGroup != null)
+                {
+                    canvasGroup.blocksRaycasts = interactable;
+                    canvasGroup.interactable = interactable;
+                }
+            }
+        }
+
+        void FinishDeckOperationSelection(UcgCardData selectedCard, bool instantHandLayout)
+        {
+            FinishDeckOperationSelection(selectedCard, instantHandLayout, true);
+        }
+
+        void FinishDeckOperationSelection(UcgCardData selectedCard, bool instantHandLayout, bool applySelectedDestination)
+        {
+            if (!_isSelectingDeckOperationCard || _pendingDeckSelection == null || selectedCard == null) return;
+
             StopDeckOperationNoValidAutoCloseRoutine();
             UcgEffectInstance sourceEffect = _pendingDeckSelection.sourceEffect;
-            ResolveDeckOperationDestinations(sourceEffect, _pendingDeckSelection.rule, _pendingDeckSelection.revealedCards, selectedCard, _pendingDeckSelection.owner, true);
+            ResolveDeckOperationDestinations(
+                sourceEffect,
+                _pendingDeckSelection.rule,
+                _pendingDeckSelection.revealedCards,
+                selectedCard,
+                _pendingDeckSelection.owner,
+                true,
+                -1,
+                -1,
+                applySelectedDestination);
             _pendingDeckSelection.resolved = true;
             _pendingDeckSelection.selectedCard = selectedCard;
             _pendingDeckSelection = null;
@@ -16160,11 +19569,10 @@ namespace UCG
             }
             ClearDeckOperationCards();
 
-            SetHandCardsInteractable(true, null);
+            RestoreAllHandCardInteractionAfterDeckOperation(instantHandLayout, false);
             SetNextPhaseButtonInteractable(true);
-            RefreshHandLayout();
             RefreshZoneInfoUI();
-            QueueEffectFeedback("牌庫效果：處理完成");
+            QueueEffectFeedback("提示");
             StopEffectSourceHighlight(sourceEffect);
             if (phaseManager != null && phaseManager.CurrentPhase == UcgGamePhase.EnterEffect)
             {
@@ -16176,15 +19584,88 @@ namespace UCG
             }
             else
             {
-                TryAutoAdvanceAfterTutorialEffectResolved("牌庫效果處理完成");
+                TryAutoAdvanceAfterTutorialEffectResolved("提示");
             }
             UpdateMainPrompt();
+            SetHandCardsInteractable(true, null);
+            RefreshHandCardDragInteractability();
             RefreshInteractionHints();
         }
 
         void CompleteDeckOperationNoSelection()
         {
             if (!_isSelectingDeckOperationCard || _pendingDeckSelection == null) return;
+            if (_deckOperationResultAnimationRunning) return;
+            if (IsRevealTopSelectWaitingForPlayerSelection(_pendingDeckSelection))
+            {
+                return;
+            }
+
+            if (ShouldAnimateDeckOperationNoSelectionToDiscard())
+            {
+                int operationVersion = _deckOperationStateVersion;
+                _deckOperationNoSelectionDiscardRoutine = StartCoroutine(AnimateDeckOperationNoSelectionToDiscardThenComplete(operationVersion));
+                return;
+            }
+
+            FinishDeckOperationNoSelection();
+        }
+
+        bool IsRevealTopSelectWaitingForPlayerSelection(UcgCardSelectionContext context)
+        {
+            if (context == null || context.rule == null) return false;
+            if (context.rule.operationType != UcgDeckOperationType.RevealTopSelectToHandRestTrash) return false;
+            if (ShouldForceRevealTopSelectionToWaitForPlayer(context.sourceEffect, context.rule)) return true;
+            List<UcgCardData> selectableCards = GetSelectableDeckOperationCards(context.revealedCards, context.rule.selectionFilter);
+            return selectableCards.Count > 0;
+        }
+
+        bool ShouldAnimateDeckOperationNoSelectionToDiscard()
+        {
+            if (_pendingDeckSelection == null || _pendingDeckSelection.rule == null) return false;
+            if (_pendingDeckSelection.sourceZone != UcgDeckOperationSourceZone.RevealedCards) return false;
+            if (!_pendingDeckSelection.rule.sendAllToRestDestinationIfNoValidSelection) return false;
+            if (_pendingDeckSelection.rule.restDestination != UcgDeckOperationDestination.Trash) return false;
+            if (_deckOperationCardsRoot == null || _deckOperationCardsRoot.childCount == 0) return false;
+
+            List<UcgCardData> selectableCards = GetSelectableDeckOperationCards(
+                _pendingDeckSelection.revealedCards,
+                _pendingDeckSelection.rule.selectionFilter);
+            return selectableCards.Count == 0;
+        }
+
+        IEnumerator AnimateDeckOperationNoSelectionToDiscardThenComplete(int operationVersion)
+        {
+            if (!IsDeckOperationStateCurrent(operationVersion))
+            {
+                yield break;
+            }
+            if (_pendingDeckSelection == null)
+            {
+                yield break;
+            }
+
+            _deckOperationResultAnimationRunning = true;
+            StopDeckOperationNoValidAutoCloseRoutine();
+            SetDeckOperationCardsInteractable(false);
+
+            yield return AnimateDeckSelectionRestCardsToDiscard(null);
+            if (!IsDeckOperationStateCurrent(operationVersion))
+            {
+                _deckOperationResultAnimationRunning = false;
+                _deckOperationNoSelectionDiscardRoutine = null;
+                yield break;
+            }
+
+            _deckOperationResultAnimationRunning = false;
+            _deckOperationNoSelectionDiscardRoutine = null;
+            FinishDeckOperationNoSelection();
+        }
+
+        void FinishDeckOperationNoSelection()
+        {
+            if (!_isSelectingDeckOperationCard || _pendingDeckSelection == null) return;
+            if (IsRevealTopSelectWaitingForPlayerSelection(_pendingDeckSelection)) return;
 
             StopDeckOperationNoValidAutoCloseRoutine();
             UcgEffectInstance sourceEffect = _pendingDeckSelection.sourceEffect;
@@ -16208,11 +19689,11 @@ namespace UCG
             }
             ClearDeckOperationCards();
 
-            SetHandCardsInteractable(true, null);
+            RestoreHandCardsAfterDeckOperation();
             SetNextPhaseButtonInteractable(true);
             RefreshHandLayout();
             RefreshZoneInfoUI();
-            QueueEffectFeedback($"牌庫效果：{noTargetMessage}");
+            QueueEffectFeedback("Deck operation: " + noTargetMessage);
             StopEffectSourceHighlight(sourceEffect);
 
             if (phaseManager != null && phaseManager.CurrentPhase == UcgGamePhase.EnterEffect)
@@ -16225,7 +19706,7 @@ namespace UCG
             }
             else
             {
-                TryAutoAdvanceAfterTutorialEffectResolved("牌庫效果處理完成");
+                TryAutoAdvanceAfterTutorialEffectResolved("提示");
             }
             UpdateMainPrompt();
             RefreshInteractionHints();
@@ -16247,10 +19728,11 @@ namespace UCG
 
         void CompleteDeckOperationHandSelection(UcgCardView selectedCardView)
         {
+            if (_deckOperationResultAnimationRunning) return;
             if (!_isSelectingDeckOperationCard || _pendingDeckSelection == null || selectedCardView == null) return;
             if (!IsCurrentHandCardView(selectedCardView) || selectedCardView.CardData == null)
             {
-                ShowPlayStatus("請選擇一張手牌放回牌庫最底下", 1.1f);
+                ShowPlayStatus("提示", 1.1f);
                 if (selectedCardView != null) selectedCardView.SetSelected(false);
                 return;
             }
@@ -16265,14 +19747,32 @@ namespace UCG
                 : GetHandCountForOwner(UcgPlayerSide.Player);
             int deckBefore = _pendingDeckSelection.deckBefore;
 
-            bool removedFromHand = deckManager.playerHand.Remove(selectedCard);
+            bool removedFromHand = deckManager != null && deckManager.playerHand != null && deckManager.playerHand.Contains(selectedCard);
             if (!removedFromHand)
             {
                 LogBp01037Execute(sourceEffect, drawnCards, selectedCard, handBefore, handAfterDraw, deckBefore, GetDrawPileForOwner(UcgPlayerSide.Player) != null ? GetDrawPileForOwner(UcgPlayerSide.Player).Count : 0, true, false, "selected card is not in playerHand");
-                ShowPlayStatus("請選擇目前手牌中的卡", 1.1f);
+                ShowPlayStatus("提示", 1.1f);
                 return;
             }
 
+            EnsureCardMoveAnimationSystem();
+            if (_cardMoveAnimationSystem != null && playerDeckAnchor != null && selectedCardView.transform is RectTransform)
+            {
+                int operationVersion = _deckOperationStateVersion;
+                _deckOperationHandReturnRoutine = StartCoroutine(AnimateHandCardReturnToDeckBottomThenComplete(
+                    selectedCardView,
+                    sourceEffect,
+                    rule,
+                    selectedCard,
+                    drawnCards,
+                    handBefore,
+                    handAfterDraw,
+                    deckBefore,
+                    operationVersion));
+                return;
+            }
+
+            deckManager.playerHand.Remove(selectedCard);
             selectedCardView.SetSelected(false);
             selectedCardView.SetPlayableHighlight(false);
             selectedCardView.transform.SetParent(null, false);
@@ -16295,12 +19795,12 @@ namespace UCG
             }
             ClearDeckOperationCards();
 
-            SetHandCardsInteractable(true, null);
+            RestoreHandCardsAfterDeckOperation();
             SetNextPhaseButtonInteractable(true);
             RefreshHandLayout();
             RefreshZoneInfoUI();
-            ShowPlayStatus("已將 1 張手牌放回牌庫最底下", 1.15f);
-            QueueEffectFeedback("已將 1 張手牌放回牌庫最底下");
+            ShowPlayStatus("已將選擇的手牌放回牌庫底。", 1.15f);
+            QueueEffectFeedback("手牌已放回牌庫底。");
             LogBp01037Execute(sourceEffect, drawnCards, selectedCard, handBefore, handAfterDraw, deckBefore, GetDrawPileForOwner(UcgPlayerSide.Player) != null ? GetDrawPileForOwner(UcgPlayerSide.Player).Count : 0, true, true, "");
             LogDrawThenPutHandToBottom(sourceEffect, rule, UcgPlayerSide.Player, drawnCards, selectedCard, handBefore, deckBefore);
             StopEffectSourceHighlight(sourceEffect);
@@ -16315,7 +19815,179 @@ namespace UCG
             }
             else
             {
-                TryAutoAdvanceAfterTutorialEffectResolved("牌庫效果處理完成");
+                TryAutoAdvanceAfterTutorialEffectResolved("手牌已放回牌庫底。");
+            }
+            UpdateMainPrompt();
+            RefreshInteractionHints();
+        }
+
+        IEnumerator AnimateHandCardReturnToDeckBottomThenComplete(
+            UcgCardView selectedCardView,
+            UcgEffectInstance sourceEffect,
+            UcgDeckOperationRule rule,
+            UcgCardData selectedCard,
+            List<UcgCardData> drawnCards,
+            int handBefore,
+            int handAfterDraw,
+            int deckBefore,
+            int operationVersion)
+        {
+            if (!IsDeckOperationStateCurrent(operationVersion))
+            {
+                yield break;
+            }
+
+            RectTransform selectedRect = selectedCardView != null ? selectedCardView.transform as RectTransform : null;
+            if (selectedRect == null || selectedCard == null)
+            {
+                yield break;
+            }
+
+            _deckOperationResultAnimationRunning = true;
+            SetHandCardsInteractable(false, null);
+            SetNextPhaseButtonInteractable(false);
+
+            selectedCardView.SetSelected(true);
+            UcgCardMoveAnimationOptions feedbackOptions = UcgCardMoveAnimationOptions.Default;
+            feedbackOptions.duration = 0.11f;
+            feedbackOptions.scaleFrom = selectedRect.localScale == Vector3.zero ? Vector3.one : selectedRect.localScale;
+            feedbackOptions.scaleTo = feedbackOptions.scaleFrom * 1.035f;
+            yield return _cardMoveAnimationSystem.PlaySelectedFeedback(selectedRect, feedbackOptions);
+            if (!IsDeckOperationStateCurrent(operationVersion))
+            {
+                _deckOperationResultAnimationRunning = false;
+                _deckOperationHandReturnRoutine = null;
+                yield break;
+            }
+
+            selectedCardView.SetSelected(false);
+            selectedCardView.SetPlayableHighlight(false);
+
+            CanvasGroup canvasGroup = selectedRect.GetComponent<CanvasGroup>();
+            if (canvasGroup != null)
+            {
+                canvasGroup.alpha = 1f;
+                canvasGroup.interactable = false;
+                canvasGroup.blocksRaycasts = false;
+            }
+
+            UIHandCardHover hover = selectedRect.GetComponent<UIHandCardHover>();
+            if (hover != null) hover.enabled = false;
+
+            RefreshHandLayout(false);
+            selectedRect.SetAsLastSibling();
+
+            UcgCardMoveAnimationOptions returnOptions = UcgCardMoveAnimationOptions.Default;
+            returnOptions.duration = 0.52f;
+            returnOptions.arcHeight = 92f;
+            returnOptions.startFaceDown = false;
+            returnOptions.endFaceUp = false;
+            returnOptions.flipAtProgress = 0.72f;
+            returnOptions.scaleFrom = selectedRect.localScale == Vector3.zero ? Vector3.one : selectedRect.localScale;
+            returnOptions.scaleTo = Vector3.one * 0.62f;
+            returnOptions.eulerFrom = selectedRect.localEulerAngles;
+            returnOptions.eulerTo = Vector3.zero;
+
+            yield return _cardMoveAnimationSystem.ReturnCardToDeckBottom(selectedRect, null, playerDeckAnchor, returnOptions);
+            if (!IsDeckOperationStateCurrent(operationVersion))
+            {
+                _deckOperationResultAnimationRunning = false;
+                _deckOperationHandReturnRoutine = null;
+                yield break;
+            }
+
+            _deckOperationResultAnimationRunning = false;
+            _deckOperationHandReturnRoutine = null;
+            FinishAnimatedHandCardReturnToDeckBottom(
+                selectedCardView,
+                sourceEffect,
+                rule,
+                selectedCard,
+                drawnCards,
+                handBefore,
+                handAfterDraw,
+                deckBefore);
+        }
+
+        void FinishAnimatedHandCardReturnToDeckBottom(
+            UcgCardView selectedCardView,
+            UcgEffectInstance sourceEffect,
+            UcgDeckOperationRule rule,
+            UcgCardData selectedCard,
+            List<UcgCardData> drawnCards,
+            int handBefore,
+            int handAfterDraw,
+            int deckBefore)
+        {
+            bool removedFromHand = deckManager != null && deckManager.playerHand != null && deckManager.playerHand.Remove(selectedCard);
+            if (!removedFromHand)
+            {
+                LogBp01037Execute(sourceEffect, drawnCards, selectedCard, handBefore, handAfterDraw, deckBefore, GetDrawPileForOwner(UcgPlayerSide.Player) != null ? GetDrawPileForOwner(UcgPlayerSide.Player).Count : 0, true, false, "selected card is not in playerHand");
+                ShowPlayStatus("選擇的卡不在手牌中。", 1.1f);
+                if (_pendingDeckSelection != null)
+                {
+                    _pendingDeckSelection.resolved = true;
+                    _pendingDeckSelection = null;
+                }
+                _isSelectingDeckOperationCard = false;
+                _deckOperationResultAnimationRunning = false;
+                ApplyHandReturnSelectionHighlights(false);
+                ClearDeckOperationCards();
+                RestoreHandCardsAfterDeckOperation();
+                SetNextPhaseButtonInteractable(true);
+                RefreshHandLayout(true);
+                RefreshZoneInfoUI();
+                RefreshInteractionHints();
+                return;
+            }
+
+            if (selectedCardView != null)
+            {
+                selectedCardView.SetSelected(false);
+                selectedCardView.SetPlayableHighlight(false);
+                selectedCardView.transform.SetParent(null, false);
+                Destroy(selectedCardView.gameObject);
+            }
+
+            deckManager.deck.Add(selectedCard);
+
+            _pendingDeckSelection.resolved = true;
+            _pendingDeckSelection.selectedCard = selectedCard;
+            _pendingDeckSelection = null;
+            _isSelectingDeckOperationCard = false;
+
+            ApplyHandReturnSelectionHighlights(false);
+            if (_deckOperationSelectionRoot != null)
+            {
+                _deckOperationSelectionRoot.gameObject.SetActive(false);
+            }
+            if (_deckOperationNoSelectionButton != null)
+            {
+                _deckOperationNoSelectionButton.gameObject.SetActive(false);
+            }
+            ClearDeckOperationCards();
+
+            RestoreHandCardsAfterDeckOperation();
+            SetNextPhaseButtonInteractable(true);
+            RefreshHandLayout(true);
+            RefreshZoneInfoUI();
+            ShowPlayStatus("已將選擇的手牌放回牌庫底。", 1.15f);
+            QueueEffectFeedback("手牌已放回牌庫底。");
+            LogBp01037Execute(sourceEffect, drawnCards, selectedCard, handBefore, handAfterDraw, deckBefore, GetDrawPileForOwner(UcgPlayerSide.Player) != null ? GetDrawPileForOwner(UcgPlayerSide.Player).Count : 0, true, true, "");
+            LogDrawThenPutHandToBottom(sourceEffect, rule, UcgPlayerSide.Player, drawnCards, selectedCard, handBefore, deckBefore);
+            StopEffectSourceHighlight(sourceEffect);
+
+            if (phaseManager != null && phaseManager.CurrentPhase == UcgGamePhase.EnterEffect)
+            {
+                HandleEnterEffectEntry();
+            }
+            else if (phaseManager != null && phaseManager.CurrentPhase == UcgGamePhase.BattleEffect)
+            {
+                HandleBattleEffectEntry();
+            }
+            else
+            {
+                TryAutoAdvanceAfterTutorialEffectResolved("手牌已放回牌庫底。");
             }
             UpdateMainPrompt();
             RefreshInteractionHints();
@@ -16327,10 +19999,10 @@ namespace UCG
             UcgCardData selectedCard = selectableCards.Count > 0 ? selectableCards[0] : null;
             ResolveDeckOperationDestinations(effect, rule, revealedCards, selectedCard, UcgPlayerSide.Opponent, false, handBefore, deckBefore);
             RefreshZoneInfoUI();
-            QueueEffectFeedback("對手處理了牌庫效果");
+            QueueEffectFeedback("提示");
         }
 
-        void ResolveDeckOperationDestinations(UcgEffectInstance effect, UcgDeckOperationRule rule, List<UcgCardData> revealedCards, UcgCardData selectedCard, UcgPlayerSide owner, bool logWithCurrentCounts, int handBeforeOverride = -1, int deckBeforeOverride = -1)
+        void ResolveDeckOperationDestinations(UcgEffectInstance effect, UcgDeckOperationRule rule, List<UcgCardData> revealedCards, UcgCardData selectedCard, UcgPlayerSide owner, bool logWithCurrentCounts, int handBeforeOverride = -1, int deckBeforeOverride = -1, bool applySelectedDestination = true)
         {
             if (rule == null || revealedCards == null) return;
 
@@ -16344,7 +20016,7 @@ namespace UCG
                 restCards.Add(card);
             }
 
-            if (selectedCard != null)
+            if (selectedCard != null && applySelectedDestination)
             {
                 ApplyDeckOperationDestination(owner, selectedCard, rule.selectedDestination);
             }
@@ -16364,7 +20036,7 @@ namespace UCG
                 : "DeckOperation";
             Debug.Log(
                 operationLogTitle + ":\n"
-                + $"source={FormatDrawSource(effect != null ? effect.cardData : null)}\n"
+                + $"提示"
                 + $"owner={owner}\n"
                 + $"operation={rule.operationType}\n"
                 + $"revealCount={revealedCards.Count}\n"
@@ -16372,10 +20044,11 @@ namespace UCG
                 + $"revealed={FormatCardIdList(revealedCards)}\n"
                 + $"validSelectable={FormatCardIdList(validSelectableCards)}\n"
                 + $"noValidSelection={noValidSelection}\n"
-                + $"onConfirm={(noValidSelection ? "SendAllRevealedToTrash" : "SelectCard")}\n"
+                + $"mode={(noValidSelection ? "SendAllRevealedToTrash" : "SelectCard")}\n"
                 + $"selectCount={rule.selectCount}\n"
                 + $"selected={FormatDrawSource(selectedCard)}\n"
                 + $"selectedDestination={rule.selectedDestination}\n"
+                + $"selectedApplied={applySelectedDestination}\n"
                 + $"restDestination={rule.restDestination}\n"
                 + $"drawPileBefore={deckBefore}\n"
                 + $"drawPileAfter={deckAfter}\n"
@@ -16475,10 +20148,10 @@ namespace UCG
         bool IsUltramanCard(UcgCardData card)
         {
             if (card == null || card.IsSceneCard()) return false;
-            if (ContainsCardText(card.cardCategory, "超人", "超人力霸王", "Ultraman")) return true;
-            if (ContainsCardText(card.type, "超人", "超人力霸王", "Ultraman")) return true;
-            if (ContainsCardText(card.characterName, "超人力霸王", "Ultraman")) return true;
-            return ContainsCardText(card.cardName, "超人力霸王", "Ultraman");
+            if (ContainsCardText(card.cardCategory, "Ultraman", "Ultraman")) return true;
+            if (ContainsCardText(card.type, "Ultraman", "Ultraman")) return true;
+            if (ContainsCardText(card.characterName, "Ultraman", "Ultraman")) return true;
+            return ContainsCardText(card.cardName, "Ultraman", "Ultraman");
         }
 
         bool ContainsCardText(string value, params string[] keywords)
@@ -16503,7 +20176,7 @@ namespace UCG
                 case UcgDeckSelectionFilter.SceneCard:
                     return "場景卡";
                 case UcgDeckSelectionFilter.UltramanCard:
-                    return "超人卡";
+                    return "角色卡";
                 default:
                     return "卡牌";
             }
@@ -16514,11 +20187,11 @@ namespace UCG
             switch (filter)
             {
                 case UcgDeckSelectionFilter.SceneCard:
-                    return "選擇 1 張場景卡加入手牌";
+                    return "請選擇 1 張場景卡。";
                 case UcgDeckSelectionFilter.UltramanCard:
-                    return "選擇 1 張超人卡加入手牌";
+                    return "請選擇 1 張角色卡。";
                 default:
-                    return "選擇 1 張卡加入手牌";
+                    return "請選擇 1 張卡牌。";
             }
         }
 
@@ -16527,11 +20200,11 @@ namespace UCG
             switch (filter)
             {
                 case UcgDeckSelectionFilter.SceneCard:
-                    return "沒有可加入手牌的場景卡";
+                    return "沒有可選擇的場景卡，公開卡將送入棄牌區。";
                 case UcgDeckSelectionFilter.UltramanCard:
-                    return "沒有可加入手牌的超人卡";
+                    return "沒有可選擇的角色卡，公開卡將送入棄牌區。";
                 default:
-                    return "沒有可加入手牌的目標";
+                    return "沒有可選擇的卡牌，公開卡將送入棄牌區。";
             }
         }
 
@@ -16540,11 +20213,11 @@ namespace UCG
             switch (filter)
             {
                 case UcgDeckSelectionFilter.SceneCard:
-                    return "非場景卡";
+                    return "這張不是可選擇的場景卡。";
                 case UcgDeckSelectionFilter.UltramanCard:
-                    return "非超人卡";
+                    return "這張不是可選擇的角色卡。";
                 default:
-                    return "不符合條件";
+                    return "這張卡目前不能選擇。";
             }
         }
 
@@ -16610,14 +20283,14 @@ namespace UCG
             List<UcgCardData> invalidCards = GetInvalidDeckOperationCards(revealedCards, filter);
             Debug.Log(
                 "RevealTopSelect UI opened:\n"
-                + $"sourceCard={FormatDrawSource(effect != null ? effect.cardData : null)}\n"
-                + $"revealCount={(revealedCards != null ? revealedCards.Count : 0)}\n"
+                + $"提示"
+                + $"提示"
                 + $"selectionFilter={filter}\n"
                 + $"revealedCardIds={FormatCardIdList(revealedCards)}\n"
                 + $"validSelectableIds={FormatCardIdList(selectableCards)}\n"
                 + $"invalidIds={FormatCardIdList(invalidCards)}\n"
                 + $"noValidSelection={noValidSelection}\n"
-                + $"autoCloseDelay={(noValidSelection ? Mathf.Max(0.1f, noValidSelectionAutoCloseDelay) : 0f):0.00}\n"
+                + $"提示"
                 + $"finalDestination={GetDeckOperationFinalDestinationText(rule, noValidSelection)}");
         }
 
@@ -16629,9 +20302,9 @@ namespace UCG
             int deckAfter = GetDrawPileForOwner(owner) != null ? GetDrawPileForOwner(owner).Count : 0;
             Debug.Log(
                 "DeckOperation DrawThenPutHandToBottom:\n"
-                + $"source={FormatDrawSource(effect != null ? effect.cardData : null)}\n"
+                + $"提示"
                 + $"owner={owner}\n"
-                + $"drawCount={(rule != null ? rule.drawCount : 0)}\n"
+                + $"提示"
                 + $"drawn={FormatCardIdList(drawnCards)}\n"
                 + $"selectedHandCardToBottom={FormatDrawSource(selectedCard)}\n"
                 + $"handBefore={handBefore}\n"
@@ -16648,10 +20321,10 @@ namespace UCG
             int deckAfter = GetDrawPileForOwner(owner) != null ? GetDrawPileForOwner(owner).Count : 0;
             Debug.Log(
                 "DeckOperation SelectHandToBottomThenDrawSameCount:\n"
-                + $"source={FormatDrawSource(effect != null ? effect.cardData : null)}\n"
+                + $"提示"
                 + $"owner={owner}\n"
-                + $"minSelectCount={(rule != null ? rule.minHandSelectCount : 0)}\n"
-                + $"maxSelectCount={(rule != null ? rule.handSelectCount : 0)}\n"
+                + $"提示"
+                + $"提示"
                 + $"returned={FormatCardIdList(returnedCards)}\n"
                 + $"drawn={FormatCardIdList(drawnCards)}\n"
                 + $"handBefore={handBefore}\n"
@@ -16692,7 +20365,7 @@ namespace UCG
                 + $"movedToBottom={movedToBottom}\n"
                 + $"drawPileAfter={deckAfter}\n"
                 + $"handAfter={handAfter}\n"
-                + $"reason={(string.IsNullOrWhiteSpace(notOpenedReason) ? "none" : notOpenedReason)}");
+                + $"notOpenedReason={(string.IsNullOrWhiteSpace(notOpenedReason) ? "none" : notOpenedReason)}");
         }
 
         string FormatDrawSource(UcgCardData sourceCard)
@@ -16709,7 +20382,7 @@ namespace UCG
             {
                 if (playResultText != null)
                 {
-                    playResultText.text = "抽牌階段：第 1 回合不抽牌，準備進入場景設置。";
+                    playResultText.text = "第一回合不抽牌。";
                 }
                 return;
             }
@@ -16718,18 +20391,18 @@ namespace UCG
             {
                 if (playResultText != null)
                 {
-                    playResultText.text = "抽牌階段：牌庫已空，無法抽牌。";
+                    playResultText.text = "牌庫已空，無法抽牌。";
                 }
                 UpdateDeckCountText();
                 return;
             }
 
-            DrawCardsToHand(1, "抽牌階段：抽 1 張牌。");
+            DrawCardsToHand(1, "抽 1 張牌。");
         }
 
-        void AddCardToHand(UcgCardData data)
+        UcgCardView AddCardToHand(UcgCardData data)
         {
-            if (data == null) return;
+            if (data == null) return null;
 
             _createdHandCardSerial++;
             var cardObject = new GameObject($"UCG Card {_createdHandCardSerial}", typeof(RectTransform), typeof(Image), typeof(CanvasGroup));
@@ -16740,6 +20413,8 @@ namespace UCG
             rectTransform.anchorMax = new Vector2(0.5f, 0.5f);
             rectTransform.pivot = new Vector2(0.5f, 0.5f);
             rectTransform.sizeDelta = GetHandCardSizeForCount(cardHolder.childCount);
+            rectTransform.localScale = Vector3.one;
+            rectTransform.localEulerAngles = Vector3.zero;
 
             var image = cardObject.GetComponent<Image>();
             image.raycastTarget = true;
@@ -16790,7 +20465,7 @@ namespace UCG
 
             var hover = cardObject.AddComponent<UIHandCardHover>();
             hover.lift = 24f;
-            hover.scale = 1.02f;
+            hover.scale = 1.03f;
             hover.rotAdd = 0f;
             hover.speed = 14f;
             hover.straightenOnHover = true;
@@ -16805,17 +20480,22 @@ namespace UCG
             var drag = cardObject.AddComponent<UIDragCard>();
             drag.rootCanvas = canvas;
             drag.dragLayerOverride = dragLayer != null ? dragLayer : canvas.transform;
+
+            return view;
         }
 
-        void RefreshHandLayout()
+        void RefreshHandLayout(bool instant = true)
         {
+            NormalizeAllHandCardViews("BeforeLayout", false, false, false);
             ApplyHandStyleByCount(cardHolder.childCount);
 
             UIHandLayout layout = cardHolder.GetComponent<UIHandLayout>();
             if (layout != null)
             {
-                layout.NotifyLayoutChanged(true);
+                layout.NotifyLayoutChanged(instant);
             }
+            NormalizeAllHandCardViews("AfterLayout", false, false, false);
+            LogHandRaycastState("AfterLayout");
         }
 
         void ApplyHandStyleByCount(int cardCount)
@@ -16880,6 +20560,7 @@ namespace UCG
                 RectTransform cardRect = cardHolder.GetChild(i) as RectTransform;
                 if (cardRect == null) continue;
 
+                NormalizeHandCardRoot(cardRect, handCardSize);
                 cardRect.sizeDelta = handCardSize;
                 EnsureHandCardCornerFrame(cardRect);
 
@@ -16905,6 +20586,23 @@ namespace UCG
                     hover.bringToFrontOnHover = false;
                     hover.useOverlaySorting = true;
                 }
+            }
+        }
+
+        void NormalizeHandCardRoot(RectTransform cardRect, Vector2 handCardSize)
+        {
+            if (cardRect == null) return;
+
+            cardRect.anchorMin = new Vector2(0.5f, 0.5f);
+            cardRect.anchorMax = new Vector2(0.5f, 0.5f);
+            cardRect.pivot = new Vector2(0.5f, 0.5f);
+            cardRect.sizeDelta = handCardSize;
+            cardRect.localScale = Vector3.one;
+
+            var cardView = cardRect.GetComponent<UcgCardView>();
+            if (cardView != null)
+            {
+                cardView.SetPointerPreviewSuppressed(false);
             }
         }
 
@@ -17016,6 +20714,36 @@ namespace UCG
             LogPileRegionModeCompare("RefreshBoardZoneLayout", false);
         }
 
+        void RefreshBoardZoneLayoutIfBattlefieldViewChanged()
+        {
+            if (pileSideRegionRoot == null || battlefieldManager == null) return;
+
+            RectTransform root = GetBoardZoneLayoutRoot();
+            if (root == null) return;
+
+            RectTransform content = battlefieldManager.content;
+            RectTransform viewport = battlefieldManager.viewport;
+            Vector2 contentPosition = content != null ? content.anchoredPosition : Vector2.zero;
+            Vector3 contentScale = content != null ? content.localScale : Vector3.one;
+            Vector2 viewportSize = viewport != null ? viewport.rect.size : Vector2.zero;
+            Vector2 rootSize = root.rect.size;
+
+            bool changed = !_hasBoardZoneViewSnapshot
+                || Vector2.SqrMagnitude(contentPosition - _lastBoardZoneContentPositionSnapshot) > 0.01f
+                || (contentScale - _lastBoardZoneContentScaleSnapshot).sqrMagnitude > 0.0001f
+                || Vector2.SqrMagnitude(viewportSize - _lastBoardZoneViewportSizeSnapshot) > 0.01f
+                || Vector2.SqrMagnitude(rootSize - _lastBoardZoneRootSizeSnapshot) > 0.01f;
+
+            if (!changed) return;
+
+            _hasBoardZoneViewSnapshot = true;
+            _lastBoardZoneContentPositionSnapshot = contentPosition;
+            _lastBoardZoneContentScaleSnapshot = contentScale;
+            _lastBoardZoneViewportSizeSnapshot = viewportSize;
+            _lastBoardZoneRootSizeSnapshot = rootSize;
+            RefreshBoardZoneLayout();
+        }
+
         RectTransform GetBoardZoneLayoutRoot()
         {
             if (playerSidePileGroup != null && playerSidePileGroup.parent != null)
@@ -17076,10 +20804,10 @@ namespace UCG
                 $"DebugBoardZonesState: context={context}\n"
                 + $"debugBoardZones={debugBoardZones}\n"
                 + $"gameObject={FormatTransformPath(transform)}\n"
-                + $"instanceID={gameObject.GetInstanceID()}\n"
+                + $"instanceID={gameObject.GetHashCode()}\n"
                 + $"activeInHierarchy={gameObject.activeInHierarchy}\n"
                 + $"enabled={enabled}\n"
-                + $"canvas={FormatTransformPath(canvas != null ? canvas.transform : null)}\n"
+                + $"提示"
                 + $"debugBattlefieldLayout={debugBattlefieldLayout}\n"
                 + $"debugForceSidePileExtremeOffset={debugForceSidePileExtremeOffset}\n"
                 + $"debugSidePileExtremeOffsetX={debugSidePileExtremeOffsetX:0.#}\n"
@@ -17112,7 +20840,7 @@ namespace UCG
 
                     output.Append("UcgHandDemoInstance:\n");
                     output.Append("gameObject=").Append(FormatTransformPath(demo.transform)).Append('\n');
-                    output.Append("instanceID=").Append(demo.gameObject.GetInstanceID()).Append('\n');
+                    output.Append("instanceID=").Append(demo.gameObject.GetHashCode()).Append('\n');
                     output.Append("activeInHierarchy=").Append(demo.gameObject.activeInHierarchy).Append('\n');
                     output.Append("enabled=").Append(demo.enabled).Append('\n');
                     output.Append("debugBoardZones=").Append(demo.debugBoardZones).Append('\n');
@@ -17707,7 +21435,7 @@ namespace UCG
                 Image image = rect.GetComponent<Image>();
                 CanvasGroup canvasGroup = rect.GetComponent<CanvasGroup>();
                 output.Append("name=").Append(rect.name).Append('\n');
-                output.Append("instanceID=").Append(rect.gameObject.GetInstanceID()).Append('\n');
+                output.Append("instanceID=").Append(rect.gameObject.GetHashCode()).Append('\n');
                 output.Append("path=").Append(FormatTransformPath(rect)).Append('\n');
                 output.Append("activeSelf=").Append(rect.gameObject.activeSelf).Append('\n');
                 output.Append("activeInHierarchy=").Append(rect.gameObject.activeInHierarchy).Append('\n');
@@ -18013,7 +21741,7 @@ namespace UCG
 
         string FormatInstanceId(Component component)
         {
-            return component != null ? component.gameObject.GetInstanceID().ToString() : "missing";
+            return component != null ? component.gameObject.GetHashCode().ToString() : "missing";
         }
 
         bool IsActiveInHierarchy(Component component)
@@ -18147,6 +21875,8 @@ namespace UCG
         RectTransform GetSceneZoneFrameRect()
         {
             if (sceneZoneAnchor == null || sceneZoneAnchor.parent == null) return null;
+            RectTransform container = sceneZoneAnchor.parent.Find("Scene Container") as RectTransform;
+            if (container != null) return container;
             return sceneZoneAnchor.parent.Find("Scene Area Mat Frame") as RectTransform;
         }
 
@@ -18172,7 +21902,7 @@ namespace UCG
 
             return "VisibleBoardZone:\n"
                 + $"name={zoneName}\n"
-                + $"instanceID={rect.gameObject.GetInstanceID()}\n"
+                + $"instanceID={rect.gameObject.GetHashCode()}\n"
                 + $"path={FormatTransformPath(rect)}\n"
                 + $"parent={FormatParentPath(rect)}\n"
                 + $"anchoredPosition=({rect.anchoredPosition.x:0.#},{rect.anchoredPosition.y:0.#})\n"
@@ -18348,22 +22078,22 @@ namespace UCG
             if (discardPilePanel == null || discardPilePanelText == null) return;
 
             var pile = side == UcgPlayerSide.Player ? _playerDiscardPile : _opponentDiscardPile;
-            string ownerText = side == UcgPlayerSide.Player ? "我方" : "對手";
-            string text = $"{ownerText}棄牌區\n\n";
+            string ownerText = side == UcgPlayerSide.Player ? "提示" : "提示";
+            string text = $"提示";
 
             if (pile.Count == 0)
             {
-                text += "棄牌區目前沒有卡牌";
+                text += "提示";
             }
             else
             {
                 for (int i = 0; i < pile.Count; i++)
                 {
                     UcgCardData card = pile[i];
-                    string typeText = card != null && card.IsSceneCard() ? "場景" : "角色";
-                    string costText = card != null && card.IsSceneCard() ? $"｜{card.sceneTurnCost}燈" : "";
-                    string nameText = card != null ? card.cardName : "未知卡牌";
-                    text += $"{i + 1}. {nameText}｜{typeText}{costText}\n";
+                    string typeText = card != null && card.IsSceneCard() ? "提示" : "角色";
+                    string costText = card != null && card.IsSceneCard() ? $"Cost {card.sceneTurnCost}" : "";
+                    string nameText = card != null ? card.cardName : "提示";
+                    text += $"{i + 1}. {nameText} {typeText}{costText}\n";
                 }
             }
 
@@ -18419,19 +22149,19 @@ namespace UCG
             switch (index)
             {
                 case 0:
-                    return CreateDemoCard(index, "測試哥莫拉 Lv.5", "哥莫拉", "怪獸", 5, "");
+                    return CreateDemoCard(index, "Test Monster Lv.5", "Monster", "Monster", 5, "");
                 case 1:
-                    return CreateDemoCard(index, "測試艾雷王 Lv.5", "艾雷王", "怪獸", 5, "");
+                    return CreateDemoCard(index, "Test Alien Lv.5", "Alien", "Alien", 5, "");
                 case 2:
-                    return CreateDemoCard(index, "測試哥莫拉 Lv.6", "哥莫拉", "怪獸", 6, "");
+                    return CreateDemoCard(index, "Test Monster Lv.6", "Monster", "Monster", 6, "");
                 case 3:
-                    return CreateDemoCard(index, "測試艾雷王 Lv.6", "艾雷王", "怪獸", 6, "");
+                    return CreateDemoCard(index, "Test Alien Lv.6", "Alien", "Alien", 6, "");
                 case 4:
-                    return CreateDemoCard(index, "測試哥莫拉 Lv.7", "哥莫拉", "怪獸", 7, "");
+                    return CreateDemoCard(index, "Test Monster Lv.7", "Monster", "Monster", 7, "");
                 case 5:
-                    return CreateDemoCard(index, "測試巴爾坦星人 Lv.5", "巴爾坦星人", "宇宙人", 5, "");
+                    return CreateDemoCard(index, "Test Alien Lv.5 B", "Alien B", "Alien", 5, "");
                 default:
-                    return CreateDemoCard(index, $"測試怪獸 {index + 1}", $"怪獸 {index + 1}", "怪獸", 5, "");
+                    return CreateDemoCard(index, $"皜祈岫怪獸 {index + 1}", $"怪獸 {index + 1}", "怪獸", 5, "");
             }
         }
 
@@ -18440,19 +22170,19 @@ namespace UCG
             switch (index)
             {
                 case 0:
-                    return CreateDemoCard(index, "測試三人突擊隊 A Lv.1", "隊員A", "超人力霸王", 1, "三人突擊隊");
+                    return CreateDemoCard(index, "Test Team A Lv.1", "Team A", "Ultraman", 1, "Team");
                 case 1:
-                    return CreateDemoCard(index, "測試三人突擊隊 B Lv.2", "隊員B", "超人力霸王", 2, "三人突擊隊");
+                    return CreateDemoCard(index, "Test Team B Lv.2", "Team B", "Ultraman", 2, "Team");
                 case 2:
-                    return CreateDemoCard(index, "測試三人突擊隊 C Lv.3", "隊員C", "超人力霸王", 3, "三人突擊隊");
+                    return CreateDemoCard(index, "Test Team C Lv.3", "Team C", "Ultraman", 3, "Team");
                 case 3:
-                    return CreateDemoCard(index, "測試非突擊隊 Lv.2", "其他角色", "超人力霸王", 2, "");
+                    return CreateDemoCard(index, "Test Ultraman Lv.2", "Ultraman", "Ultraman", 2, "");
                 case 4:
-                    return CreateDemoCard(index, "測試三人突擊隊 D Lv.1", "隊員D", "超人力霸王", 1, "三人突擊隊");
+                    return CreateDemoCard(index, "Test Team D Lv.1", "Team D", "Ultraman", 1, "Team");
                 case 5:
-                    return CreateDemoCard(index, "測試三人突擊隊 E Lv.3", "隊員E", "超人力霸王", 3, "三人突擊隊");
+                    return CreateDemoCard(index, "Test Team E Lv.3", "Team E", "Ultraman", 3, "Team");
                 default:
-                    return CreateDemoCard(index, $"測試三人突擊隊 {index + 1}", $"隊員{index + 1}", "超人力霸王", 1, "三人突擊隊");
+                    return CreateDemoCard(index, $"Test Team {index + 1}", $"Team {index + 1}", "Ultraman", 1, "Team");
             }
         }
 
@@ -18480,41 +22210,41 @@ namespace UCG
             card.effectId = UcgDemoEffectId.None;
             card.effectDescription = "";
 
-            if (card.characterName == "蓋亞" && card.level == 1)
+            if (card.characterName == "測試超人" && card.level == 1)
             {
-                SetDemoEffect(card, UcgDemoEffectId.OnRevealSelfBpPlus1000, "翻開時，本回合此 Lane 我方 BP +1000");
+                SetDemoEffect(card, UcgDemoEffectId.OnRevealSelfBpPlus1000, "提示");
             }
-            else if (card.characterName == "阿古茹" && card.level == 1)
+            else if (card.characterName == "Alien A" && card.level == 1)
             {
-                SetDemoEffect(card, UcgDemoEffectId.OnRevealDrawOne, "翻開時，抽 1 張牌");
+                SetDemoEffect(card, UcgDemoEffectId.OnRevealDrawOne, "提示");
             }
-            else if (card.characterName == "蓋亞" && card.level == 2)
+            else if (card.characterName == "測試超人" && card.level == 2)
             {
-                SetDemoEffect(card, UcgDemoEffectId.OnRevealChooseOwnLaneBpPlus1000, "翻開時，選擇我方一條 Lane，BP +1000");
+                SetDemoEffect(card, UcgDemoEffectId.OnRevealChooseOwnLaneBpPlus1000, "提示");
             }
-            else if (card.characterName == "阿古茹" && card.level == 2)
+            else if (card.characterName == "Alien A" && card.level == 2)
             {
-                SetDemoEffect(card, UcgDemoEffectId.OnRevealChooseOpponentLaneBpMinus1000, "翻開時，選擇對手一條 Lane，BP -1000");
+                SetDemoEffect(card, UcgDemoEffectId.OnRevealChooseOpponentLaneBpMinus1000, "提示");
             }
-            else if (card.characterName == "哥莫拉" && card.level == 5)
+            else if (card.characterName == "測試怪獸" && card.level == 5)
             {
-                SetDemoEffect(card, UcgDemoEffectId.OnRevealSelfBpPlus1000, "翻開時，本回合此 Lane 我方 BP +1000");
+                SetDemoEffect(card, UcgDemoEffectId.OnRevealSelfBpPlus1000, "提示");
             }
-            else if (card.characterName == "哥莫拉" && card.level == 6)
+            else if (card.characterName == "測試怪獸" && card.level == 6)
             {
-                SetDemoEffect(card, UcgDemoEffectId.OnRevealChooseOwnLaneBpPlus1000, "翻開時，選擇我方一條 Lane，BP +1000");
+                SetDemoEffect(card, UcgDemoEffectId.OnRevealChooseOwnLaneBpPlus1000, "提示");
             }
-            else if (card.characterName == "巴爾坦星人" && card.level == 5)
+            else if (card.characterName == "測試宇宙人" && card.level == 5)
             {
-                SetDemoEffect(card, UcgDemoEffectId.OnRevealChooseOpponentLaneBpMinus1000, "翻開時，選擇對手一條 Lane，BP -1000");
+                SetDemoEffect(card, UcgDemoEffectId.OnRevealChooseOpponentLaneBpMinus1000, "提示");
             }
-            else if (card.characterName == "隊員A" && card.level == 1)
+            else if (card.characterName == "測試隊伍" && card.level == 1)
             {
-                SetDemoEffect(card, UcgDemoEffectId.OnRevealSelfBpPlus1000, "翻開時，本回合此 Lane 我方 BP +1000");
+                SetDemoEffect(card, UcgDemoEffectId.OnRevealSelfBpPlus1000, "提示");
             }
-            else if (card.characterName == "隊員B" && card.level == 2)
+            else if (card.characterName == "測試隊伍" && card.level == 2)
             {
-                SetDemoEffect(card, UcgDemoEffectId.OnRevealDrawOne, "翻開時，抽 1 張牌");
+                SetDemoEffect(card, UcgDemoEffectId.OnRevealDrawOne, "提示");
             }
         }
 
@@ -18596,11 +22326,11 @@ namespace UCG
             switch (mode)
             {
                 case UcgTestMode.MonsterAlienTest:
-                    return "怪獸 / 宇宙人測試";
+                    return "提示";
                 case UcgTestMode.TeamTest:
-                    return "三人突擊隊測試";
+                    return "提示";
                 default:
-                    return "迪卡實戰教學";
+                    return "提示";
             }
         }
 
@@ -18709,7 +22439,7 @@ namespace UCG
             {
                 if (playResultText != null && selectedCard.CardData != null && selectedCard.CardData.effectTiming == UcgEffectTiming.Activated)
                 {
-                    playResultText.text = "此發動效果本回合已使用，或目前不能發動";
+                    playResultText.text = "提示";
                 }
                 return;
             }
@@ -18735,7 +22465,7 @@ namespace UCG
             {
                 if (playResultText != null)
                 {
-                    playResultText.text = "此場景本回合沒有可發動效果";
+                    playResultText.text = "提示";
                 }
                 return;
             }

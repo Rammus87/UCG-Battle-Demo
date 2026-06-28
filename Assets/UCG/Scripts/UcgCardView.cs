@@ -10,7 +10,7 @@ namespace UCG
     [DisallowMultipleComponent]
     [RequireComponent(typeof(RectTransform))]
     [RequireComponent(typeof(Image))]
-    public class UcgCardView : MonoBehaviour, IPointerClickHandler, IPointerExitHandler
+    public class UcgCardView : MonoBehaviour, IPointerClickHandler, IPointerEnterHandler, IPointerExitHandler
     {
         public event Action<UcgCardView> OnCardSelected;
 
@@ -55,6 +55,15 @@ namespace UCG
         string _boundImageLocal;
         Image _cardArtImage;
         RectTransform _cardArtRect;
+        RectTransform _placedCardShadowRect;
+        Image _placedCardShadowImage;
+        RectTransform _placedCardRimRect;
+        Image _placedCardRimImage;
+        Outline _placedCardRimOutline;
+        UcgCardPresentation _cardPresentation;
+        bool _isPointerHovering;
+        float _placedCardBreathSeed;
+        bool _suppressPointerPreview;
 
         public bool IsSelected => _isSelected;
         public UcgCardData CardData => cardData;
@@ -68,6 +77,8 @@ namespace UCG
             _rectTransform = GetComponent<RectTransform>();
             if (cardImage == null) cardImage = GetComponent<Image>();
             _baseSize = _rectTransform.sizeDelta;
+            _placedCardBreathSeed = Mathf.Abs(gameObject.GetHashCode() % 997) * 0.013f;
+            EnsureCardPresentation();
         }
 
         void Start()
@@ -77,6 +88,8 @@ namespace UCG
 
         void LateUpdate()
         {
+            UpdatePlacedCardDepthAnimation();
+
             if (!_isSelected || _selectionCanvas == null) return;
 
             _selectionCanvas.overrideSorting = true;
@@ -98,9 +111,20 @@ namespace UCG
             infoPanel = panel;
         }
 
+        public void SetPointerPreviewSuppressed(bool suppressed)
+        {
+            _suppressPointerPreview = suppressed;
+            if (suppressed)
+            {
+                _isPointerHovering = false;
+                RefreshCardPresentationState();
+            }
+        }
+
         public void SetBattlefieldLocked(bool locked)
         {
             isLockedInBattlefield = locked;
+            if (!locked) _isPointerHovering = false;
 
             var dragCard = GetComponent<UIDragCard>();
             if (dragCard != null)
@@ -126,12 +150,20 @@ namespace UCG
             {
                 cardImage.raycastTarget = true;
             }
+
+            RefreshPlacedCardDepthVisual();
         }
 
         public void SetFaceDown(bool faceDown)
         {
+            bool changed = isFaceDown != faceDown;
             isFaceDown = faceDown;
             Refresh();
+            if (changed)
+            {
+                EnsureCardPresentation();
+                if (_cardPresentation != null) _cardPresentation.PlayFlipFeedback();
+            }
         }
 
         public void FlipFaceUp()
@@ -166,9 +198,20 @@ namespace UCG
                 _rectTransform.localScale = Vector3.one;
                 _rectTransform.sizeDelta = _baseSize;
             }
+            RefreshPlacedCardDepthVisual();
         }
 
         public void SetPlayableHighlight(bool active)
+        {
+            SetCardFocusOutline(active, UcgToolUiPalette.FocusCyan, 0.78f, 4.2f);
+        }
+
+        public void SetEffectTargetHighlight(bool active)
+        {
+            SetCardFocusOutline(active, UcgToolUiPalette.BrandPinkLight, 0.84f, 4.2f);
+        }
+
+        void SetCardFocusOutline(bool active, Color accentColor, float alpha, float distance)
         {
             if (!active && _playableHighlight == null) return;
 
@@ -178,8 +221,8 @@ namespace UCG
                 if (_playableHighlight == null) _playableHighlight = gameObject.AddComponent<Outline>();
             }
 
-            _playableHighlight.effectColor = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.FocusCyan, 0.9f);
-            _playableHighlight.effectDistance = new Vector2(5f, -5f);
+            _playableHighlight.effectColor = UcgToolUiPalette.WithAlpha(accentColor, alpha);
+            _playableHighlight.effectDistance = new Vector2(distance, -distance);
             _playableHighlight.enabled = active;
             if (_playableHighlightPulse == null)
             {
@@ -187,14 +230,15 @@ namespace UCG
                 if (_playableHighlightPulse == null) _playableHighlightPulse = gameObject.AddComponent<UcgGuidancePulse>();
                 _playableHighlightPulse.targetOutline = _playableHighlight;
                 _playableHighlightPulse.targetRect = transform as RectTransform;
-                _playableHighlightPulse.pulseScale = true;
+                _playableHighlightPulse.pulseScale = !isLockedInBattlefield;
                 _playableHighlightPulse.pulseAlpha = true;
-                _playableHighlightPulse.scaleAmplitude = 0.028f;
-                _playableHighlightPulse.alphaAmplitude = 0.18f;
+                _playableHighlightPulse.scaleAmplitude = 0.024f;
+                _playableHighlightPulse.alphaAmplitude = 0.14f;
                 _playableHighlightPulse.bobAmplitude = isLockedInBattlefield ? 0f : 8f;
                 _playableHighlightPulse.speed = 2.8f;
             }
 
+            _playableHighlightPulse.pulseScale = !isLockedInBattlefield;
             _playableHighlightPulse.bobAmplitude = isLockedInBattlefield ? 0f : 8f;
             _playableHighlightPulse.CaptureBaseState();
             _playableHighlightPulse.enabled = active;
@@ -235,8 +279,8 @@ namespace UCG
             StartOperationFeedback(
                 0.56f,
                 1.035f,
-                UcgToolUiPalette.WithAlpha(UcgToolUiPalette.BrandPink, 0.14f),
-                UcgToolUiPalette.WithAlpha(UcgToolUiPalette.BrandPinkLight, 0.44f),
+                UcgToolUiPalette.WithAlpha(UcgToolUiPalette.FocusCyan, 0.1f),
+                UcgToolUiPalette.WithAlpha(UcgToolUiPalette.FocusCyan, 0.46f),
                 true);
         }
 
@@ -279,14 +323,14 @@ namespace UCG
 
                 if (_effectSourceHighlightImage != null)
                 {
-                    _effectSourceHighlightImage.color = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.BrandPink, Mathf.Lerp(0.055f, 0.13f, pulse));
+                    _effectSourceHighlightImage.color = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.FocusCyan, Mathf.Lerp(0.035f, 0.09f, pulse));
                 }
 
                 if (_effectSourceHighlightOutline != null)
                 {
                     _effectSourceHighlightOutline.enabled = true;
-                    _effectSourceHighlightOutline.effectColor = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.BrandPinkLight, Mathf.Lerp(0.34f, 0.58f, pulse));
-                    _effectSourceHighlightOutline.effectDistance = new Vector2(4.6f, -4.6f);
+                    _effectSourceHighlightOutline.effectColor = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.FocusCyan, Mathf.Lerp(0.34f, 0.58f, pulse));
+                    _effectSourceHighlightOutline.effectDistance = new Vector2(3.8f, -3.8f);
                 }
 
                 yield return null;
@@ -518,6 +562,7 @@ namespace UCG
             if (cardImage == null) cardImage = GetComponent<Image>();
             if (_baseSize == Vector2.zero) _baseSize = _rectTransform.sizeDelta;
             EnsureCardArtImage();
+            EnsureCardPresentation();
             _boundCardId = cardData != null ? cardData.id : "";
             _boundImageLocal = cardData != null ? cardData.imageLocal : "";
 
@@ -530,9 +575,7 @@ namespace UCG
                 ? cardData.cardName
                 : "UCG Card";
 
-            cardImage.sprite = null;
-            cardImage.color = isFaceDown ? faceDownColor : placeholderColor;
-            cardImage.preserveAspect = false;
+            ApplyBaseCardImage();
 
             bool isSceneCard = !isFaceDown && cardData != null && cardData.IsSceneCard();
             if (_cardArtImage != null)
@@ -552,9 +595,229 @@ namespace UCG
             {
                 placeholderText.text = isFaceDown ? "背面" : displayName;
                 placeholderText.enabled = isFaceDown || sprite == null;
+                if (isFaceDown && UcgCardPresentation.DefaultCardBackSprite != null)
+                {
+                    placeholderText.text = "";
+                    placeholderText.enabled = false;
+                }
             }
 
             TryLoadExternalImage(sprite);
+            RefreshPlacedCardDepthVisual();
+        }
+
+        void EnsureCardPresentation()
+        {
+            if (_cardPresentation == null) _cardPresentation = GetComponent<UcgCardPresentation>();
+            if (_cardPresentation == null) _cardPresentation = gameObject.AddComponent<UcgCardPresentation>();
+            if (cardImage == null) cardImage = GetComponent<Image>();
+            if (_cardPresentation != null) _cardPresentation.Configure(cardImage);
+        }
+
+        void ApplyBaseCardImage()
+        {
+            if (cardImage == null) cardImage = GetComponent<Image>();
+            if (cardImage == null) return;
+
+            Sprite cardBackSprite = isFaceDown ? UcgCardPresentation.DefaultCardBackSprite : null;
+            bool hasOfficialBack = cardBackSprite != null;
+            cardImage.sprite = hasOfficialBack ? cardBackSprite : null;
+            cardImage.color = GetCardBaseTint();
+            cardImage.preserveAspect = hasOfficialBack;
+            if (hasOfficialBack) cardImage.type = Image.Type.Simple;
+        }
+
+        Color GetCardBaseTint()
+        {
+            if (isFaceDown && UcgCardPresentation.DefaultCardBackSprite != null) return Color.white;
+            return isFaceDown ? faceDownColor : placeholderColor;
+        }
+
+        void RefreshCardPresentationState()
+        {
+            EnsureCardPresentation();
+            if (_cardPresentation == null) return;
+
+            bool hasOfficialBack = isFaceDown && UcgCardPresentation.DefaultCardBackSprite != null;
+            _cardPresentation.ApplyState(
+                hasOfficialBack,
+                _isPointerHovering,
+                _isSelected,
+                false,
+                GetCardBaseTint());
+        }
+
+        void EnsurePlacedCardDepthVisuals()
+        {
+            const string shadowName = "Placed Card Drop Shadow";
+            const string rimName = "Placed Card Lift Rim";
+
+            if (_placedCardShadowRect == null || _placedCardShadowImage == null)
+            {
+                Transform existingShadow = transform.Find(shadowName);
+                if (existingShadow == null)
+                {
+                    var shadowObject = new GameObject(shadowName, typeof(RectTransform), typeof(Image));
+                    shadowObject.transform.SetParent(transform, false);
+                    existingShadow = shadowObject.transform;
+                }
+
+                _placedCardShadowRect = existingShadow as RectTransform;
+                _placedCardShadowImage = existingShadow.GetComponent<Image>();
+                if (_placedCardShadowImage == null) _placedCardShadowImage = existingShadow.gameObject.AddComponent<Image>();
+            }
+
+            _placedCardShadowRect.anchorMin = Vector2.zero;
+            _placedCardShadowRect.anchorMax = Vector2.one;
+            _placedCardShadowRect.pivot = new Vector2(0.5f, 0.5f);
+            _placedCardShadowRect.localScale = Vector3.one;
+            _placedCardShadowRect.localEulerAngles = Vector3.zero;
+            _placedCardShadowRect.SetAsFirstSibling();
+            ApplySlicedUiSprite(_placedCardShadowImage);
+            _placedCardShadowImage.raycastTarget = false;
+
+            if (_placedCardRimRect == null || _placedCardRimImage == null || _placedCardRimOutline == null)
+            {
+                Transform existingRim = transform.Find(rimName);
+                if (existingRim == null)
+                {
+                    var rimObject = new GameObject(rimName, typeof(RectTransform), typeof(Image), typeof(Outline));
+                    rimObject.transform.SetParent(transform, false);
+                    existingRim = rimObject.transform;
+                }
+
+                _placedCardRimRect = existingRim as RectTransform;
+                _placedCardRimImage = existingRim.GetComponent<Image>();
+                if (_placedCardRimImage == null) _placedCardRimImage = existingRim.gameObject.AddComponent<Image>();
+                _placedCardRimOutline = existingRim.GetComponent<Outline>();
+                if (_placedCardRimOutline == null) _placedCardRimOutline = existingRim.gameObject.AddComponent<Outline>();
+            }
+
+            _placedCardRimRect.anchorMin = Vector2.zero;
+            _placedCardRimRect.anchorMax = Vector2.one;
+            _placedCardRimRect.pivot = new Vector2(0.5f, 0.5f);
+            _placedCardRimRect.offsetMin = Vector2.zero;
+            _placedCardRimRect.offsetMax = Vector2.zero;
+            _placedCardRimRect.localScale = Vector3.one;
+            _placedCardRimRect.localEulerAngles = Vector3.zero;
+            ApplySlicedUiSprite(_placedCardRimImage);
+            _placedCardRimImage.raycastTarget = false;
+            _placedCardRimOutline.useGraphicAlpha = true;
+            _placedCardRimRect.SetAsLastSibling();
+        }
+
+        void RefreshPlacedCardDepthVisual()
+        {
+            if (_rectTransform == null) _rectTransform = GetComponent<RectTransform>();
+            if (cardImage == null) cardImage = GetComponent<Image>();
+
+            if (!isLockedInBattlefield)
+            {
+                if (_placedCardShadowRect != null) _placedCardShadowRect.gameObject.SetActive(false);
+                if (_placedCardRimRect != null) _placedCardRimRect.gameObject.SetActive(false);
+                if (!_isSelected && !_isDragging && _rectTransform != null) _rectTransform.localScale = Vector3.one;
+                ApplyBaseCardImage();
+                if (_cardArtImage != null) _cardArtImage.color = imageCardColor;
+                RefreshCardPresentationState();
+                return;
+            }
+
+            EnsurePlacedCardDepthVisuals();
+            float hover = _isPointerHovering ? 1f : 0f;
+
+            if (_placedCardShadowRect != null)
+            {
+                _placedCardShadowRect.gameObject.SetActive(true);
+                _placedCardShadowRect.anchorMin = new Vector2(0.06f, -0.10f);
+                _placedCardShadowRect.anchorMax = new Vector2(0.94f, 0.14f);
+                _placedCardShadowRect.offsetMin = new Vector2(-4f, Mathf.Lerp(-5f, -10f, hover));
+                _placedCardShadowRect.offsetMax = new Vector2(4f, Mathf.Lerp(5f, 2f, hover));
+            }
+
+            if (_placedCardShadowImage != null)
+            {
+                _placedCardShadowImage.color = new Color(4f / 255f, 9f / 255f, 18f / 255f, Mathf.Lerp(0.18f, 0.30f, hover));
+            }
+
+            if (_placedCardRimRect != null)
+            {
+                _placedCardRimRect.gameObject.SetActive(true);
+                _placedCardRimRect.SetAsLastSibling();
+            }
+
+            if (_placedCardRimImage != null)
+            {
+                _placedCardRimImage.color = Color.clear;
+            }
+
+            if (_placedCardRimOutline != null)
+            {
+                _placedCardRimOutline.enabled = true;
+                _placedCardRimOutline.effectColor = Color.Lerp(
+                    UcgToolUiPalette.WithAlpha(UcgToolUiPalette.GlassBorder, 0.46f),
+                    UcgToolUiPalette.WithAlpha(UcgToolUiPalette.BrandPinkLight, 0.66f),
+                    hover);
+                _placedCardRimOutline.effectDistance = new Vector2(Mathf.Lerp(1.4f, 2.4f, hover), Mathf.Lerp(-1.4f, -2.4f, hover));
+            }
+
+            RefreshCardPresentationState();
+
+            if (_cardArtImage != null)
+            {
+                Color brightened = Color.Lerp(imageCardColor, Color.white, 0.14f * hover);
+                brightened.a = imageCardColor.a;
+                _cardArtImage.color = brightened;
+            }
+
+            RestoreFeedbackOverlayLayering();
+        }
+
+        void RestoreFeedbackOverlayLayering()
+        {
+            if (_operationFeedbackRect != null && _operationFeedbackRect.gameObject.activeSelf)
+            {
+                _operationFeedbackRect.SetAsLastSibling();
+            }
+            if (_effectSourceHighlightRect != null && _effectSourceHighlightRect.gameObject.activeSelf)
+            {
+                _effectSourceHighlightRect.SetAsLastSibling();
+            }
+        }
+
+        void UpdatePlacedCardDepthAnimation()
+        {
+            if (_suppressPointerPreview) return;
+            if (!isLockedInBattlefield || _rectTransform == null) return;
+
+            RefreshPlacedCardDepthVisual();
+            if (_isSelected || _isDragging) return;
+            if (_operationFeedbackRoutine != null) return;
+            if (_playableHighlightPulse != null && _playableHighlightPulse.enabled) return;
+
+            float breath = 0.5f + Mathf.Sin((Time.unscaledTime + _placedCardBreathSeed) * 1.15f) * 0.5f;
+            float restingScale = Mathf.Lerp(1f, 1.006f, breath);
+            float targetScale = _isPointerHovering ? 1.03f : restingScale;
+            float lerpSpeed = _isPointerHovering ? 12f : 3.6f;
+            _rectTransform.localScale = Vector3.Lerp(_rectTransform.localScale, Vector3.one * targetScale, Time.unscaledDeltaTime * lerpSpeed);
+        }
+
+        static void ApplySlicedUiSprite(Image image)
+        {
+            if (image == null) return;
+
+            try
+            {
+                Sprite roundedSprite = Resources.GetBuiltinResource<Sprite>("UI/Skin/UISprite.psd");
+                if (roundedSprite == null) return;
+
+                image.sprite = roundedSprite;
+                image.type = Image.Type.Sliced;
+                image.pixelsPerUnitMultiplier = 1f;
+            }
+            catch
+            {
+                // Built-in UI skin may be unavailable in some stripped player contexts.
+            }
         }
 
         void AssignLoadedCardSprite(UcgCardData loadedCard, Sprite sprite, string requestImageLocal)
@@ -589,15 +852,15 @@ namespace UCG
 
             if (placeholderText != null)
             {
-                placeholderText.enabled = isFaceDown;
+                placeholderText.enabled = isFaceDown && UcgCardPresentation.DefaultCardBackSprite == null;
             }
 
             if (cardImage != null)
             {
-                cardImage.sprite = null;
-                cardImage.color = isFaceDown ? faceDownColor : placeholderColor;
-                cardImage.preserveAspect = false;
+                ApplyBaseCardImage();
             }
+
+            RefreshCardPresentationState();
 
             string visibilityReason;
             bool isVisible = UcgCardImageApplier.ValidateVisibility(loadedCard, gameObject, _cardArtImage, placeholderText, isFaceDown, out visibilityReason);
@@ -632,7 +895,7 @@ namespace UCG
                 ? Quaternion.Euler(0f, 0f, -90f)
                 : Quaternion.identity;
 
-            float fillBleed = isSceneCard ? 1.08f : 1.02f;
+            float fillBleed = 1.02f;
             _cardArtRect.sizeDelta = isSceneCard
                 ? new Vector2(cardSize.y * fillBleed, cardSize.x * fillBleed)
                 : new Vector2(cardSize.x * fillBleed, cardSize.y * fillBleed);
@@ -708,6 +971,8 @@ namespace UCG
 
         public void OnPointerClick(PointerEventData eventData)
         {
+            if (_suppressPointerPreview) return;
+
             SetSelected(!_isSelected);
             if (infoPanel != null)
             {
@@ -723,9 +988,35 @@ namespace UCG
             OnCardSelected?.Invoke(this);
         }
 
+        public void OnPointerEnter(PointerEventData eventData)
+        {
+            if (_suppressPointerPreview) return;
+            if (_isDragging) return;
+
+            if (!isLockedInBattlefield)
+            {
+                _isPointerHovering = true;
+                RefreshCardPresentationState();
+                return;
+            }
+
+            _isPointerHovering = true;
+            RefreshPlacedCardDepthVisual();
+        }
+
         public void OnPointerExit(PointerEventData eventData)
         {
+            if (isLockedInBattlefield)
+            {
+                _isPointerHovering = false;
+                RefreshPlacedCardDepthVisual();
+                return;
+            }
+
             if (_isDragging || isLockedInBattlefield) return;
+
+            _isPointerHovering = false;
+            RefreshCardPresentationState();
 
             var hover = GetComponent<UIHandCardHover>();
             if (hover != null && hover.enabled)
@@ -757,6 +1048,7 @@ namespace UCG
             if (_isSelected == selected) return;
 
             _isSelected = selected;
+            RefreshCardPresentationState();
 
             if (selected)
             {

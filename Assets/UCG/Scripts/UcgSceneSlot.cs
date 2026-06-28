@@ -469,7 +469,7 @@ namespace UCG
                 frameRect.anchoredPosition = Vector2.zero;
                 frameRect.localScale = Vector3.one;
                 frameRect.localEulerAngles = Vector3.zero;
-                frameRect.sizeDelta = sceneCardSize + new Vector2(28f, 18f);
+                frameRect.sizeDelta = sceneCardSize + new Vector2(12f, 10f);
                 if (show) frameRect.SetAsFirstSibling();
             }
 
@@ -480,9 +480,7 @@ namespace UCG
             if (_highlightFrameImage != null)
             {
                 _highlightFrameImage.enabled = show;
-                _highlightFrameImage.color = show
-                    ? new Color(guideColor.r, guideColor.g, guideColor.b, _highlightValid ? 0.055f : 0.035f)
-                    : Color.clear;
+                _highlightFrameImage.color = Color.clear;
                 _highlightFrameImage.raycastTarget = false;
             }
 
@@ -490,19 +488,19 @@ namespace UCG
             {
                 _highlightFrameOutline.enabled = show;
                 _highlightFrameOutline.effectColor = show
-                    ? new Color(guideColor.r, guideColor.g, guideColor.b, _highlightValid ? 0.42f : 0.24f)
+                    ? new Color(guideColor.r, guideColor.g, guideColor.b, _highlightValid ? 0.24f : 0.16f)
                     : Color.clear;
                 _highlightFrameOutline.effectDistance = _highlightValid
-                    ? new Vector2(3f, -3f)
-                    : new Vector2(2f, -2f);
+                    ? new Vector2(1.4f, -1.4f)
+                    : new Vector2(1f, -1f);
                 _highlightFrameOutline.useGraphicAlpha = true;
             }
 
             if (_highlightFramePulse != null)
             {
                 _highlightFramePulse.enabled = show;
-                _highlightFramePulse.alphaAmplitude = _highlightValid ? 0.026f : 0.012f;
-                _highlightFramePulse.scaleAmplitude = _highlightValid ? 0.01f : 0.004f;
+                _highlightFramePulse.alphaAmplitude = _highlightValid ? 0.010f : 0.006f;
+                _highlightFramePulse.scaleAmplitude = _highlightValid ? 0.003f : 0.001f;
                 if (show) _highlightFramePulse.CaptureBaseState();
             }
         }

@@ -16,6 +16,8 @@ namespace UCG
         public UcgHandDemo demo;
 
         Image _backgroundImage;
+        RectTransform _cardShadowRect;
+        Image _cardShadowImage;
         Image _glowImage;
         Image _rotatedCardImage;
         Outline _rotatedCardOutline;
@@ -124,6 +126,9 @@ namespace UCG
             _backgroundImage.color = Color.clear;
             _backgroundImage.raycastTarget = false;
 
+            RectTransform shadowRect = EnsureChildRect("Scene Card Base Shadow", out _cardShadowImage);
+            ConfigureSceneCardShadow(shadowRect);
+
             RectTransform glowRect = EnsureChildRect("Scene Active Glow", out _glowImage);
             ConfigureGlowImage(glowRect);
 
@@ -169,6 +174,11 @@ namespace UCG
             {
                 RectTransform cardImageRect = _rotatedCardImage.rectTransform;
                 ConfigureBoardCardArtRect(cardImageRect, rootRect, _rotatedCardImage.sprite, 0.94f);
+            }
+
+            if (_cardShadowImage != null)
+            {
+                ConfigureSceneCardShadow(_cardShadowImage.rectTransform);
             }
 
             if (_glowImage != null)
@@ -220,12 +230,60 @@ namespace UCG
             rect.sizeDelta = new Vector2(rootSize.x * scale, rootSize.y * scale);
         }
 
+        void ConfigureSceneCardShadow(RectTransform shadowRect)
+        {
+            if (shadowRect == null || _cardShadowImage == null) return;
+
+            _cardShadowRect = shadowRect;
+            shadowRect.anchorMin = new Vector2(0.5f, 0.5f);
+            shadowRect.anchorMax = new Vector2(0.5f, 0.5f);
+            shadowRect.pivot = new Vector2(0.5f, 0.5f);
+            shadowRect.localScale = Vector3.one;
+            shadowRect.localEulerAngles = Vector3.zero;
+
+            RectTransform rootRect = transform as RectTransform;
+            Vector2 rootSize = rootRect != null ? rootRect.sizeDelta : new Vector2(468f, 184f);
+            if (Mathf.Abs(rootSize.x) <= 0.01f || Mathf.Abs(rootSize.y) <= 0.01f)
+            {
+                rootSize = rootRect != null ? rootRect.rect.size : new Vector2(468f, 184f);
+            }
+
+            shadowRect.anchoredPosition = new Vector2(0f, -rootSize.y * 0.12f);
+            shadowRect.sizeDelta = new Vector2(rootSize.x * 0.82f, rootSize.y * 0.22f);
+            shadowRect.SetAsFirstSibling();
+
+            ApplySlicedUiSprite(_cardShadowImage);
+            _cardShadowImage.enabled = true;
+            _cardShadowImage.color = new Color(2f / 255f, 6f / 255f, 14f / 255f, 0.24f);
+            _cardShadowImage.raycastTarget = false;
+        }
+
         bool IsLandscapeSprite(Sprite sprite)
         {
             if (sprite == null) return false;
             Rect rect = sprite.rect;
             return rect.width >= rect.height;
         }
+
+        static void ApplySlicedUiSprite(Image image)
+        {
+            if (image == null) return;
+
+            try
+            {
+                Sprite roundedSprite = Resources.GetBuiltinResource<Sprite>("UI/Skin/UISprite.psd");
+                if (roundedSprite == null) return;
+
+                image.sprite = roundedSprite;
+                image.type = Image.Type.Sliced;
+                image.pixelsPerUnitMultiplier = 1f;
+            }
+            catch
+            {
+                // Built-in UI skin can be unavailable in some stripped player contexts.
+            }
+        }
+
 
         void ConfigureGlowImage(RectTransform glowRect)
         {
@@ -344,14 +402,14 @@ namespace UCG
                 rect.localScale = Vector3.one * Mathf.Lerp(1.004f, 1.028f, pulse);
                 if (_effectSourceHighlightImage != null)
                 {
-                    _effectSourceHighlightImage.color = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.BrandPink, Mathf.Lerp(0.045f, 0.105f, pulse));
+                    _effectSourceHighlightImage.color = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.FocusCyan, Mathf.Lerp(0.03f, 0.085f, pulse));
                 }
 
                 if (_effectSourceHighlightOutline != null)
                 {
                     _effectSourceHighlightOutline.enabled = true;
-                    _effectSourceHighlightOutline.effectColor = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.BrandPinkLight, Mathf.Lerp(0.28f, 0.5f, pulse));
-                    _effectSourceHighlightOutline.effectDistance = new Vector2(4.5f, -4.5f);
+                    _effectSourceHighlightOutline.effectColor = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.FocusCyan, Mathf.Lerp(0.32f, 0.54f, pulse));
+                    _effectSourceHighlightOutline.effectDistance = new Vector2(3.8f, -3.8f);
                 }
 
                 yield return null;
