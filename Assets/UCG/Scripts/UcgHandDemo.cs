@@ -1685,11 +1685,11 @@ namespace UCG
             bool playerFirst = turnOrderManager == null || turnOrderManager.GetCurrentFirstPlayer() == UcgPlayerSide.Player;
             if (_turnStartBannerTurnText != null)
             {
-                _turnStartBannerTurnText.text = $"提示";
+                _turnStartBannerTurnText.text = $"第 {turnNumber} 回合";
             }
             if (_turnStartBannerInitiativeText != null)
             {
-                _turnStartBannerInitiativeText.text = playerFirst ? "雿效果" : "雿敺";
+                _turnStartBannerInitiativeText.text = playerFirst ? "我方先攻" : "對手先攻";
                 _turnStartBannerInitiativeText.color = playerFirst
                     ? UcgToolUiPalette.WarningGold
                     : UcgToolUiPalette.SoftWhite;
@@ -3791,7 +3791,7 @@ namespace UCG
                 playerSidePileGroup,
                 "Player Deck Zone",
                 zoneSize,
-                "提示",
+                "牌庫",
                 font,
                 out playerDeckZoneText);
             playerDiscardAnchor = EnsureBattlefieldZoneFrame(
@@ -3799,7 +3799,7 @@ namespace UCG
                 playerSidePileGroup,
                 "Player Discard Zone",
                 zoneSize,
-                "提示",
+                "棄牌區",
                 font,
                 out playerDiscardZoneText);
             opponentDeckAnchor = EnsureBattlefieldZoneFrame(
@@ -3807,7 +3807,7 @@ namespace UCG
                 opponentSidePileGroup,
                 "Opponent Deck Zone",
                 zoneSize,
-                "提示",
+                "對手牌庫",
                 font,
                 out opponentDeckZoneText);
             opponentDiscardAnchor = EnsureBattlefieldZoneFrame(
@@ -3815,7 +3815,7 @@ namespace UCG
                 opponentSidePileGroup,
                 "Opponent Discard Zone",
                 zoneSize,
-                "提示",
+                "對手棄牌區",
                 font,
                 out opponentDiscardZoneText);
             ApplyBoardZoneRootLayout(root);
@@ -5074,7 +5074,7 @@ namespace UCG
                 }
                 else if (zone == playerDeckAnchor)
                 {
-                    label.text = "提示";
+                    label.text = "牌庫";
                     label.gameObject.SetActive(true);
                     label.fontSize = 12;
                     label.resizeTextMaxSize = 12;
@@ -5082,7 +5082,7 @@ namespace UCG
                 }
                 else if (zone == playerDiscardAnchor)
                 {
-                    label.text = "提示";
+                    label.text = "棄牌區";
                     label.gameObject.SetActive(true);
                     label.fontSize = 12;
                     label.resizeTextMaxSize = 12;
@@ -5115,8 +5115,8 @@ namespace UCG
 
         string GetOpponentPileZoneLabel(RectTransform zone)
         {
-            if (zone == opponentDeckAnchor) return "提示";
-            if (zone == opponentDiscardAnchor) return "提示";
+            if (zone == opponentDeckAnchor) return "對手牌庫";
+            if (zone == opponentDiscardAnchor) return "對手棄牌區";
             return "";
         }
 
@@ -6268,15 +6268,15 @@ namespace UCG
             if (line.StartsWith("Opponent") && !line.Contains("select")) return false;
             if (line.Contains("finished") || line.Contains("judgement") || line.Contains("returned")) return false;
 
-            return line.Contains("提示")
-                || line.Contains("提示")
-                || line.Contains("提示")
-                || line.Contains("提示")
-                || line.Contains("提示")
-                || line.Contains("提示")
-                || line.Contains("提示")
-                || line.Contains("提示")
-                || line.Contains("提示");
+            return line.Contains("請選擇")
+                || line.Contains("請先選擇")
+                || line.Contains("請依序選擇")
+                || line.Contains("可以升級")
+                || line.Contains("可以設置")
+                || line.Contains("點擊完成")
+                || line.Contains("放回牌庫")
+                || line.Contains("放到底")
+                || line.Contains("選擇目標");
         }
 
         void SetGameResultHudVisible(bool visible)
@@ -7218,7 +7218,7 @@ namespace UCG
             _isOpeningCameraIntro = false;
             RestoreOpeningCameraScrollDuration();
             StopTurnStartBannerRoutine();
-            SetHandCardsInteractable(true, null);
+            NormalizeAllHandCardViews("OpeningSequenceStopped", true, true, false);
         }
 
         IEnumerator OpeningFirstPlayerSequenceRoutine()
@@ -7240,7 +7240,7 @@ namespace UCG
             _isOpeningCameraIntro = false;
 
             string resultMessage = string.IsNullOrWhiteSpace(_openingFirstPlayerMessage)
-                ? (turnOrderManager != null ? turnOrderManager.GetOpeningFirstPlayerText() : "提示")
+                ? (turnOrderManager != null ? turnOrderManager.GetOpeningFirstPlayerText() : "準備開始對戰")
                 : _openingFirstPlayerMessage;
 
             if (playResultText != null)
@@ -7249,7 +7249,7 @@ namespace UCG
             }
             if (tutorialGuide != null)
             {
-                tutorialGuide.ShowPhasePrompt($"提示");
+                tutorialGuide.ShowPhasePrompt("請先觀察戰場，準備設置第一張角色卡。");
             }
 
             yield return new WaitForSecondsRealtime(1.35f);
@@ -7258,7 +7258,7 @@ namespace UCG
 
             _openingFirstPlayerRoutine = null;
             _isOpeningFirstPlayerSequence = false;
-            SetHandCardsInteractable(true, null);
+            NormalizeAllHandCardViews("OpeningHand", true, true, true);
             if (IsGameOver || phaseManager == null) yield break;
 
             phaseManager.SetPhase(UcgGamePhase.SceneSetup);
@@ -8375,7 +8375,7 @@ namespace UCG
 
         public void RestartDemo()
         {
-            RestartDemo("提示");
+            RestartDemo("重新開始教學。");
         }
 
         void RestartDemo(string resultMessage)
@@ -8463,7 +8463,7 @@ namespace UCG
             }
 
             ResetDeckAndBuildStartingHand();
-            RestoreHandCardsAfterDeckOperation();
+            NormalizeAllHandCardViews("RestartDemo", true, true, true);
             RefreshZoneInfoUI();
             ResetGameResultText();
 
@@ -8531,7 +8531,7 @@ namespace UCG
             if (_isTutorialFinishWaitingForClick) return;
             if (IsGameOver)
             {
-                RestartDemo("提示");
+                RestartDemo("重新開始教學。");
                 return;
             }
             if (_isAutoPhaseRunning) return;
@@ -8813,8 +8813,7 @@ namespace UCG
             if (playResultText != null)
             {
                 playResultText.text =
-                    "提示" +
-                    "提示";
+                    "本回合判定完成。\n點擊完成，進入下一回合。";
             }
 
             RefreshNextPhaseButtonState();
@@ -8847,8 +8846,8 @@ namespace UCG
             if (phaseManager == null || phaseManager.CurrentPhase != UcgGamePhase.EnterEffect) return;
 
             string message = _enterEffectPhaseHadPendingEffects
-                ? "提示"
-                : "提示";
+                ? "登場效果處理完成，準備進入戰鬥效果階段。"
+                : "沒有登場效果，準備進入戰鬥效果階段。";
             BeginEffectAutoAdvanceToNextPhase(UcgGamePhase.EnterEffect, message);
         }
 
@@ -8863,10 +8862,10 @@ namespace UCG
             {
                 ClearEffectTargetSelection();
                 string message = opponentResolvedCount > 0
-                    ? "提示"
+                    ? "對手戰鬥效果處理完成，準備進入判定。"
                     : _battleEffectPhaseHadPendingEffects
-                        ? "提示"
-                        : "提示";
+                        ? "戰鬥效果處理完成，準備進入判定。"
+                        : "沒有戰鬥效果，準備進入判定。";
                 BeginEffectAutoAdvanceToJudgement(message);
                 return true;
             }
@@ -8895,7 +8894,7 @@ namespace UCG
                     {
                         effectManager.RemoveEffect(nextEffect);
                         string skipMessage = string.IsNullOrWhiteSpace(opponentTargetMessage)
-                            ? "提示"
+                            ? "對手效果沒有合法目標，效果結束。"
                             : opponentTargetMessage;
                         ShowPlayStatus(skipMessage, 1.1f);
                     }
@@ -8907,7 +8906,7 @@ namespace UCG
 
             if (playResultText != null)
             {
-                playResultText.text = "提示";
+                playResultText.text = "正在處理卡牌效果。";
             }
             return true;
         }
@@ -8938,8 +8937,8 @@ namespace UCG
             {
                 string sideText = turnOrderManager != null
                     ? turnOrderManager.GetSideDisplayName(nextEffect.ownerSide)
-                    : (nextEffect.ownerSide == UcgPlayerSide.Player ? "提示" : "提示");
-                playResultText.text = "Effect phase: " + sideText;
+                    : (nextEffect.ownerSide == UcgPlayerSide.Player ? "我方" : "對手");
+                playResultText.text = "登場效果階段：" + sideText;
             }
 
             int guard = 0;
@@ -8985,7 +8984,7 @@ namespace UCG
                         {
                             effectManager.RemoveEffect(nextEffect);
                             string skipMessage = string.IsNullOrWhiteSpace(opponentTargetMessage)
-                                ? "提示"
+                                ? "對手效果沒有合法目標，效果結束。"
                                 : opponentTargetMessage;
                             ShowPlayStatus(skipMessage, 1.1f);
                         }
@@ -9005,26 +9004,26 @@ namespace UCG
                         if (_pendingDeckSelection != null
                             && _pendingDeckSelection.sourceZone == UcgDeckOperationSourceZone.Hand)
                         {
-                            playResultText.text = "提示";
+                            playResultText.text = "請選擇要放回牌庫底的手牌。";
                         }
                         else if (_pendingDeckSelection != null
                             && _pendingDeckSelection.sourceZone == UcgDeckOperationSourceZone.DiscardPile)
                         {
-                            playResultText.text = "提示";
+                            playResultText.text = "請從棄牌區選擇卡牌。";
                         }
                         else if (_pendingDeckSelection != null
                             && _pendingDeckSelection.sourceZone == UcgDeckOperationSourceZone.SceneRevealCards)
                         {
-                            playResultText.text = "提示";
+                            playResultText.text = "請選擇要登場的角色卡。";
                         }
                         else if (_pendingDeckSelection != null
                             && _pendingDeckSelection.sourceZone == UcgDeckOperationSourceZone.TopDeckReorder)
                         {
-                            playResultText.text = "提示";
+                            playResultText.text = "請依序選擇要放回牌庫頂的卡牌。";
                         }
                         else
                         {
-                            playResultText.text = "提示";
+                            playResultText.text = "請選擇卡牌。";
                         }
                     }
                     return true;
@@ -9375,14 +9374,14 @@ namespace UCG
             {
                 string selectionMessage = _pendingDeckSelection != null
                     && _pendingDeckSelection.sourceZone == UcgDeckOperationSourceZone.DiscardPile
-                    ? "提示"
+                    ? "請從棄牌區選擇卡牌。"
                     : _pendingDeckSelection != null
                         && _pendingDeckSelection.sourceZone == UcgDeckOperationSourceZone.SceneRevealCards
-                            ? "提示"
+                            ? "請選擇要登場的角色卡。"
                             : _pendingDeckSelection != null
                                 && _pendingDeckSelection.sourceZone == UcgDeckOperationSourceZone.TopDeckReorder
-                                    ? "提示"
-                                    : "提示";
+                                    ? "請依序選擇要放回牌庫頂的卡牌。"
+                                    : "請選擇卡牌。";
                 ShowPlayStatus(selectionMessage);
                 UpdateMainPrompt();
                 return true;
@@ -9392,7 +9391,7 @@ namespace UCG
             {
                 if (playResultText != null)
                 {
-                    playResultText.text = "提示";
+                    playResultText.text = "請選擇效果目標。";
                 }
                 UpdateMainPrompt();
                 return true;
@@ -9426,7 +9425,7 @@ namespace UCG
 
                     effectManager.RemoveEffect(nextEffect);
                     string skipMessage = string.IsNullOrWhiteSpace(opponentTargetMessage)
-                        ? "提示"
+                        ? "對手效果沒有合法目標，效果結束。"
                         : opponentTargetMessage;
                     ShowPlayStatus(skipMessage, 1.1f);
                     StopEffectSourceHighlight(nextEffect);
@@ -9453,8 +9452,8 @@ namespace UCG
             }
             HighlightActivatedEffectSources();
             ShowPlayStatus(effectManager.HasPendingEffects
-                ? $"提示"
-                : "提示", 1.2f);
+                ? "效果處理完成，繼續處理下一個效果。"
+                : "效果處理完成。", 1.2f);
             StopEffectSourceHighlight(nextEffect);
 
             if (phaseManager != null && phaseManager.CurrentPhase == UcgGamePhase.BattleEffect)
@@ -9486,7 +9485,7 @@ namespace UCG
 
         string BuildEffectFeedbackText(string message)
         {
-            if (message.Contains("no effect") || message.Contains("提示") || message.Contains("請選擇") || message.Contains("unsupported")) return "";
+            if (message.Contains("no effect") || message.Contains("請選擇") || message.Contains("unsupported")) return "";
 
             string feedback = message;
             int separatorIndex = feedback.LastIndexOf('\uFF5C');
@@ -9496,10 +9495,8 @@ namespace UCG
             }
 
             feedback = feedback
-                .Replace("提示", "提示")
-                .Replace("card effect", "card effect")
-                .Replace("提示", "提示")
-                .Replace("scene effect", "scene effect");
+                .Replace("card effect", "卡牌效果")
+                .Replace("scene effect", "場景效果");
 
             if (feedback.Length > 34)
             {
@@ -9543,7 +9540,7 @@ namespace UCG
 
         void ApplyEffectFeedbackToastMessage(string message)
         {
-            string title = "Effect";
+            string title = "效果";
             string body = message;
 
             int titleSeparator = message.IndexOf(':');
@@ -9554,11 +9551,11 @@ namespace UCG
             }
 
             if (string.IsNullOrWhiteSpace(body)) body = message;
-            if (string.IsNullOrWhiteSpace(title)) title = "Effect";
+            if (string.IsNullOrWhiteSpace(title)) title = "效果";
             if (title.Length > 14)
             {
                 body = message;
-                title = "Effect";
+                title = "效果";
             }
 
             if (_effectFeedbackToastTitleText != null)
@@ -9607,8 +9604,8 @@ namespace UCG
             if (effectManager != null && effectManager.HasPendingEffects) return;
 
             string resolvedMessage = string.IsNullOrWhiteSpace(message)
-                ? "提示"
-                : $"提示";
+                ? "效果處理完成，準備進入判定。"
+                : $"{message}\n準備進入判定。";
             BeginEffectAutoAdvanceToJudgement(resolvedMessage);
         }
 
@@ -9724,7 +9721,7 @@ namespace UCG
             if (stepUpLane == null)
             {
                 effectManager.RemoveEffect(effect);
-                message = $"提示";
+                message = "沒有可上升 BP 的迪卡，效果結束。";
                 return true;
             }
 
@@ -9752,7 +9749,7 @@ namespace UCG
             List<UcgCardData> drawPile = GetDrawPileForOwner(effect.ownerSide);
             if (drawPile == null || drawPile.Count == 0)
             {
-                return "提示";
+                return "牌庫已空，無法確認牌庫頂。";
             }
 
             var revealedCards = new List<UcgCardData>();
@@ -9784,7 +9781,7 @@ namespace UCG
                     + "reorder=keep-original-order");
             }
 
-            return $"提示";
+            return $"已確認牌庫頂 {revealedCards.Count} 張，維持原本順序。";
         }
 
         bool BeginBp01043TopDeckReorderSelection(UcgEffectInstance effect, out string message)
@@ -9799,7 +9796,7 @@ namespace UCG
             List<UcgCardData> drawPile = GetDrawPileForOwner(effect.ownerSide);
             if (drawPile == null || drawPile.Count == 0)
             {
-                message = "提示";
+                message = "牌庫已空，無法確認牌庫頂。";
                 return false;
             }
 
@@ -9817,7 +9814,7 @@ namespace UCG
 
             if (revealedCards.Count == 0)
             {
-                message = "提示";
+                message = "沒有可選擇的牌庫頂卡牌。";
                 RefreshZoneInfoUI();
                 return false;
             }
@@ -9831,7 +9828,7 @@ namespace UCG
             ClearDeckOperationCards();
 
             _pendingBp01043ReorderEffect = effect;
-            _pendingBp01043ReorderMessage = $"提示";
+            _pendingBp01043ReorderMessage = $"請依序選擇 {revealedCards.Count} 張卡，決定放回牌庫頂的順序。";
             _pendingBp01043RevealedCards.Clear();
             _pendingBp01043RevealedCards.AddRange(revealedCards);
 
@@ -9886,7 +9883,7 @@ namespace UCG
             {
                 int selectedCount = _pendingDeckSelection.selectedCards.Count;
                 int totalCount = _pendingBp01043RevealedCards.Count;
-                _deckOperationSelectionTitle.text = $"提示";
+                _deckOperationSelectionTitle.text = $"選擇放回順序 {selectedCount}/{totalCount}";
             }
 
             for (int i = 0; i < _pendingBp01043RevealedCards.Count; i++)
@@ -9909,7 +9906,7 @@ namespace UCG
             if (_pendingDeckSelection.sourceZone != UcgDeckOperationSourceZone.TopDeckReorder) return;
             if (_pendingBp01043ReorderEffect == null || selectedCard == null)
             {
-                FinishBp01043ReorderSelectionWithOriginalOrder("提示");
+                FinishBp01043ReorderSelectionWithOriginalOrder("未選擇卡牌，維持原本順序。");
                 return;
             }
 
@@ -9929,7 +9926,7 @@ namespace UCG
             int totalCount = _pendingBp01043RevealedCards.Count;
             if (selectedCount < totalCount)
             {
-                ShowPlayStatus($"提示", 1.1f);
+                ShowPlayStatus($"已選擇 {selectedCount}/{totalCount}，請繼續選擇下一張。", 1.1f);
                 RenderBp01043ReorderCards();
                 return;
             }
@@ -9967,7 +9964,7 @@ namespace UCG
             }
 
             string reorderMessage = string.IsNullOrWhiteSpace(overrideMessage)
-                ? $"提示"
+                ? "牌庫頂順序已決定。"
                 : overrideMessage;
 
             if (debugEffectResolution || debugDeckOperation)
@@ -10009,7 +10006,7 @@ namespace UCG
             {
                 string targetPrompt = effectManager != null
                     ? effectManager.GetTargetPrompt(effect)
-                    : "提示";
+                    : "請選擇效果目標。";
                 playResultText.text = CombineEffectMessages(reorderMessage, targetPrompt);
             }
             ShowPlayStatus(reorderMessage, 1.15f);
@@ -10202,8 +10199,8 @@ namespace UCG
                 if (playResultText != null)
                 {
                     playResultText.text = IsEffectTargetSide(_pendingTargetType, UcgPlayerSide.Player)
-                        ? "提示"
-                        : "提示";
+                        ? "請選擇我方角色卡。"
+                        : "請選擇對手角色卡。";
                 }
                 return;
             }
@@ -10249,8 +10246,8 @@ namespace UCG
             StopCurrentEffectSourceHighlight();
             ShowPlayStatus(resolved
                 ? effectManager.HasPendingEffects
-                    ? $"提示"
-                    : "提示"
+                    ? "效果處理完成，繼續處理下一個效果。"
+                    : "效果處理完成。"
                 : message, 1.2f);
 
             HighlightActivatedEffectSources();
@@ -10290,7 +10287,7 @@ namespace UCG
                 HighlightEffectTargets();
                 if (playResultText != null)
                 {
-                    playResultText.text = "提示";
+                    playResultText.text = "請再選擇另一張我方角色卡。";
                 }
                 UpdateMainPrompt();
                 return;
@@ -10337,7 +10334,7 @@ namespace UCG
                 {
                     if (effectManager != null) effectManager.RemoveEffect(_pendingTargetEffect);
                     ClearEffectTargetSelection();
-                    string noDigaMessage = $"提示";
+                    string noDigaMessage = "沒有可上升 BP 的迪卡，效果結束。";
                     QueueEffectFeedback(noDigaMessage);
                     ContinueAfterTargetEffectResolved(true, noDigaMessage);
                     return;
@@ -10346,7 +10343,7 @@ namespace UCG
                 HighlightEffectTargets();
                 if (playResultText != null)
                 {
-                    playResultText.text = "提示";
+                    playResultText.text = "請選擇 BP 要上升一階的迪卡。";
                 }
                 UpdateMainPrompt();
                 return;
@@ -10425,7 +10422,7 @@ namespace UCG
                 LogInteractionRejected("ClickEffectTarget", "InvalidBp01105Target", null, lane);
                 if (playResultText != null)
                 {
-                    playResultText.text = "提示";
+                    playResultText.text = "請選擇可升級的角色區。";
                 }
                 return;
             }
@@ -10688,7 +10685,7 @@ namespace UCG
 
         bool ApplyBp05005StepDown(UcgEffectInstance effect, UcgBattleLane targetLane, out string message)
         {
-            message = "提示";
+            message = "無法降低此角色的 BP。";
             if (effect == null || targetLane == null) return false;
 
             UcgPlayerSide targetSide = effect.ownerSide;
@@ -10701,7 +10698,7 @@ namespace UCG
             int amount = previousBp - currentBp;
             if (amount >= 0)
             {
-                message = "提示";
+                message = "此角色的 BP 已無法再降低。";
                 return false;
             }
 
@@ -10709,7 +10706,7 @@ namespace UCG
                 targetSide,
                 amount,
                 effect.cardData,
-                "提示",
+                "登場時效果",
                 0,
                 stackCount,
                 false,
@@ -10717,9 +10714,9 @@ namespace UCG
                 currentBp,
                 previousBp);
 
-            string sideText = targetSide == UcgPlayerSide.Player ? "提示" : "提示";
+            string sideText = targetSide == UcgPlayerSide.Player ? "我方" : "對手";
             string targetName = string.IsNullOrWhiteSpace(targetCard.cardName) ? "角色" : targetCard.cardName;
-            message = $"{sideText} lane {targetLane.laneIndex + 1}: {targetName} BP -1000";
+            message = $"{sideText}第 {targetLane.laneIndex + 1} 路：{targetName} BP -1000";
             return true;
         }
 
@@ -10729,7 +10726,7 @@ namespace UCG
             string prefixMessage,
             out string message)
         {
-            message = "提示";
+            message = "無法上升此角色的 BP。";
             if (effect == null || targetLane == null || effectManager == null) return false;
 
             UcgPlayerSide targetSide = effect.ownerSide;
@@ -10747,7 +10744,7 @@ namespace UCG
             effectManager.RemoveEffect(effect);
             if (amount <= 0)
             {
-                message = "提示";
+                message = "此角色的 BP 已無法再上升。";
                 return true;
             }
 
@@ -10755,7 +10752,7 @@ namespace UCG
                 targetSide,
                 amount,
                 effect.cardData,
-                "提示",
+                "登場時效果",
                 0,
                 stackCount,
                 false,
@@ -10763,9 +10760,9 @@ namespace UCG
                 currentBp,
                 nextBp);
 
-            string sideText = targetSide == UcgPlayerSide.Player ? "提示" : "提示";
+            string sideText = targetSide == UcgPlayerSide.Player ? "我方" : "對手";
             string targetName = string.IsNullOrWhiteSpace(targetCard.cardName) ? "迪卡" : targetCard.cardName;
-            string stepUpMessage = $"{sideText} lane {targetLane.laneIndex + 1}: {targetName} BP +1000";
+            string stepUpMessage = $"{sideText}第 {targetLane.laneIndex + 1} 路：{targetName} BP +1000";
             message = string.IsNullOrWhiteSpace(prefixMessage)
                 ? stepUpMessage
                 : $"{prefixMessage}\n{stepUpMessage}";
@@ -10778,7 +10775,7 @@ namespace UCG
             UcgBattleLane targetLane,
             out string message)
         {
-            message = "提示";
+            message = "無法交換角色位置。";
             if (effectManager == null || effect == null || sourceLane == null || targetLane == null)
             {
                 return false;
@@ -10786,7 +10783,7 @@ namespace UCG
 
             if (sourceLane == targetLane)
             {
-                message = "提示";
+                message = "請選擇另一條路的角色卡。";
                 return false;
             }
 
@@ -10794,22 +10791,22 @@ namespace UCG
             UcgCardData targetCard = GetLaneTopCard(targetLane, effect.ownerSide);
             if (sourceCard == null || targetCard == null)
             {
-                message = "提示";
+                message = "選擇的路線沒有可交換的角色卡。";
                 return false;
             }
 
             bool swapped = sourceLane.SwapCharacterStackWith(targetLane, effect.ownerSide);
             if (!swapped)
             {
-                message = "提示";
+                message = "角色位置交換失敗。";
                 return false;
             }
 
             effectManager.RemoveEffect(effect);
-            string sideText = effect.ownerSide == UcgPlayerSide.Player ? "提示" : "提示";
+            string sideText = effect.ownerSide == UcgPlayerSide.Player ? "我方" : "對手";
             string sourceName = string.IsNullOrWhiteSpace(sourceCard.cardName) ? "角色" : sourceCard.cardName;
             string targetName = string.IsNullOrWhiteSpace(targetCard.cardName) ? "角色" : targetCard.cardName;
-            message = $"{sideText} {sourceName} targets lane {targetLane.laneIndex + 1}: {targetName}.";
+            message = $"{sideText}{sourceName} 與第 {targetLane.laneIndex + 1} 路的 {targetName} 交換位置。";
             return true;
         }
 
@@ -10823,7 +10820,7 @@ namespace UCG
             if (!IsLegalBp05008Target(targetLane, effect.ownerSide, effect)) return false;
             if (!CanReturnTopCardToHand(effect.ownerSide))
             {
-                message = "提示";
+                message = "手牌已滿，無法將角色放回手牌。";
                 return false;
             }
 
@@ -10833,13 +10830,13 @@ namespace UCG
             List<UcgCardData> legalDiscardCards = GetMatchingBp05008DiscardCards(effect.ownerSide, targetTopCard.level);
             if (legalDiscardCards.Count == 0)
             {
-                message = "提示";
+                message = "棄牌區沒有符合條件的迪卡。";
                 return false;
             }
 
             if (!targetLane.RemoveTopCardFromEffect(effect.ownerSide, targetTopCard, out UcgCardData returnedTopCard))
             {
-                message = "提示";
+                message = "無法將場上的角色放回手牌。";
                 return false;
             }
 
@@ -10852,7 +10849,7 @@ namespace UCG
                     GetTestCardSprite(effect.ownerSide == UcgPlayerSide.Player ? 0 : 1),
                     GetPlacedBattleCardSize(),
                     LoadPlaceholderFont());
-                message = "提示";
+                message = "手牌加入失敗，效果結束。";
                 return false;
             }
 
@@ -10889,8 +10886,8 @@ namespace UCG
             {
                 string cardName = effect.cardData != null && !string.IsNullOrWhiteSpace(effect.cardData.cardName)
                     ? effect.cardData.cardName
-                    : "提示";
-                _deckOperationSelectionTitle.text = $"提示";
+                    : "場景效果";
+                _deckOperationSelectionTitle.text = $"{cardName}：選擇棄牌區的迪卡";
             }
 
             for (int i = 0; i < legalDiscardCards.Count; i++)
@@ -10915,7 +10912,7 @@ namespace UCG
             RefreshNextPhaseButtonState();
 
             string returnedName = string.IsNullOrWhiteSpace(returnedTopCard != null ? returnedTopCard.cardName : "")
-                ? "提示"
+                ? "角色卡"
                 : returnedTopCard.cardName;
             message = $"{returnedName} 已加入手牌，請選擇符合條件的棄牌。";
             return true;
@@ -10930,22 +10927,22 @@ namespace UCG
             UcgPlayerSide owner = _pendingDeckSelection.owner;
             if (sourceEffect == null || _pendingBp05008DiscardLane == null || selectedCard == null)
             {
-                ShowPlayStatus("提示", 1.1f);
+                ShowPlayStatus("沒有選擇可用的棄牌區卡牌。", 1.1f);
                 CleanupBp05008DiscardSelectionUi();
-                ContinueAfterTargetEffectResolved(false, "提示");
+                ContinueAfterTargetEffectResolved(false, "沒有選擇可用的棄牌區卡牌。");
                 return;
             }
 
             if (selectedCard.level != _pendingBp05008ReturnedLevel || !CardCharacterContains(selectedCard, "迪卡"))
             {
-                ShowPlayStatus("提示", 1.1f);
+                ShowPlayStatus("請選擇同等級的迪卡。", 1.1f);
                 return;
             }
 
             int discardIndex = FindCardIndexInDiscardPile(owner, selectedCard);
             if (discardIndex < 0)
             {
-                ShowPlayStatus("提示", 1.1f);
+                ShowPlayStatus("這張卡不在棄牌區。", 1.1f);
                 return;
             }
 
@@ -10958,7 +10955,7 @@ namespace UCG
                 LoadPlaceholderFont());
             if (newTopCard == null)
             {
-                ShowPlayStatus("提示", 1.1f);
+                ShowPlayStatus("棄牌區角色登場失敗。", 1.1f);
                 return;
             }
 
@@ -10978,11 +10975,11 @@ namespace UCG
             }
 
             string returnedName = string.IsNullOrWhiteSpace(_pendingBp05008ReturnedTopCard != null ? _pendingBp05008ReturnedTopCard.cardName : "")
-                ? "提示"
+                ? "角色卡"
                 : _pendingBp05008ReturnedTopCard.cardName;
             string replacementName = string.IsNullOrWhiteSpace(selectedCard.cardName) ? "迪卡" : selectedCard.cardName;
-            string sideText = owner == UcgPlayerSide.Player ? "提示" : "提示";
-            string message = $"{sideText} lane {_pendingBp05008DiscardLane.laneIndex + 1}: returned {returnedName}; played {replacementName} from discard.";
+            string sideText = owner == UcgPlayerSide.Player ? "我方" : "對手";
+            string message = $"{sideText}第 {_pendingBp05008DiscardLane.laneIndex + 1} 路：{returnedName} 回到手牌，{replacementName} 從棄牌區登場。";
 
             _pendingDeckSelection.resolved = true;
             _pendingDeckSelection.selectedCard = selectedCard;
@@ -11045,13 +11042,13 @@ namespace UCG
 
             if (!TryFindMatchingBp05008DiscardCard(effect.ownerSide, targetTopCard.level, out UcgCardData replacementCard, out int discardIndex))
             {
-                message = "提示";
+                message = "棄牌區沒有符合條件的迪卡。";
                 return false;
             }
 
             if (!targetLane.ReplaceTopCardData(effect.ownerSide, replacementCard, out UcgCardData returnedTopCard))
             {
-                message = "提示";
+                message = "無法替換場上的角色卡。";
                 return false;
             }
 
@@ -11067,7 +11064,7 @@ namespace UCG
 
             if (!AddReturnedTopCardToHand(effect.ownerSide, returnedTopCard))
             {
-                message = "提示";
+                message = "手牌加入失敗，效果結束。";
                 return false;
             }
 
@@ -11080,12 +11077,12 @@ namespace UCG
             RefreshZoneInfoUI();
             RefreshHandLayout();
 
-            string sideText = effect.ownerSide == UcgPlayerSide.Player ? "提示" : "提示";
+            string sideText = effect.ownerSide == UcgPlayerSide.Player ? "我方" : "對手";
             string returnedName = string.IsNullOrWhiteSpace(returnedTopCard != null ? returnedTopCard.cardName : "")
-                ? "提示"
+                ? "角色卡"
                 : returnedTopCard.cardName;
             string replacementName = string.IsNullOrWhiteSpace(replacementCard.cardName) ? "迪卡" : replacementCard.cardName;
-            message = $"{sideText} lane {targetLane.laneIndex + 1}: returned {returnedName}; played {replacementName} from discard.";
+            message = $"{sideText}第 {targetLane.laneIndex + 1} 路：{returnedName} 回到手牌，{replacementName} 從棄牌區登場。";
             return true;
         }
 
@@ -11209,66 +11206,66 @@ namespace UCG
 
         string GetInvalidEffectTargetMessage(UcgBattleLane lane, UcgPlayerSide side, UcgEffectInstance effect)
         {
-            if (!IsLegalEffectTarget(lane, side)) return "提示";
+            if (!IsLegalEffectTarget(lane, side)) return "這裡沒有可選擇的角色卡。";
             if (effect != null && effect.effectId == UcgDemoEffectId.OnRevealChooseAdjacentOwnZeroBpStepUp)
             {
-                return "提示";
+                return "請選擇相鄰的我方傑洛角色。";
             }
             if (effect != null && effect.effectId == UcgDemoEffectId.OnRevealChooseOwnZeroBpStepUp)
             {
-                return "提示";
+                return "請選擇我方傑洛角色。";
             }
             if (IsSwapOwnCharactersEffect(effect))
             {
                 return _pendingSwapSourceLane == null
-                    ? "提示"
-                    : "提示";
+                    ? "請先選擇要交換的角色卡。"
+                    : "請選擇另一張我方角色卡。";
             }
             if (IsBp05005MultiStepEffect(effect))
             {
                 return _pendingBp05005StepDownLane == null
-                    ? "提示"
-                    : "提示";
+                    ? "請選擇可降低 BP 的我方角色。"
+                    : "請選擇可上升 BP 的迪卡。";
             }
             if (IsBp05008TopDiscardSwapEffect(effect))
             {
-                return "提示";
+                return "請選擇可與棄牌區迪卡替換的角色。";
             }
 
             if (effect != null && effect.cardData != null && UcgTutorialCardEffectMap.TryGetTargetFilter(effect.cardData, out _))
             {
-                return "提示";
+                return "這張卡不是此效果的合法目標。";
             }
 
-            return "提示";
+            return "請選擇亮起的合法目標。";
         }
 
         string GetNoLegalEffectTargetMessage(UcgEffectInstance effect)
         {
             if (effect != null && effect.effectId == UcgDemoEffectId.OnRevealChooseAdjacentOwnZeroBpStepUp)
             {
-                return "提示";
+                return "沒有相鄰的我方傑洛，效果結束。";
             }
             if (effect != null && effect.effectId == UcgDemoEffectId.OnRevealChooseOwnZeroBpStepUp)
             {
-                return "提示";
+                return "沒有可選擇的我方傑洛，效果結束。";
             }
             if (IsSwapOwnCharactersEffect(effect))
             {
-                return "提示";
+                return "沒有可交換的我方角色，效果結束。";
             }
             if (IsBp05005MultiStepEffect(effect))
             {
                 return _pendingBp05005StepDownLane == null
-                    ? "提示"
-                    : "提示";
+                    ? "沒有可降低 BP 的角色，效果結束。"
+                    : "沒有可上升 BP 的迪卡，效果結束。";
             }
             if (IsBp05008TopDiscardSwapEffect(effect))
             {
-                return "提示";
+                return "沒有可與棄牌區替換的迪卡，效果結束。";
             }
 
-            return "提示";
+            return "沒有合法目標，效果結束。";
         }
 
         void SkipTargetEffectWithNoLegalTarget(UcgEffectInstance effect, string prefixMessage = "")
@@ -11396,7 +11393,7 @@ namespace UCG
                 case UcgGamePhase.Open:
                     if (playResultText != null)
                     {
-                        playResultText.text = "提示";
+                        playResultText.text = "公開雙方設置的角色卡。";
                     }
                     if (battlefieldManager != null)
                     {
@@ -11435,13 +11432,13 @@ namespace UCG
 
                     int effectCount = effectManager != null ? effectManager.PendingCount : 0;
                     ShowPlayStatus(effectCount > 0
-                        ? $"提示"
-                        : "提示", 1.2f);
+                        ? $"公開完成，待處理效果 {effectCount} 個。"
+                        : "公開完成，沒有待處理效果。", 1.2f);
                     break;
                 case UcgGamePhase.BattleJudgement:
                     if (playResultText != null)
                     {
-                        playResultText.text = "提示";
+                        playResultText.text = "進行 BP 判定。";
                     }
                     RunBattleJudgement();
                     break;
@@ -12027,7 +12024,7 @@ namespace UCG
         {
             if (playResultText != null)
             {
-                playResultText.text = "提示";
+                playResultText.text = "等待對手設置角色卡。";
             }
         }
 
@@ -12068,7 +12065,7 @@ namespace UCG
             {
                 if (playResultText != null)
                 {
-                    playResultText.text = $"提示";
+                    playResultText.text = "請先設置我方角色卡。";
                 }
                 return false;
             }
@@ -12105,7 +12102,7 @@ namespace UCG
                 && lane != null
                 && lane.opponentTopCard == null)
             {
-                message = "提示";
+                message = "對手先設置，請稍候。";
                 return false;
             }
 
@@ -12532,7 +12529,7 @@ namespace UCG
             SetNextPhaseButtonInteractable(false);
             ClearInteractionHints();
 
-            ShowPlayStatus("提示");
+            ShowPlayStatus("對手正在設置場景。");
 
             yield return new WaitForSecondsRealtime(opponentActionDelaySeconds);
 
@@ -12540,7 +12537,7 @@ namespace UCG
             {
                 RemoveOpponentHiddenCard(sceneCard);
                 ShowPlayStatus(string.IsNullOrWhiteSpace(sceneMessage)
-                    ? "Opponent set scene: " + GetCardDisplayName(sceneCard)
+                    ? "對手已設置場景：" + GetCardDisplayName(sceneCard)
                     : sceneMessage);
                 if (sfxController != null)
                 {
@@ -12549,7 +12546,7 @@ namespace UCG
             }
             else
             {
-                ShowPlayStatus("提示");
+                ShowPlayStatus("對手沒有設置場景。");
             }
 
             yield return new WaitForSecondsRealtime(opponentActionDelaySeconds);
@@ -12648,7 +12645,7 @@ namespace UCG
             SetNextPhaseButtonInteractable(false);
             ClearInteractionHints();
 
-            ShowPlayStatus("提示");
+            ShowPlayStatus("對手正在設置角色卡。");
 
             yield return new WaitForSecondsRealtime(opponentActionDelaySeconds);
 
@@ -12688,8 +12685,8 @@ namespace UCG
                 PlayOpponentCardActionFeedback(lane, false);
             }
             ShowPlayStatus(placed
-                ? $"提示"
-                : "提示");
+                ? $"對手已在第 {laneNumber} 路登場角色。"
+                : "對手沒有可登場的角色卡。");
 
             yield return new WaitForSecondsRealtime(opponentActionDelaySeconds);
 
@@ -12702,7 +12699,7 @@ namespace UCG
                 turnOrderManager.SetCurrentActingPlayer(UcgPlayerSide.Player);
                 if (placed)
                 {
-                    ShowPlayStatus("提示", 1.2f);
+                    ShowPlayStatus("輪到我方設置角色卡。", 1.2f);
                 }
             }
             UpdateMainPrompt();
@@ -12737,7 +12734,7 @@ namespace UCG
             SetNextPhaseButtonInteractable(false);
             ClearInteractionHints();
 
-            ShowPlayStatus("提示");
+            ShowPlayStatus("對手正在升級角色。");
 
             yield return new WaitForSecondsRealtime(opponentActionDelaySeconds);
 
@@ -12745,7 +12742,7 @@ namespace UCG
 
             if (!upgraded)
             {
-                ShowPlayStatus("提示");
+                ShowPlayStatus("對手沒有升級角色。");
             }
 
             yield return new WaitForSecondsRealtime(opponentActionDelaySeconds);
@@ -12818,8 +12815,8 @@ namespace UCG
             }
 
             ShowPlayStatus(upgraded
-                ? $"提示"
-                : "提示");
+                ? $"對手已在第 {upgradedLaneNumber} 路升級 {GetCardDisplayName(upgradedCard)}。"
+                : "對手沒有可升級的角色。");
 
             return upgraded;
         }
@@ -12846,11 +12843,11 @@ namespace UCG
 
         string GetCardDisplayName(UcgCardData card)
         {
-            if (card == null) return "提示";
+            if (card == null) return "未知卡牌";
             if (!string.IsNullOrWhiteSpace(card.cardName)) return card.cardName;
             if (!string.IsNullOrWhiteSpace(card.characterName)) return card.characterName;
             if (!string.IsNullOrWhiteSpace(card.id)) return card.id;
-            return "提示";
+            return "未知卡牌";
         }
 
         void ConsumeOpponentHandCard()
@@ -12994,14 +12991,14 @@ namespace UCG
             if (gameResultText != null)
             {
                 SetGameResultHudVisible(true);
-                gameResultText.text = $"提示";
+                gameResultText.text = $"勝負：我方 {playerWinCount} / 對手 {opponentWinCount}";
             }
 
             if (_playerWonTutorialLaneIndexes.Count >= 3)
             {
                 if (playResultText != null)
                 {
-                    playResultText.text = $"提示";
+                    playResultText.text = "已贏下三條路線，教學完成。";
                 }
 
                 BeginTutorialCompletionRoutine();
@@ -13153,13 +13150,13 @@ namespace UCG
             switch (result)
             {
                 case UcgLaneResultType.PlayerWin:
-                    return "角色卡";
+                    return "我方勝利";
                 case UcgLaneResultType.OpponentWin:
-                    return "卡牌";
+                    return "對手勝利";
                 case UcgLaneResultType.Draw:
-                    return "請選擇 1 張場景卡。";
+                    return "平手";
                 default:
-                    return "請選擇 1 張角色卡。";
+                    return "未判定";
             }
         }
 
@@ -13185,13 +13182,13 @@ namespace UCG
             switch (latestLane.laneResult)
             {
                 case UcgLaneResultType.PlayerWin:
-                    return "請選擇 1 張卡牌。";
+                    return "我方贏得此路判定。";
                 case UcgLaneResultType.OpponentWin:
-                    return "沒有可選擇的場景卡，公開卡將送入棄牌區。";
+                    return "對手贏得此路判定。";
                 case UcgLaneResultType.Draw:
-                    return "沒有可選擇的角色卡，公開卡將送入棄牌區。";
+                    return "此路平手，雙方角色送入棄牌區。";
                 default:
-                    return "沒有可選擇的卡牌，公開卡將送入棄牌區。";
+                    return "判定完成。";
             }
         }
 
@@ -13213,8 +13210,8 @@ namespace UCG
             ClearInteractionHints();
             HideDiscardPilePanel();
 
-            string winnerText = gameResult == UcgGameResultType.PlayerWin ? "提示" : "提示";
-            string message = $"Game over: {winnerText}\nPlayer wins: {playerWinCount} / Opponent wins: {opponentWinCount}";
+            string winnerText = gameResult == UcgGameResultType.PlayerWin ? "我方勝利" : "對手勝利";
+            string message = $"對戰結束：{winnerText}\n勝利路數：我方 {playerWinCount} / 對手 {opponentWinCount}";
 
             if (playResultText != null)
             {
@@ -13237,11 +13234,11 @@ namespace UCG
                 EnsureGameOverModal();
             }
 
-            string winnerText = gameResult == UcgGameResultType.PlayerWin ? "提示" : "提示";
+            string winnerText = gameResult == UcgGameResultType.PlayerWin ? "我方勝利" : "對手勝利";
             if (_gameOverModalText != null)
             {
                 _gameOverModalText.text =
-                    $"Game over\n\n{winnerText}\n\nPlayer wins: {playerWinCount}\nOpponent wins: {opponentWinCount}";
+                    $"對戰結束\n\n{winnerText}\n\n我方勝利路數：{playerWinCount}\n對手勝利路數：{opponentWinCount}";
             }
 
             if (_gameOverModalRoot != null)
@@ -13541,7 +13538,7 @@ namespace UCG
         {
             if (playResultText != null)
             {
-                playResultText.text = "提示";
+                playResultText.text = "請先確認目前的操作。";
             }
         }
 
@@ -13610,7 +13607,7 @@ namespace UCG
                 || validatedAction != pending.playActionType)
             {
                 CancelPendingBattlefieldAction(pending, string.IsNullOrWhiteSpace(validationMessage)
-                    ? "提示"
+                    ? "此卡目前不能登場或升級。"
                     : validationMessage);
                 return;
             }
@@ -13799,7 +13796,7 @@ namespace UCG
             {
                 _advanceToUpgradeAfterOpponentSetup = true;
                 RequestOpponentSetupAfterPlayerPlacement(lane);
-                message = $"提示";
+                message = $"我方已登場角色卡，等待對手設置第 {lane.laneIndex + 1} 路。";
             }
             else
             {
@@ -13829,7 +13826,7 @@ namespace UCG
                     true))
             {
                 CancelPendingSceneAction(pending, string.IsNullOrWhiteSpace(validationMessage)
-                    ? "提示"
+                    ? "此場景卡目前不能設置。"
                     : validationMessage);
                 return;
             }
@@ -13905,7 +13902,7 @@ namespace UCG
             if (playResultText != null)
             {
                 playResultText.text = string.IsNullOrWhiteSpace(messageOverride)
-                    ? "提示"
+                    ? "已取消操作，卡牌回到手牌。"
                     : messageOverride;
             }
 
@@ -13933,7 +13930,7 @@ namespace UCG
             if (playResultText != null)
             {
                 playResultText.text = string.IsNullOrWhiteSpace(messageOverride)
-                    ? "提示"
+                    ? "已取消場景設置，卡牌回到手牌。"
                     : messageOverride;
             }
 
@@ -14036,6 +14033,12 @@ namespace UCG
             {
                 var card = cardHolder.GetChild(i).GetComponent<UcgCardView>();
                 if (card == null || card.IsLockedInBattlefield) continue;
+
+                card.SetSelected(false);
+                card.SetDragging(false);
+                card.SetBattlefieldLocked(false);
+                card.SetPlayableHighlight(false);
+                card.SetPointerPreviewSuppressed(false);
 
                 RectTransform rect = card.transform as RectTransform;
                 if (rect != null)
@@ -14271,9 +14274,7 @@ namespace UCG
 
         void RestoreHandCardsAfterDeckOperation()
         {
-            ClearHandCardSelectionVisuals();
-            SetHandCardsInteractable(true, null);
-            RefreshHandCardDragInteractability();
+            NormalizeAllHandCardViews("DeckOperationComplete", true, true, true);
         }
 
         void RestoreAllHandCardInteractionAfterDeckOperation(bool refreshLayout, bool refreshHints)
@@ -14281,15 +14282,7 @@ namespace UCG
             _isSelectingDeckOperationCard = false;
             _deckOperationResultAnimationRunning = false;
             ApplyHandReturnSelectionHighlights(false);
-            ClearHandCardSelectionVisuals();
-
-            if (refreshLayout)
-            {
-                RefreshHandLayout(true);
-            }
-
-            SetHandCardsInteractable(true, null);
-            RefreshHandCardDragInteractability();
+            NormalizeAllHandCardViews("DeckOperationComplete", true, true, refreshLayout);
 
             if (refreshHints)
             {
@@ -14349,14 +14342,14 @@ namespace UCG
 
             if (cardData == null)
             {
-                message = "提示";
+                message = "沒有選擇卡牌。";
                 LogDropValidation(false, cardData, targetLane, target, actionType, message, logResult);
                 return false;
             }
 
             if (deckManager != null && !deckManager.playerHand.Contains(cardData))
             {
-                message = "提示";
+                message = "這張卡不在手牌中。";
                 LogDropValidation(false, cardData, targetLane, target, actionType, message, logResult);
                 return false;
             }
@@ -14385,19 +14378,19 @@ namespace UCG
         {
             if (cardData == null)
             {
-                message = "提示";
+                message = "沒有選擇卡牌。";
                 return false;
             }
 
             if (!cardData.IsSceneCard())
             {
-                message = "提示";
+                message = "場景階段只能設置場景卡。";
                 return false;
             }
 
             if (phaseManager == null || phaseManager.CurrentPhase != UcgGamePhase.SceneSetup)
             {
-                message = "提示";
+                message = "目前不是場景設置階段。";
                 return false;
             }
 
@@ -14410,19 +14403,19 @@ namespace UCG
 
             if (cardData == null)
             {
-                message = "提示";
+                message = "沒有選擇卡牌。";
                 return false;
             }
 
             if (cardData.IsSceneCard())
             {
-                message = "提示";
+                message = "場景卡只能放到場景區。";
                 return false;
             }
 
             if (lane == null)
             {
-                message = "提示";
+                message = "請選擇要登場或升級的路線。";
                 return false;
             }
 
@@ -14431,7 +14424,7 @@ namespace UCG
                 int openedLaneCount = battlefieldManager.GetOpenedLaneCount(turnManager.currentTurn);
                 if (lane.laneIndex < 0 || lane.laneIndex >= openedLaneCount)
                 {
-                    message = "目前沒有手牌可放回牌庫底。";
+                    message = "這條路目前尚未開放。";
                     return false;
                 }
             }
@@ -14439,7 +14432,7 @@ namespace UCG
             UcgPlayArea playArea = lane.GetPlayerPlayArea();
             if (playArea == null)
             {
-                message = "提示";
+                message = "這條路目前不能放置角色卡。";
                 return false;
             }
 
@@ -14448,7 +14441,7 @@ namespace UCG
 
             if (phaseManager == null)
             {
-                message = "提示";
+                message = "階段資料尚未準備完成。";
                 return false;
             }
 
@@ -14456,7 +14449,7 @@ namespace UCG
             {
                 if (topCard != null)
                 {
-                    message = "提示";
+                    message = "這條路已有角色，不能再登場。";
                     return false;
                 }
 
@@ -14464,7 +14457,7 @@ namespace UCG
                 {
                     if (lane.laneIndex != turnManager.ActiveNewLaneIndex)
                     {
-                        message = "提示";
+                        message = "請設置本回合開放的路線。";
                     }
                     return false;
                 }
@@ -14487,7 +14480,7 @@ namespace UCG
             {
                 if (topCard == null)
                 {
-                    message = "提示";
+                    message = "這條路沒有可升級的角色。";
                     return false;
                 }
 
@@ -14511,8 +14504,8 @@ namespace UCG
             }
 
             message = phaseManager.CurrentPhase == UcgGamePhase.SceneSetup
-                ? "提示"
-                : "提示";
+                ? "場景階段只能設置場景卡。"
+                : "目前階段不能設置這張卡。";
             return false;
         }
 
@@ -14834,27 +14827,27 @@ namespace UCG
         {
             if (_isTutorialFinishWaitingForClick)
             {
-                message = "提示";
+                message = "教學已完成，請點擊畫面返回。";
                 return false;
             }
 
             if (_isOpeningFirstPlayerSequence)
             {
-                message = "提示";
+                message = "正在決定先攻，請稍候。";
                 return false;
             }
 
             if (_isSelectingDeckOperationCard)
             {
                 message = IsHandReturnSelectionMode()
-                    ? "提示"
-                    : "提示";
+                    ? "請先完成手牌選擇。"
+                    : "請先完成卡牌選擇。";
                 return false;
             }
 
             if (IsGameOver)
             {
-                message = "提示";
+                message = "對戰已結束，無法再設置場景。";
                 return false;
             }
 
@@ -14866,37 +14859,37 @@ namespace UCG
 
             if (sharedSceneSlot == null)
             {
-                message = "提示";
+                message = "場景區尚未準備完成。";
                 return false;
             }
 
             if (_pendingAction != null)
             {
-                message = "提示";
+                message = "請先確認目前的操作。";
                 return false;
             }
 
             if (_isAutoPhaseRunning || (_isOpponentActionRunning && side == UcgPlayerSide.Player))
             {
-                message = "提示";
+                message = "正在處理階段流程，請稍候。";
                 return false;
             }
 
             if (cardData == null)
             {
-                message = "提示";
+                message = "沒有選擇卡牌。";
                 return false;
             }
 
             if (!cardData.IsSceneCard())
             {
-                message = "提示";
+                message = "請選擇場景卡。";
                 return false;
             }
 
             if (phaseManager == null || phaseManager.CurrentPhase != UcgGamePhase.SceneSetup)
             {
-                message = "提示";
+                message = "目前不是場景設置階段。";
                 return false;
             }
 
@@ -14904,8 +14897,8 @@ namespace UCG
             if (!allowDigaScriptedOpponentScene && !IsCurrentFirstPlayer(side))
             {
                 message = side == UcgPlayerSide.Player
-                    ? "提示"
-                    : "提示";
+                    ? "還不是我方設置場景的時機。"
+                    : "還不是對手設置場景的時機。";
                 return false;
             }
 
@@ -14914,13 +14907,13 @@ namespace UCG
                 int tutorialTurn = turnManager != null ? turnManager.currentTurn : 1;
                 if (tutorialTurn <= 2)
                 {
-                    message = $"提示";
+                    message = "教學前兩回合先不用設置場景。";
                     return false;
                 }
 
                 if (tutorialTurn == 3 && !IsDigaTutorialTargetSceneCard(cardData))
                 {
-                    message = "提示";
+                    message = "請選擇教學指定的場景卡。";
                     return false;
                 }
             }
@@ -14928,24 +14921,24 @@ namespace UCG
             int allowedSceneLight = GetAllowedSceneLightCount();
             if (cardData.sceneTurnCost > allowedSceneLight)
             {
-                message = $"提示";
+                message = $"場景能量不足，需要 {cardData.sceneTurnCost} 點。";
                 return false;
             }
 
             if (_sceneCardPlacedTurn == (turnManager != null ? turnManager.currentTurn : 1))
             {
-                message = "提示";
+                message = "本回合已設置過場景。";
                 return false;
             }
 
             UcgCardData currentScene = sharedSceneSlot != null ? sharedSceneSlot.SceneCardData : null;
             if (currentScene != null && cardData.sceneTurnCost < currentScene.sceneTurnCost)
             {
-                message = "提示";
+                message = "新場景的能量需求不能低於目前場景。";
                 return false;
             }
 
-            message = "提示";
+            message = "可以設置這張場景卡。";
             return true;
         }
 
@@ -15009,7 +15002,7 @@ namespace UCG
             message = "";
             if (sceneCard == null || dragCard == null || cardRect == null)
             {
-                message = "提示";
+                message = "沒有選擇場景卡。";
                 return false;
             }
 
@@ -15033,8 +15026,8 @@ namespace UCG
                 sharedSceneSlot.SetHighlight(false, false);
             }
             message = replacing
-                ? "提示"
-                : "提示";
+                ? "場景卡已替換，請確認操作。"
+                : "場景卡已放到中央場景區，請確認操作。";
             return true;
         }
 
@@ -15095,14 +15088,14 @@ namespace UCG
 
         string BuildScenePlacementMessage(UcgPlayerSide newOwner, bool replaced, UcgCardData oldSceneCard, UcgPlayerSide oldOwner, string drawMessage, string enterMessage)
         {
-            string ownerText = newOwner == UcgPlayerSide.Player ? "提示" : "提示";
+            string ownerText = newOwner == UcgPlayerSide.Player ? "我方" : "對手";
             string suffix = string.IsNullOrWhiteSpace(enterMessage) ? "" : " " + enterMessage;
             if (!replaced || oldSceneCard == null)
             {
-                return $"{ownerText} set scene: {drawMessage}{suffix}";
+                return $"{ownerText}設置場景：{drawMessage}{suffix}";
             }
 
-            return $"{ownerText} replaced scene {oldSceneCard.cardName}; {drawMessage}{suffix}";
+            return $"{ownerText}替換場景「{oldSceneCard.cardName}」；{drawMessage}{suffix}";
         }
 
         string ResolveSceneEnterEffect(UcgCardData sceneCard, UcgPlayerSide owner)
@@ -15114,11 +15107,11 @@ namespace UCG
                 case UcgDemoSceneEffectId.OnEnterDrawOne:
                     if (DrawCardsFromEffect(owner, 1, sceneCard) > 0)
                     {
-                        QueueEffectFeedback($"提示");
-                        return "提示";
+                        QueueEffectFeedback("場景效果：抽 1 張牌。");
+                        return "場景效果：抽 1 張牌。";
                     }
 
-                    return "這張不是可選擇的場景卡。";
+                    return "牌庫已空，無法抽牌。";
                 default:
                     return "";
             }
@@ -15126,7 +15119,7 @@ namespace UCG
 
         string GetDiscardOwnerText(UcgPlayerSide owner)
         {
-            return owner == UcgPlayerSide.Player ? "提示" : "提示";
+            return owner == UcgPlayerSide.Player ? "我方" : "對手";
         }
 
         void LogScenePlacement(UcgCardData newSceneCard, UcgPlayerSide newOwner, bool replaced, UcgCardData oldSceneCard, UcgPlayerSide oldOwner)
@@ -15153,11 +15146,11 @@ namespace UCG
                 if (DrawOneCardFromEffect())
                 {
                     RefreshZoneInfoUI();
-                    return "這張不是可選擇的角色卡。";
+                    return "抽 1 張牌。";
                 }
 
                 RefreshZoneInfoUI();
-                return "提示";
+                return "牌庫已空，無法抽牌。";
             }
 
             if (deckManager != null && deckManager.opponentDrawPile.Count > 0)
@@ -15165,19 +15158,19 @@ namespace UCG
                 deckManager.DrawOpponentCard();
                 SyncOpponentZoneCountsFromDeckManager();
                 RefreshZoneInfoUI();
-                return "提示";
+                return "對手抽 1 張牌。";
             }
 
             if (_opponentDeckCount <= 0)
             {
                 RefreshZoneInfoUI();
-                return "提示";
+                return "對手牌庫已空，無法抽牌。";
             }
 
             _opponentDeckCount--;
             _opponentHandCount++;
             RefreshZoneInfoUI();
-            return "提示";
+            return "對手抽 1 張牌。";
         }
 
         public void NotifySceneCardPlaced(UcgPlayerSide side, UcgCardView sceneCard)
@@ -15186,8 +15179,8 @@ namespace UCG
 
             if (playResultText != null)
             {
-                string ownerText = side == UcgPlayerSide.Player ? "提示" : "提示";
-                playResultText.text = $"提示";
+                string ownerText = side == UcgPlayerSide.Player ? "我方" : "對手";
+                playResultText.text = $"{ownerText}已設置場景卡。";
             }
 
             RefreshInteractionHints();
@@ -15197,7 +15190,7 @@ namespace UCG
         {
             if (playResultText != null)
             {
-                playResultText.text = string.IsNullOrWhiteSpace(message) ? "Cannot set scene." : message;
+                playResultText.text = string.IsNullOrWhiteSpace(message) ? "目前不能設置場景。" : message;
             }
         }
 
@@ -15290,23 +15283,23 @@ namespace UCG
             {
                 case UcgConditionalBpCategory.ParsedOpponentTypeCondition:
                     applies = CardTypeMatchesAny(opponentCard, rule.allowedTypes, rule.keyword);
-                    condition = $"提示";
+                    condition = $"對手角色類型包含 {rule.keyword}";
                     break;
                 case UcgConditionalBpCategory.ParsedOpponentCategoryCondition:
                     applies = CardCategoryMatches(opponentCard, rule.keyword);
-                    condition = $"提示";
+                    condition = $"對手角色分類為 {rule.keyword}";
                     break;
                 case UcgConditionalBpCategory.ParsedCharacterNameCondition:
                     int count = CountMatchingCharacters(side, rule.keyword);
                     applies = count > 0;
                     multiplier = rule.repeatPerMatchingCharacter ? count : 1;
-                    condition = $"提示";
+                    condition = $"我方有 {rule.keyword}";
                     break;
                 case UcgConditionalBpCategory.MappedSelfCharacterNameCountBoost:
                     int mappedCount = CountMatchingCharacters(side, rule.keyword);
                     applies = mappedCount > 0;
                     multiplier = rule.repeatPerMatchingCharacter ? mappedCount : 1;
-                    condition = $"提示";
+                    condition = $"我方有 {rule.keyword}";
                     break;
             }
 
@@ -15352,15 +15345,15 @@ namespace UCG
                 {
                     case UcgConditionalBpCategory.ParsedAllyTypeBoost:
                         applies = CardTypeMatches(targetCard, rule.keyword);
-                        condition = $"提示";
+                        condition = $"我方角色類型包含 {rule.keyword}";
                         break;
                     case UcgConditionalBpCategory.ParsedAllyCategoryBoost:
                         applies = CardCategoryMatches(targetCard, rule.keyword);
-                        condition = $"提示";
+                        condition = $"我方角色分類為 {rule.keyword}";
                         break;
                     case UcgConditionalBpCategory.ParsedCharacterNameCondition:
                         applies = CardCharacterMatches(targetCard, rule.keyword);
-                        condition = $"提示";
+                        condition = $"角色名稱包含 {rule.keyword}";
                         break;
                 }
 
@@ -15399,20 +15392,20 @@ namespace UCG
             {
                 case UcgConditionalBpCategory.ParsedSceneTypeBoost:
                     applies = CardTypeMatches(targetCard, rule.keyword);
-                    condition = $"提示";
+                    condition = $"場景強化 {rule.keyword}";
                     break;
                 case UcgConditionalBpCategory.ParsedSceneCharacterNameBoost:
                     applies = CardCharacterMatches(targetCard, rule.keyword);
-                    condition = $"提示";
+                    condition = $"場景強化 {rule.keyword}";
                     break;
                 case UcgConditionalBpCategory.ParsedFixedBpBoost:
                     if (SceneFixedBpAlreadyApplied(sceneCard)) return;
                     applies = true;
-                    condition = "提示";
+                    condition = "場景 BP 強化";
                     break;
                 case UcgConditionalBpCategory.ParsedBpStepUp:
                     applies = true;
-                    condition = "提示";
+                    condition = "場景 BP 上升";
                     break;
             }
 
@@ -15468,11 +15461,11 @@ namespace UCG
 
         string BuildBpEffectFeedback(UcgCardData sourceCard, int amount, bool isStepUp)
         {
-            string categoryText = sourceCard != null && sourceCard.IsSceneCard() ? "提示" : "提示";
-            if (isStepUp) return $"提示";
+            string categoryText = sourceCard != null && sourceCard.IsSceneCard() ? "場景效果" : "卡牌效果";
+            if (isStepUp) return $"{categoryText}，BP 上升";
 
             string sign = amount >= 0 ? "+" : "";
-            return $"{categoryText}，P {sign}{amount}";
+            return $"{categoryText}，BP {sign}{amount}";
         }
 
         bool IsConditionalStackRequirementMet(
@@ -15667,10 +15660,10 @@ namespace UCG
                 case UcgDemoSceneEffectId.OpponentAllBpPlus1000:
                 case UcgDemoSceneEffectId.OpponentAllBpPlus2000:
                 case UcgDemoSceneEffectId.OpponentAllBpPlus3000:
-                    AddSceneModifierToLanes(openedLanes, ownerSide, GetSceneBpAmount(sceneCard.sceneEffectId), sceneCard, "提示");
+                    AddSceneModifierToLanes(openedLanes, ownerSide, GetSceneBpAmount(sceneCard.sceneEffectId), sceneCard, "場景效果");
                     break;
                 case UcgDemoSceneEffectId.ActiveLanePlayerBpPlus1000:
-                    AddActiveLaneSceneModifier(ownerSide, 1000, sceneCard, "提示");
+                    AddActiveLaneSceneModifier(ownerSide, 1000, sceneCard, "場景效果");
                     break;
             }
         }
@@ -15795,7 +15788,7 @@ namespace UCG
 
             if (phaseManager.CurrentPhase == UcgGamePhase.Upgrade && !hasUpgradeTarget && playResultText != null)
             {
-                playResultText.text = "提示";
+                playResultText.text = "目前沒有可升級的我方角色。";
             }
         }
 
@@ -16189,8 +16182,8 @@ namespace UCG
 
         void ShowGameOverMessage()
         {
-            string winnerText = CurrentGameResult == UcgGameResultType.PlayerWin ? "提示" : "提示";
-            string message = $"提示";
+            string winnerText = CurrentGameResult == UcgGameResultType.PlayerWin ? "我方勝利" : "對手勝利";
+            string message = $"對戰結束：{winnerText}\n勝利路數：我方 {_lastPlayerWinCount} / 對手 {_lastOpponentWinCount}";
             if (playResultText != null)
             {
                 playResultText.text = message;
@@ -16252,9 +16245,9 @@ namespace UCG
             switch (gameResult)
             {
                 case UcgGameResultType.PlayerWin:
-                    return "這張卡目前不能選擇。";
+                    return "我方已取得三條路線勝利。";
                 case UcgGameResultType.OpponentWin:
-                    return "提示";
+                    return "對手已取得三條路線勝利。";
                 default:
                     return fallbackMessage;
             }
@@ -16271,15 +16264,15 @@ namespace UCG
 
             if (_isEffectAutoAdvancing)
             {
-                tutorialGuide.ShowPhasePrompt("提示");
+                tutorialGuide.ShowPhasePrompt("效果處理中，請稍候。");
                 return;
             }
 
             SyncTutorialStepForCurrentState();
             if (IsGameOver)
             {
-                string winnerText = CurrentGameResult == UcgGameResultType.PlayerWin ? "提示" : "提示";
-                tutorialGuide.ShowPhasePrompt($"Game over: {winnerText}\nPlayer wins: {_lastPlayerWinCount} / Opponent wins: {_lastOpponentWinCount}");
+                string winnerText = CurrentGameResult == UcgGameResultType.PlayerWin ? "我方勝利" : "對手勝利";
+                tutorialGuide.ShowPhasePrompt($"對戰結束：{winnerText}\n勝利路數：我方 {_lastPlayerWinCount} / 對手 {_lastOpponentWinCount}");
                 return;
             }
 
@@ -16295,14 +16288,14 @@ namespace UCG
                 && turnManager != null
                 && turnManager.currentTurn == 2)
             {
-                prompt = "提示";
+                prompt = "請選擇下一張迪卡角色卡，設置到新的路線。";
             }
             if (IsDigaTutorialModeActive() && phaseManager.CurrentPhase == UcgGamePhase.SceneSetup)
             {
                 int sceneTurn = turnManager != null ? turnManager.currentTurn : 1;
                 prompt = sceneTurn <= 2
-                    ? "提示"
-                    : "提示";
+                    ? "本回合先不用設置場景，準備登場角色卡。"
+                    : "請選擇教學指定的場景卡，設置到中央場景區。";
             }
             tutorialGuide.ShowPhasePrompt(prompt);
             if (phaseManager.CurrentPhase == UcgGamePhase.End)
@@ -16391,7 +16384,7 @@ namespace UCG
         {
             if (playResultText != null)
             {
-                playResultText.text = "Switched test: " + GetTestModeName(currentTestMode);
+                playResultText.text = "已切換測試模式：" + GetTestModeName(currentTestMode);
             }
         }
 
@@ -16478,12 +16471,19 @@ namespace UCG
             panelRect.localEulerAngles = Vector3.zero;
             panelRect.SetSiblingIndex(Mathf.Max(0, holderRect.GetSiblingIndex()));
 
-            panelImage.color = new Color(0.015f, 0.035f, 0.055f, 0.22f);
+            bool showDebugHandZone = debugBoardZones || debugBattlefieldLayout;
+            panelImage.enabled = showDebugHandZone;
+            panelImage.color = showDebugHandZone
+                ? new Color(0.015f, 0.035f, 0.055f, 0.22f)
+                : Color.clear;
             panelImage.raycastTarget = false;
 
             var outline = panelRect.GetComponent<Outline>();
-            outline.effectColor = new Color(0.4f, 0.82f, 1f, 0.035f);
-            outline.effectDistance = new Vector2(1f, -1f);
+            outline.enabled = showDebugHandZone;
+            outline.effectColor = showDebugHandZone
+                ? new Color(0.4f, 0.82f, 1f, 0.035f)
+                : Color.clear;
+            outline.effectDistance = showDebugHandZone ? new Vector2(1f, -1f) : Vector2.zero;
         }
 
         void ResetDeckAndBuildStartingHand()
@@ -16500,7 +16500,7 @@ namespace UCG
             }
             else
             {
-                DrawCardsToHand(DemoCardCount, "提示");
+                DrawCardsToHand(DemoCardCount, $"抽 {DemoCardCount} 張手牌。");
             }
 
             UpdateDeckCountText();
@@ -16530,7 +16530,7 @@ namespace UCG
 
             if (playResultText != null)
             {
-                playResultText.text = drawnCards.Count > 0 ? "Drew 6 cards." : "Deck is empty.";
+                playResultText.text = drawnCards.Count > 0 ? "抽 6 張手牌。" : "牌庫已空，無法抽牌。";
             }
         }
 
@@ -16576,7 +16576,7 @@ namespace UCG
 
             if (playResultText != null && !string.IsNullOrEmpty(resultMessage))
             {
-                playResultText.text = drawnCards.Count > 0 ? resultMessage : "提示";
+                playResultText.text = drawnCards.Count > 0 ? resultMessage : "牌庫已空，無法抽牌。";
             }
         }
 
@@ -16685,7 +16685,7 @@ namespace UCG
             }
 
             targetName = !string.IsNullOrWhiteSpace(targetCard.cardName) ? targetCard.cardName : "角色";
-            QueueEffectFeedback($"提示");
+            QueueEffectFeedback($"{targetName} 獲得 {grantedType} 類型。");
 
             if (debugEffectResolution)
             {
@@ -16733,7 +16733,7 @@ namespace UCG
             }
 
             message = string.IsNullOrWhiteSpace(condition.failureMessage)
-                ? "提示"
+                ? "效果條件未滿足，效果結束。"
                 : condition.failureMessage;
 
             if (debugEffectResolution)
@@ -16831,18 +16831,18 @@ namespace UCG
 
         public bool ResolveBp01105SceneActivatedEffect(UcgEffectInstance effect, out string message)
         {
-            message = "提示";
+            message = "正在處理場景效果。";
             if (effect == null || effect.cardData == null)
             {
-                message = "提示";
+                message = "場景效果資料不足，效果結束。";
                 return true;
             }
 
             UcgPlayerSide owner = effect.ownerSide;
-            string sceneName = string.IsNullOrWhiteSpace(effect.cardData.cardName) ? "提示" : effect.cardData.cardName;
+            string sceneName = string.IsNullOrWhiteSpace(effect.cardData.cardName) ? "場景卡" : effect.cardData.cardName;
             if (!HasBlazarInPlay(owner))
             {
-                message = $"提示";
+                message = $"{sceneName}：場上沒有符合條件的布雷撒，效果結束。";
                 ShowPlayStatus(message, 1.1f);
                 QueueEffectFeedback(message);
                 return true;
@@ -16851,7 +16851,7 @@ namespace UCG
             UcgRevealResult revealResult = RevealTopCards(owner, 5);
             if (revealResult.revealedCards.Count == 0)
             {
-                message = $"提示";
+                message = $"{sceneName}：牌庫沒有可公開的卡牌。";
                 ShowPlayStatus(message, 1.1f);
                 QueueEffectFeedback(message);
                 RefreshZoneInfoUI();
@@ -16864,7 +16864,7 @@ namespace UCG
                 if (legalCards.Count > 0)
                 {
                     BeginBp01105SceneRevealSelection(effect, revealResult.revealedCards, legalCards);
-                    message = $"提示";
+                    message = $"{sceneName}：請選擇要登場的角色卡。";
                     ShowPlayStatus(message, 1.2f);
                     return true;
                 }
@@ -16884,7 +16884,7 @@ namespace UCG
 
             if (!hasTarget || selectedCard == null || targetLane == null)
             {
-                message = $"提示";
+                message = $"{sceneName}：沒有可升級的目標，其餘公開卡送入棄牌區。";
                 ShowPlayStatus(message, 1.2f);
                 QueueEffectFeedback(message);
                 RefreshZoneInfoUI();
@@ -16896,7 +16896,7 @@ namespace UCG
             {
                 ApplyDeckOperationDestination(owner, selectedCard, UcgDeckOperationDestination.Trash);
                 sentToTrash++;
-                message = $"{sceneName}: {selectedCard.cardName} failed to enter; revealed cards go to discard.";
+                message = $"{sceneName}：{selectedCard.cardName} 登場失敗，公開卡送入棄牌區。";
                 ShowPlayStatus(message, 1.2f);
                 QueueEffectFeedback(message);
                 RefreshZoneInfoUI();
@@ -16957,8 +16957,8 @@ namespace UCG
             {
                 string sceneName = effect != null && effect.cardData != null && !string.IsNullOrWhiteSpace(effect.cardData.cardName)
                     ? effect.cardData.cardName
-                    : "提示";
-                _deckOperationSelectionTitle.text = $"提示";
+                    : "場景卡";
+                _deckOperationSelectionTitle.text = $"{sceneName}\n選擇要登場的角色卡";
             }
 
             for (int i = 0; i < _pendingBp01105RevealedCards.Count; i++)
@@ -16996,7 +16996,7 @@ namespace UCG
 
             if (!IsUltramanCard(selectedCard) || !HasLegalBp01105LaneForCard(_pendingBp01105Effect.ownerSide, selectedCard))
             {
-                ShowPlayStatus("提示", 1.1f);
+                ShowPlayStatus("請選擇可升級的超人角色卡。", 1.1f);
                 return;
             }
 
@@ -17030,9 +17030,9 @@ namespace UCG
             if (playResultText != null)
             {
                 string selectedName = string.IsNullOrWhiteSpace(selectedCard.cardName) ? selectedCard.id : selectedCard.cardName;
-                playResultText.text = $"提示";
+                playResultText.text = $"已選擇 {selectedName}，請選擇要升級的我方角色。";
             }
-            ShowPlayStatus("提示", 1.1f);
+            ShowPlayStatus("請選擇要升級的我方角色。", 1.1f);
             UpdateMainPrompt();
         }
 
@@ -17044,7 +17044,7 @@ namespace UCG
             UcgPlayerSide owner = effect != null ? effect.ownerSide : UcgPlayerSide.Player;
             string sceneName = effect != null && effect.cardData != null && !string.IsNullOrWhiteSpace(effect.cardData.cardName)
                 ? effect.cardData.cardName
-                : "提示";
+                : "場景卡";
 
             int sentToTrash = SendBp01105UnselectedRevealedCardsToTrash(owner, revealedCards, selectedCard);
             bool placed = selectedCard != null && PlaceBp01105TemporaryUpgrade(owner, targetLane, selectedCard, effect != null ? effect.cardData : null);
@@ -17066,7 +17066,7 @@ namespace UCG
             }
 
             string selectedName = string.IsNullOrWhiteSpace(selectedCard.cardName) ? selectedCard.id : selectedCard.cardName;
-            string message = $"提示";
+            string message = $"{sceneName}：{selectedName} 升級登場，其餘公開卡送入棄牌區。";
             LogBp01105SceneEffect(effect, revealedCards, selectedCard, targetLane, sentToTrash, "manual resolved");
             CleanupBp01105SelectionState();
             ClearEffectTargetSelection();
@@ -17315,7 +17315,7 @@ namespace UCG
             if (discardedCount > 0)
             {
                 RefreshZoneInfoUI();
-                QueueEffectFeedback($"提示");
+                QueueEffectFeedback($"臨時登場的角色送入棄牌區：{discardedCount} 張。");
                 if (debugEffectResolution)
                 {
                     Debug.Log($"BP01-105 temporary summons discarded: count={discardedCount}");
@@ -17362,7 +17362,7 @@ namespace UCG
 
         public bool ResolveDeckOperationFromEffect(UcgEffectInstance effect, UcgDeckOperationRule rule, out string message)
         {
-            message = "提示";
+            message = "正在處理牌庫效果。";
             if (IsGameOver || _isTutorialFinishWaitingForClick || deckManager == null || effect == null || rule == null)
             {
                 return false;
@@ -17399,18 +17399,18 @@ namespace UCG
             if (owner == UcgPlayerSide.Opponent)
             {
                 ResolveOpponentDeckOperation(effect, rule, revealResult.revealedCards, handBefore, deckBefore);
-                message = $"提示";
+                message = "對手已處理牌庫效果。";
                 return true;
             }
 
             BeginDeckOperationSelection(effect, rule, revealResult.revealedCards, handBefore, deckBefore);
-            message = "提示";
+            message = "請選擇效果指定的卡牌。";
             return true;
         }
 
         bool ResolveDrawThenPutHandToBottom(UcgEffectInstance effect, UcgDeckOperationRule rule, UcgPlayerSide owner, int handBefore, int deckBefore, out string message)
         {
-            message = "提示";
+            message = "正在處理抽牌效果。";
             int drawCount = Mathf.Max(1, rule.drawCount);
             var drawnCards = new List<UcgCardData>();
             bool isBlazarDrawBottomEffect = effect != null
@@ -17439,8 +17439,8 @@ namespace UCG
 
             if (owner == UcgPlayerSide.Player)
             {
-                ShowPlayStatus("提示");
-                QueueEffectFeedback("提示");
+                ShowPlayStatus("抽牌後，請選擇一張手牌放回牌庫底。");
+                QueueEffectFeedback("抽牌效果處理中。");
 
                 var drawn = deckManager.DrawCards(drawCount);
                 var drawnViews = new List<UcgCardView>();
@@ -17465,7 +17465,7 @@ namespace UCG
                 if (deckManager.playerHand.Count == 0)
                 {
                     LogBp01037Execute(effect, drawnCards, null, handBefore, handAfterDraw, deckBefore, deckAfterDraw, false, false, "player hand empty after draw");
-                    message = "提示";
+                    message = "目前沒有手牌可放回牌庫底。";
                     return true;
                 }
 
@@ -17480,7 +17480,7 @@ namespace UCG
                     handAfterDraw,
                     deckAfterDraw,
                     operationVersion));
-                message = "提示";
+                message = "請選擇一張手牌放回牌庫底。";
                 return true;
             }
 
@@ -17501,7 +17501,7 @@ namespace UCG
             SyncOpponentZoneCountsFromDeckManager();
             RefreshZoneInfoUI();
             LogDrawThenPutHandToBottom(effect, rule, owner, drawnCards, selectedCard, handBefore, deckBefore);
-            message = "提示";
+            message = "對手抽牌後，已將 1 張手牌放回牌庫底。";
             return true;
         }
 
@@ -17654,10 +17654,9 @@ namespace UCG
                 }
             }
 
-            RefreshHandLayout(true);
+            NormalizeAllHandCardViews("AfterDraw", true, true, true);
             if (restoreInteractable)
             {
-                RefreshHandCardDragInteractability();
                 LogHandRaycastState("AfterDraw");
             }
         }
@@ -18078,26 +18077,26 @@ namespace UCG
         {
             string cardName = effect != null && effect.cardData != null && !string.IsNullOrWhiteSpace(effect.cardData.cardName)
                 ? effect.cardData.cardName
-                : "提示";
+                : "卡牌效果";
             if (rule != null && rule.operationType == UcgDeckOperationType.DrawThenSelectBottom)
             {
-                return $"提示";
+                return $"{cardName}\n選擇要放回牌庫底的手牌";
             }
             if (rule != null && rule.selectionFilter != UcgDeckSelectionFilter.Any)
             {
                 return $"{cardName}\n{GetDeckOperationSelectionPrompt(rule.selectionFilter)}";
             }
 
-            return $"提示";
+            return $"{cardName}\n請選擇卡牌";
         }
 
         string BuildDeckOperationNoSelectionTitle(UcgEffectInstance effect, UcgDeckOperationRule rule, int revealedCount)
         {
             string cardName = effect != null && effect.cardData != null && !string.IsNullOrWhiteSpace(effect.cardData.cardName)
                 ? effect.cardData.cardName
-                : "提示";
+                : "卡牌效果";
             string noTargetMessage = GetDeckOperationNoValidSelectionMessage(rule != null ? rule.selectionFilter : UcgDeckSelectionFilter.Any);
-            return $"提示";
+            return $"{cardName}\n{noTargetMessage}";
         }
 
         void CreateDeckOperationCardButton(UcgCardData cardData, int index, int totalCount, bool canSelect, bool selectingFromHand)
@@ -18702,8 +18701,8 @@ namespace UCG
             RefreshZoneInfoUI();
 
             string message = returnedCards.Count > 0
-                ? $"Returned {returnedCards.Count} card(s) to the deck bottom, then drew {drawnCards.Count} card(s)."
-                : "No cards returned; drew 0 cards.";
+                ? $"已將 {returnedCards.Count} 張手牌放回牌庫底，抽 {drawnCards.Count} 張牌。"
+                : "沒有放回手牌，未抽牌。";
             if (drawnViews.Count > 0)
             {
                 _deckOperationDrawThenFinishRoutine = StartCoroutine(AnimateSelectHandToBottomThenDrawSameCountDrawThenFinish(
@@ -18734,7 +18733,7 @@ namespace UCG
             }
             else
             {
-                TryAutoAdvanceAfterTutorialEffectResolved("提示");
+                TryAutoAdvanceAfterTutorialEffectResolved(message);
             }
             UpdateMainPrompt();
             RefreshInteractionHints();
@@ -18790,7 +18789,7 @@ namespace UCG
             }
             else
             {
-                TryAutoAdvanceAfterTutorialEffectResolved("提示");
+                TryAutoAdvanceAfterTutorialEffectResolved(message);
             }
             UpdateMainPrompt();
             RefreshInteractionHints();
@@ -19572,7 +19571,7 @@ namespace UCG
             RestoreAllHandCardInteractionAfterDeckOperation(instantHandLayout, false);
             SetNextPhaseButtonInteractable(true);
             RefreshZoneInfoUI();
-            QueueEffectFeedback("提示");
+            QueueEffectFeedback("已選擇卡牌，牌庫效果處理完成。");
             StopEffectSourceHighlight(sourceEffect);
             if (phaseManager != null && phaseManager.CurrentPhase == UcgGamePhase.EnterEffect)
             {
@@ -19584,7 +19583,7 @@ namespace UCG
             }
             else
             {
-                TryAutoAdvanceAfterTutorialEffectResolved("提示");
+                TryAutoAdvanceAfterTutorialEffectResolved("牌庫效果處理完成。");
             }
             UpdateMainPrompt();
             SetHandCardsInteractable(true, null);
@@ -19693,7 +19692,7 @@ namespace UCG
             SetNextPhaseButtonInteractable(true);
             RefreshHandLayout();
             RefreshZoneInfoUI();
-            QueueEffectFeedback("Deck operation: " + noTargetMessage);
+            QueueEffectFeedback("牌庫效果：" + noTargetMessage);
             StopEffectSourceHighlight(sourceEffect);
 
             if (phaseManager != null && phaseManager.CurrentPhase == UcgGamePhase.EnterEffect)
@@ -19706,7 +19705,7 @@ namespace UCG
             }
             else
             {
-                TryAutoAdvanceAfterTutorialEffectResolved("提示");
+                TryAutoAdvanceAfterTutorialEffectResolved("牌庫效果處理完成。");
             }
             UpdateMainPrompt();
             RefreshInteractionHints();
@@ -19732,7 +19731,7 @@ namespace UCG
             if (!_isSelectingDeckOperationCard || _pendingDeckSelection == null || selectedCardView == null) return;
             if (!IsCurrentHandCardView(selectedCardView) || selectedCardView.CardData == null)
             {
-                ShowPlayStatus("提示", 1.1f);
+                ShowPlayStatus("請選擇目前手牌中的卡牌。", 1.1f);
                 if (selectedCardView != null) selectedCardView.SetSelected(false);
                 return;
             }
@@ -19751,7 +19750,7 @@ namespace UCG
             if (!removedFromHand)
             {
                 LogBp01037Execute(sourceEffect, drawnCards, selectedCard, handBefore, handAfterDraw, deckBefore, GetDrawPileForOwner(UcgPlayerSide.Player) != null ? GetDrawPileForOwner(UcgPlayerSide.Player).Count : 0, true, false, "selected card is not in playerHand");
-                ShowPlayStatus("提示", 1.1f);
+                ShowPlayStatus("這張卡不在手牌中，請重新選擇。", 1.1f);
                 return;
             }
 
@@ -19999,7 +19998,7 @@ namespace UCG
             UcgCardData selectedCard = selectableCards.Count > 0 ? selectableCards[0] : null;
             ResolveDeckOperationDestinations(effect, rule, revealedCards, selectedCard, UcgPlayerSide.Opponent, false, handBefore, deckBefore);
             RefreshZoneInfoUI();
-            QueueEffectFeedback("提示");
+            QueueEffectFeedback("對手已處理牌庫效果。");
         }
 
         void ResolveDeckOperationDestinations(UcgEffectInstance effect, UcgDeckOperationRule rule, List<UcgCardData> revealedCards, UcgCardData selectedCard, UcgPlayerSide owner, bool logWithCurrentCounts, int handBeforeOverride = -1, int deckBeforeOverride = -1, bool applySelectedDestination = true)
@@ -22078,21 +22077,21 @@ namespace UCG
             if (discardPilePanel == null || discardPilePanelText == null) return;
 
             var pile = side == UcgPlayerSide.Player ? _playerDiscardPile : _opponentDiscardPile;
-            string ownerText = side == UcgPlayerSide.Player ? "提示" : "提示";
-            string text = $"提示";
+            string ownerText = side == UcgPlayerSide.Player ? "我方" : "對手";
+            string text = $"{ownerText}棄牌區\n";
 
             if (pile.Count == 0)
             {
-                text += "提示";
+                text += "目前沒有卡牌。";
             }
             else
             {
                 for (int i = 0; i < pile.Count; i++)
                 {
                     UcgCardData card = pile[i];
-                    string typeText = card != null && card.IsSceneCard() ? "提示" : "角色";
-                    string costText = card != null && card.IsSceneCard() ? $"Cost {card.sceneTurnCost}" : "";
-                    string nameText = card != null ? card.cardName : "提示";
+                    string typeText = card != null && card.IsSceneCard() ? "場景" : "角色卡";
+                    string costText = card != null && card.IsSceneCard() ? $" 能量 {card.sceneTurnCost}" : "";
+                    string nameText = card != null ? card.cardName : "未知卡牌";
                     text += $"{i + 1}. {nameText} {typeText}{costText}\n";
                 }
             }
@@ -22212,39 +22211,39 @@ namespace UCG
 
             if (card.characterName == "測試超人" && card.level == 1)
             {
-                SetDemoEffect(card, UcgDemoEffectId.OnRevealSelfBpPlus1000, "提示");
+                SetDemoEffect(card, UcgDemoEffectId.OnRevealSelfBpPlus1000, "登場時，這張角色 BP +1000。");
             }
             else if (card.characterName == "Alien A" && card.level == 1)
             {
-                SetDemoEffect(card, UcgDemoEffectId.OnRevealDrawOne, "提示");
+                SetDemoEffect(card, UcgDemoEffectId.OnRevealDrawOne, "登場時，抽 1 張牌。");
             }
             else if (card.characterName == "測試超人" && card.level == 2)
             {
-                SetDemoEffect(card, UcgDemoEffectId.OnRevealChooseOwnLaneBpPlus1000, "提示");
+                SetDemoEffect(card, UcgDemoEffectId.OnRevealChooseOwnLaneBpPlus1000, "登場時，選擇我方 1 張角色，BP +1000。");
             }
             else if (card.characterName == "Alien A" && card.level == 2)
             {
-                SetDemoEffect(card, UcgDemoEffectId.OnRevealChooseOpponentLaneBpMinus1000, "提示");
+                SetDemoEffect(card, UcgDemoEffectId.OnRevealChooseOpponentLaneBpMinus1000, "登場時，選擇對手 1 張角色，BP -1000。");
             }
             else if (card.characterName == "測試怪獸" && card.level == 5)
             {
-                SetDemoEffect(card, UcgDemoEffectId.OnRevealSelfBpPlus1000, "提示");
+                SetDemoEffect(card, UcgDemoEffectId.OnRevealSelfBpPlus1000, "登場時，這張角色 BP +1000。");
             }
             else if (card.characterName == "測試怪獸" && card.level == 6)
             {
-                SetDemoEffect(card, UcgDemoEffectId.OnRevealChooseOwnLaneBpPlus1000, "提示");
+                SetDemoEffect(card, UcgDemoEffectId.OnRevealChooseOwnLaneBpPlus1000, "登場時，選擇我方 1 張角色，BP +1000。");
             }
             else if (card.characterName == "測試宇宙人" && card.level == 5)
             {
-                SetDemoEffect(card, UcgDemoEffectId.OnRevealChooseOpponentLaneBpMinus1000, "提示");
+                SetDemoEffect(card, UcgDemoEffectId.OnRevealChooseOpponentLaneBpMinus1000, "登場時，選擇對手 1 張角色，BP -1000。");
             }
             else if (card.characterName == "測試隊伍" && card.level == 1)
             {
-                SetDemoEffect(card, UcgDemoEffectId.OnRevealSelfBpPlus1000, "提示");
+                SetDemoEffect(card, UcgDemoEffectId.OnRevealSelfBpPlus1000, "登場時，這張角色 BP +1000。");
             }
             else if (card.characterName == "測試隊伍" && card.level == 2)
             {
-                SetDemoEffect(card, UcgDemoEffectId.OnRevealDrawOne, "提示");
+                SetDemoEffect(card, UcgDemoEffectId.OnRevealDrawOne, "登場時，抽 1 張牌。");
             }
         }
 
@@ -22326,11 +22325,11 @@ namespace UCG
             switch (mode)
             {
                 case UcgTestMode.MonsterAlienTest:
-                    return "提示";
+                    return "怪獸／宇宙人測試";
                 case UcgTestMode.TeamTest:
-                    return "提示";
+                    return "隊伍測試";
                 default:
-                    return "提示";
+                    return "超人測試";
             }
         }
 
@@ -22439,7 +22438,7 @@ namespace UCG
             {
                 if (playResultText != null && selectedCard.CardData != null && selectedCard.CardData.effectTiming == UcgEffectTiming.Activated)
                 {
-                    playResultText.text = "提示";
+                    playResultText.text = "這張卡目前沒有可處理的效果。";
                 }
                 return;
             }
@@ -22465,7 +22464,7 @@ namespace UCG
             {
                 if (playResultText != null)
                 {
-                    playResultText.text = "提示";
+                    playResultText.text = "這張場景卡目前沒有可處理的效果。";
                 }
                 return;
             }
