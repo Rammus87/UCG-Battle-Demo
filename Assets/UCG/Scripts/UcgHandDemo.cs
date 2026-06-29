@@ -105,6 +105,7 @@ namespace UCG
         public Sprite[] testCardSprites = new Sprite[DemoCardCount];
 
         [Header("Debug")]
+        public bool debugMode;
         public bool debugLayoutDiagnostics;
         public bool debugOpponentRuntime;
         public bool debugScenePlacement;
@@ -301,12 +302,20 @@ namespace UCG
         RectTransform _battlefieldVisualLayer;
         Image _battlefieldVisualImage;
         Outline _battlefieldVisualOutline;
+        Coroutine _battlefieldActionFeedbackRoutine;
+        readonly List<Image> _battlefieldFeedbackImages = new List<Image>();
+        readonly List<Color> _battlefieldFeedbackBaseColors = new List<Color>();
+        readonly List<UcgGuidancePulse> _battlefieldFeedbackPulses = new List<UcgGuidancePulse>();
+        readonly List<Coroutine> _cardActionFeedbackRoutines = new List<Coroutine>();
         RectTransform _topPromptProgressTrackRect;
         RectTransform _topPromptProgressFillRect;
+        Text _topPromptCountdownText;
         RectTransform _effectFeedbackToastPanel;
         Image _effectFeedbackToastImage;
         RectTransform _effectFeedbackToastAccent;
         Image _effectFeedbackToastAccentImage;
+        RectTransform _devOverlayRoot;
+        CanvasGroup _devOverlayCanvasGroup;
         RectTransform _effectFeedbackTextRect;
         Vector2 _effectFeedbackTextBasePosition;
         Vector2 _effectFeedbackToastBasePosition;
@@ -317,6 +326,8 @@ namespace UCG
         Text _turnStartBannerTurnText;
         Text _turnStartBannerInitiativeText;
         Coroutine _turnStartBannerRoutine;
+        Coroutine _topPromptIntroRoutine;
+        Coroutine _topPromptPulseRoutine;
         UcgGamePhase _lastTopPromptPhase = UcgGamePhase.Start;
         int _lastTurnStartBannerShownTurn;
         UcgEffectInstance _activeEffectSourceHighlight;
@@ -342,6 +353,7 @@ namespace UCG
         RectTransform _pendingConfirmRoot;
         Text _pendingConfirmText;
         Button _pendingConfirmButton;
+        Button _pendingCancelButton;
         RectTransform _gameOverModalRoot;
         Text _gameOverModalText;
         Button _gameOverRestartButton;
@@ -436,6 +448,7 @@ namespace UCG
             EnsureTutorialFinishClickLayer();
             EnsureDeckOperationSelectionUI();
             EnsureCardHolder();
+            EnsureDevOverlayRoot();
             EnsureRestartButton();
             EnsureSwitchTestButton();
             EnsureSkipTutorialButton();
@@ -464,6 +477,8 @@ namespace UCG
             UpdateDebugCombatViewportOffset();
             RefreshBoardZoneLayoutIfBattlefieldViewChanged();
             UpdateEffectTestToolPanelVisibility();
+            UpdateDevOverlayVisibility();
+            UpdateDebugInfoVisibility();
             UpdateTopPhaseHud();
             EnsureTutorialPanelTopLayer();
             UpdateHandRaycastDebugProbe();
@@ -916,6 +931,139 @@ namespace UCG
             EnsureBattlefieldAreaLabel(parent, "Battlefield Opponent Area Label", "Opponent", new Vector2(0.5f, 0.79f), UcgToolUiPalette.WithAlpha(UcgToolUiPalette.SoftWhite, debugBoardZones ? 0.90f : 0.42f), 19);
             EnsureBattlefieldAreaLabel(parent, "Battlefield Player Area Label", "Player", new Vector2(0.5f, 0.21f), UcgToolUiPalette.WithAlpha(UcgToolUiPalette.SoftWhite, debugBoardZones ? 0.90f : 0.42f), 19);
             EnsureBattlefieldAreaLabel(parent, "Battlefield Scene Axis Label", "Scene", new Vector2(0.5f, 0.50f), UcgToolUiPalette.WithAlpha(UcgToolUiPalette.FocusCyan, debugBoardZones ? 0.90f : 0.34f), 16);
+            EnsureBattlefieldCompositionGuides(parent);
+        }
+
+        void EnsureBattlefieldCompositionGuides(RectTransform parent)
+        {
+            if (parent == null) return;
+
+            float guideAlpha = debugBoardZones ? 0.52f : 0.24f;
+            float guideSoftAlpha = debugBoardZones ? 0.30f : 0.12f;
+            Color laneCore = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.FocusCyan, guideAlpha);
+            Color laneSoft = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.FocusCyan, guideSoftAlpha);
+            Color sceneGlow = UcgToolUiPalette.WithAlpha(new Color(0.27f, 0.86f, 1f, 1f), debugBoardZones ? 0.22f : 0.085f);
+            Color sceneEdge = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.FocusCyan, debugBoardZones ? 0.70f : 0.28f);
+            Color characterGround = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.FocusCyan, debugBoardZones ? 0.42f : 0.16f);
+            Color laneLabelColor = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.SoftWhite, debugBoardZones ? 0.86f : 0.58f);
+
+            EnsureBattlefieldPulseImage(parent, "Battlefield Lane 3 Guide Core", new Vector2(0.235f, 0.20f), new Vector2(0.235f, 0.80f), Vector2.zero, new Vector2(1.8f, 0f), laneCore, 0.035f, 2.1f);
+            EnsureBattlefieldPulseImage(parent, "Battlefield Lane 2 Guide Core", new Vector2(0.5f, 0.20f), new Vector2(0.5f, 0.80f), Vector2.zero, new Vector2(1.8f, 0f), laneCore, 0.035f, 2.35f);
+            EnsureBattlefieldPulseImage(parent, "Battlefield Lane 1 Guide Core", new Vector2(0.765f, 0.20f), new Vector2(0.765f, 0.80f), Vector2.zero, new Vector2(1.8f, 0f), laneCore, 0.035f, 2.6f);
+
+            EnsureBattlefieldPulseImage(parent, "Battlefield Lane 3 Guide Glow", new Vector2(0.235f, 0.25f), new Vector2(0.235f, 0.75f), Vector2.zero, new Vector2(7f, 0f), laneSoft, 0.025f, 1.95f);
+            EnsureBattlefieldPulseImage(parent, "Battlefield Lane 2 Guide Glow", new Vector2(0.5f, 0.25f), new Vector2(0.5f, 0.75f), Vector2.zero, new Vector2(7f, 0f), laneSoft, 0.025f, 2.2f);
+            EnsureBattlefieldPulseImage(parent, "Battlefield Lane 1 Guide Glow", new Vector2(0.765f, 0.25f), new Vector2(0.765f, 0.75f), Vector2.zero, new Vector2(7f, 0f), laneSoft, 0.025f, 2.45f);
+
+            EnsureBattlefieldAccent(parent, "Battlefield Scene Pedestal Wash", new Vector2(0.16f, 0.42f), new Vector2(0.84f, 0.58f), Vector2.zero, Vector2.zero, sceneGlow);
+            EnsureBattlefieldPulseImage(parent, "Battlefield Scene Pedestal Front Edge", new Vector2(0.19f, 0.39f), new Vector2(0.81f, 0.39f), Vector2.zero, new Vector2(0f, 2.2f), sceneEdge, 0.035f, 2.25f);
+            EnsureBattlefieldPulseImage(parent, "Battlefield Scene Pedestal Back Edge", new Vector2(0.22f, 0.61f), new Vector2(0.78f, 0.61f), Vector2.zero, new Vector2(0f, 1.4f), UcgToolUiPalette.WithAlpha(UcgToolUiPalette.FocusCyan, debugBoardZones ? 0.42f : 0.16f), 0.025f, 2.05f);
+            EnsureBattlefieldAccent(parent, "Battlefield Scene Pedestal Center Node", new Vector2(0.5f, 0.39f), new Vector2(0.5f, 0.39f), Vector2.zero, new Vector2(9f, 9f), UcgToolUiPalette.WithAlpha(UcgToolUiPalette.FocusCyan, debugBoardZones ? 0.78f : 0.34f));
+
+            EnsureBattlefieldCharacterGround(parent, "Battlefield Lane 3 Opponent Ground", 0.235f, 0.70f, characterGround);
+            EnsureBattlefieldCharacterGround(parent, "Battlefield Lane 2 Opponent Ground", 0.5f, 0.70f, characterGround);
+            EnsureBattlefieldCharacterGround(parent, "Battlefield Lane 1 Opponent Ground", 0.765f, 0.70f, characterGround);
+            EnsureBattlefieldCharacterGround(parent, "Battlefield Lane 3 Player Ground", 0.235f, 0.30f, characterGround);
+            EnsureBattlefieldCharacterGround(parent, "Battlefield Lane 2 Player Ground", 0.5f, 0.30f, characterGround);
+            EnsureBattlefieldCharacterGround(parent, "Battlefield Lane 1 Player Ground", 0.765f, 0.30f, characterGround);
+
+            EnsureBattlefieldLaneLabel(parent, "Battlefield Lane Label 3", "Lane 3", new Vector2(0.235f, 0.085f), laneLabelColor);
+            EnsureBattlefieldLaneLabel(parent, "Battlefield Lane Label 2", "Lane 2", new Vector2(0.5f, 0.085f), laneLabelColor);
+            EnsureBattlefieldLaneLabel(parent, "Battlefield Lane Label 1", "Lane 1", new Vector2(0.765f, 0.085f), laneLabelColor);
+        }
+
+        void EnsureBattlefieldCharacterGround(RectTransform parent, string objectName, float xAnchor, float yAnchor, Color color)
+        {
+            EnsureBattlefieldPulseImage(
+                parent,
+                objectName,
+                new Vector2(xAnchor, yAnchor),
+                new Vector2(xAnchor, yAnchor),
+                Vector2.zero,
+                new Vector2(96f, 2.4f),
+                color,
+                0.018f,
+                1.85f + xAnchor);
+            EnsureBattlefieldAccent(
+                parent,
+                objectName + " Soft Base",
+                new Vector2(xAnchor, yAnchor - 0.02f),
+                new Vector2(xAnchor, yAnchor - 0.02f),
+                Vector2.zero,
+                new Vector2(112f, 18f),
+                UcgToolUiPalette.WithAlpha(UcgToolUiPalette.FocusCyan, debugBoardZones ? 0.14f : 0.045f));
+        }
+
+        void EnsureBattlefieldPulseImage(RectTransform parent, string objectName, Vector2 anchorMin, Vector2 anchorMax, Vector2 anchoredPosition, Vector2 sizeDelta, Color color, float alphaAmplitude, float speed)
+        {
+            RectTransform rect = EnsureBattlefieldAccent(parent, objectName, anchorMin, anchorMax, anchoredPosition, sizeDelta, color);
+            if (rect == null) return;
+
+            Image image = rect.GetComponent<Image>();
+            UcgGuidancePulse pulse = rect.GetComponent<UcgGuidancePulse>();
+            if (pulse == null) pulse = rect.gameObject.AddComponent<UcgGuidancePulse>();
+            pulse.targetImage = image;
+            pulse.targetRect = rect;
+            pulse.pulseScale = false;
+            pulse.pulseAlpha = true;
+            pulse.alphaAmplitude = alphaAmplitude;
+            pulse.bobAmplitude = 0f;
+            pulse.rotateDegreesPerSecond = 0f;
+            pulse.speed = speed;
+            pulse.CaptureBaseState();
+            pulse.enabled = color.a > 0.001f;
+        }
+
+        void EnsureBattlefieldLaneLabel(RectTransform parent, string objectName, string text, Vector2 anchor, Color color)
+        {
+            if (parent == null) return;
+
+            Transform existingLabel = parent.Find(objectName);
+            RectTransform labelRect;
+            Text label;
+            if (existingLabel == null)
+            {
+                var labelObject = new GameObject(objectName, typeof(RectTransform), typeof(Text), typeof(Outline));
+                labelObject.transform.SetParent(parent, false);
+                labelRect = labelObject.GetComponent<RectTransform>();
+                label = labelObject.GetComponent<Text>();
+            }
+            else
+            {
+                labelRect = existingLabel as RectTransform;
+                label = existingLabel.GetComponent<Text>();
+                if (label == null) label = existingLabel.gameObject.AddComponent<Text>();
+                if (existingLabel.GetComponent<Outline>() == null) existingLabel.gameObject.AddComponent<Outline>();
+            }
+
+            labelRect.anchorMin = anchor;
+            labelRect.anchorMax = anchor;
+            labelRect.pivot = new Vector2(0.5f, 0.5f);
+            labelRect.anchoredPosition = Vector2.zero;
+            labelRect.sizeDelta = new Vector2(100f, 24f);
+            labelRect.localScale = Vector3.one;
+            labelRect.localEulerAngles = Vector3.zero;
+
+            label.text = text;
+            label.alignment = TextAnchor.MiddleCenter;
+            label.color = color;
+            label.fontSize = 15;
+            label.fontStyle = FontStyle.Normal;
+            label.resizeTextForBestFit = true;
+            label.resizeTextMinSize = 10;
+            label.resizeTextMaxSize = 15;
+            label.raycastTarget = false;
+            Font font = LoadPlaceholderFont();
+            if (font != null) label.font = font;
+
+            Outline outline = label.GetComponent<Outline>();
+            if (outline != null)
+            {
+                outline.enabled = true;
+                outline.effectColor = new Color(0f, 0f, 0f, 0.22f);
+                outline.effectDistance = new Vector2(0.8f, -0.8f);
+                outline.useGraphicAlpha = true;
+            }
         }
 
         void EnsureBattlefieldAreaLabel(RectTransform parent, string objectName, string text, Vector2 anchor, Color color, int fontSize)
@@ -971,9 +1119,9 @@ namespace UCG
             }
         }
 
-        void EnsureBattlefieldAccent(RectTransform parent, string objectName, Vector2 anchorMin, Vector2 anchorMax, Vector2 anchoredPosition, Vector2 sizeDelta, Color color)
+        RectTransform EnsureBattlefieldAccent(RectTransform parent, string objectName, Vector2 anchorMin, Vector2 anchorMax, Vector2 anchoredPosition, Vector2 sizeDelta, Color color)
         {
-            if (parent == null) return;
+            if (parent == null) return null;
 
             Transform existingAccent = parent.Find(objectName);
             RectTransform accentRect;
@@ -1005,6 +1153,354 @@ namespace UCG
             accentImage.enabled = visible;
             accentImage.color = color;
             accentImage.raycastTarget = false;
+            return accentRect;
+        }
+
+        void PlayLaneActionFeedback(UcgBattleLane lane, bool isUpgrade, UcgCardView focusCard = null)
+        {
+            if (lane == null) return;
+
+            EnsureBattlefieldVisualLayer();
+            int laneNumber = Mathf.Clamp(lane.laneIndex + 1, 1, 3);
+            float duration = isUpgrade ? 0.32f : 0.26f;
+
+            if (_battlefieldActionFeedbackRoutine != null)
+            {
+                StopCoroutine(_battlefieldActionFeedbackRoutine);
+                _battlefieldActionFeedbackRoutine = null;
+                RestoreBattlefieldActionFeedbackState();
+            }
+
+            _battlefieldActionFeedbackRoutine = StartCoroutine(BattlefieldLaneActionFeedbackRoutine(laneNumber, isUpgrade, duration));
+            PlayCardSpotlight(focusCard, isUpgrade ? 0.34f : 0.28f, isUpgrade);
+        }
+
+        void PlayEffectTargetActionFeedback(UcgBattleLane lane, UcgPlayerSide side)
+        {
+            UcgCardView focusCard = GetLaneTopCardView(lane, side);
+            PlayLaneActionFeedback(lane, false, focusCard);
+        }
+
+        void PlayRevealFeedbackForOpenedLanes()
+        {
+            if (battlefieldManager == null || turnManager == null) return;
+
+            List<UcgBattleLane> lanes = battlefieldManager.GetOpenedLanes(turnManager.currentTurn);
+            if (lanes == null) return;
+            for (int i = 0; i < lanes.Count; i++)
+            {
+                UcgBattleLane lane = lanes[i];
+                if (lane == null) continue;
+                PlayRevealFeedback(GetLaneTopCardView(lane, UcgPlayerSide.Player));
+                PlayRevealFeedback(GetLaneTopCardView(lane, UcgPlayerSide.Opponent));
+            }
+        }
+
+        UcgCardView GetLaneTopCardView(UcgBattleLane lane, UcgPlayerSide side)
+        {
+            if (lane == null) return null;
+            if (side == UcgPlayerSide.Player)
+            {
+                UcgPlayArea playArea = lane.GetPlayerPlayArea();
+                return playArea != null ? playArea.GetTopCard() : lane.playerTopCard;
+            }
+
+            return lane.GetOpponentTopCard();
+        }
+
+        IEnumerator BattlefieldLaneActionFeedbackRoutine(int laneNumber, bool isUpgrade, float duration)
+        {
+            if (_battlefieldVisualLayer == null) yield break;
+
+            string lanePrefix = $"Battlefield Lane {laneNumber}";
+            var targets = new List<Image>
+            {
+                FindBattlefieldFeedbackImage($"{lanePrefix} Guide Core"),
+                FindBattlefieldFeedbackImage($"{lanePrefix} Guide Glow"),
+                FindBattlefieldFeedbackImage($"{lanePrefix} Opponent Ground"),
+                FindBattlefieldFeedbackImage($"{lanePrefix} Opponent Ground Soft Base"),
+                FindBattlefieldFeedbackImage($"{lanePrefix} Player Ground"),
+                FindBattlefieldFeedbackImage($"{lanePrefix} Player Ground Soft Base"),
+                FindBattlefieldFeedbackImage("Battlefield Scene Pedestal Wash"),
+                FindBattlefieldFeedbackImage("Battlefield Scene Pedestal Front Edge"),
+                FindBattlefieldFeedbackImage("Battlefield Scene Pedestal Back Edge"),
+                FindBattlefieldFeedbackImage("Battlefield Scene Pedestal Center Node")
+            };
+            _battlefieldFeedbackImages.Clear();
+            _battlefieldFeedbackBaseColors.Clear();
+            _battlefieldFeedbackPulses.Clear();
+
+            for (int i = 0; i < targets.Count; i++)
+            {
+                Image image = targets[i];
+                if (image == null)
+                {
+                    _battlefieldFeedbackImages.Add(null);
+                    _battlefieldFeedbackBaseColors.Add(Color.clear);
+                    _battlefieldFeedbackPulses.Add(null);
+                    continue;
+                }
+
+                _battlefieldFeedbackImages.Add(image);
+                _battlefieldFeedbackBaseColors.Add(image.color);
+                UcgGuidancePulse pulse = image.GetComponent<UcgGuidancePulse>();
+                _battlefieldFeedbackPulses.Add(pulse);
+                if (pulse != null) pulse.enabled = false;
+            }
+
+            float elapsed = 0f;
+            while (elapsed < duration)
+            {
+                elapsed += Time.unscaledDeltaTime;
+                float t = Mathf.Clamp01(elapsed / duration);
+                float eased = 1f - Mathf.Pow(1f - t, 3f);
+                float pulse = 1f - eased;
+                float alphaLift = isUpgrade ? 0.20f : 0.16f;
+                Color liftTint = isUpgrade ? UcgToolUiPalette.WarningGold : UcgToolUiPalette.FocusCyan;
+
+                for (int i = 0; i < _battlefieldFeedbackImages.Count; i++)
+                {
+                    Image image = _battlefieldFeedbackImages[i];
+                    if (image == null) continue;
+
+                    Color baseColor = _battlefieldFeedbackBaseColors[i];
+                    Color color = Color.Lerp(baseColor, liftTint, 0.14f * pulse);
+                    color.a = Mathf.Clamp01(baseColor.a + alphaLift * pulse);
+                    image.color = color;
+                }
+
+                yield return null;
+            }
+
+            RestoreBattlefieldActionFeedbackState();
+            _battlefieldActionFeedbackRoutine = null;
+        }
+
+        void RestoreBattlefieldActionFeedbackState()
+        {
+            for (int i = 0; i < _battlefieldFeedbackImages.Count; i++)
+            {
+                Image image = _battlefieldFeedbackImages[i];
+                if (image == null) continue;
+                image.color = _battlefieldFeedbackBaseColors[i];
+                UcgGuidancePulse pulse = _battlefieldFeedbackPulses[i];
+                if (pulse != null)
+                {
+                    pulse.CaptureBaseState();
+                    pulse.enabled = true;
+                }
+            }
+
+            _battlefieldFeedbackImages.Clear();
+            _battlefieldFeedbackBaseColors.Clear();
+            _battlefieldFeedbackPulses.Clear();
+        }
+
+        Image FindBattlefieldFeedbackImage(string objectName)
+        {
+            if (_battlefieldVisualLayer == null || string.IsNullOrWhiteSpace(objectName)) return null;
+            Transform target = _battlefieldVisualLayer.Find(objectName);
+            return target != null ? target.GetComponent<Image>() : null;
+        }
+
+        void PlayCardSpotlight(UcgCardView cardView, float duration, bool isUpgrade)
+        {
+            if (cardView == null || !cardView.gameObject.activeInHierarchy) return;
+
+            RectTransform cardRect = cardView.transform as RectTransform;
+            if (cardRect == null) return;
+
+            Coroutine routine = StartCoroutine(CardSpotlightRoutine(cardRect, Mathf.Clamp(duration, 0.20f, 0.45f), isUpgrade));
+            _cardActionFeedbackRoutines.Add(routine);
+        }
+
+        void PlayRevealFeedback(UcgCardView cardView)
+        {
+            if (cardView == null || !cardView.gameObject.activeInHierarchy || cardView.IsFaceDown) return;
+
+            RectTransform cardRect = cardView.transform as RectTransform;
+            if (cardRect == null) return;
+
+            Coroutine routine = StartCoroutine(CardRevealFeedbackRoutine(cardRect, 0.30f));
+            _cardActionFeedbackRoutines.Add(routine);
+        }
+
+        IEnumerator CardSpotlightRoutine(RectTransform cardRect, float duration, bool isUpgrade)
+        {
+            RectTransform spotlightRect = EnsureCardFeedbackOverlay(cardRect, "Card Action Spotlight");
+            if (spotlightRect == null) yield break;
+
+            Image image = spotlightRect.GetComponent<Image>();
+            Outline outline = spotlightRect.GetComponent<Outline>();
+            Color fillColor = isUpgrade
+                ? UcgToolUiPalette.WithAlpha(UcgToolUiPalette.WarningGold, 0.055f)
+                : UcgToolUiPalette.WithAlpha(UcgToolUiPalette.FocusCyan, 0.045f);
+            Color outlineColor = isUpgrade
+                ? UcgToolUiPalette.WithAlpha(UcgToolUiPalette.WarningGold, 0.24f)
+                : UcgToolUiPalette.WithAlpha(UcgToolUiPalette.FocusCyan, 0.22f);
+
+            spotlightRect.SetAsLastSibling();
+            spotlightRect.gameObject.SetActive(true);
+            float elapsed = 0f;
+            while (elapsed < duration && spotlightRect != null)
+            {
+                elapsed += Time.unscaledDeltaTime;
+                float t = Mathf.Clamp01(elapsed / duration);
+                float eased = 1f - Mathf.Pow(1f - t, 3f);
+                float alpha = 1f - eased;
+
+                if (image != null)
+                {
+                    Color color = fillColor;
+                    color.a *= alpha;
+                    image.color = color;
+                }
+                if (outline != null)
+                {
+                    Color color = outlineColor;
+                    color.a *= alpha;
+                    outline.effectColor = color;
+                    outline.enabled = color.a > 0.001f;
+                }
+
+                yield return null;
+            }
+
+            HideCardFeedbackOverlay(spotlightRect);
+            _cardActionFeedbackRoutines.RemoveAll(r => r == null);
+        }
+
+        IEnumerator CardRevealFeedbackRoutine(RectTransform cardRect, float duration)
+        {
+            RectTransform ringRect = EnsureCardFeedbackOverlay(cardRect, "Card Reveal Feedback Ring");
+            if (ringRect == null) yield break;
+
+            Image image = ringRect.GetComponent<Image>();
+            Outline outline = ringRect.GetComponent<Outline>();
+            Color fillColor = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.FocusCyan, 0.04f);
+            Color outlineColor = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.BrandPinkLight, 0.26f);
+
+            ringRect.SetAsLastSibling();
+            ringRect.gameObject.SetActive(true);
+            float elapsed = 0f;
+            while (elapsed < duration && ringRect != null)
+            {
+                elapsed += Time.unscaledDeltaTime;
+                float t = Mathf.Clamp01(elapsed / duration);
+                float eased = 1f - Mathf.Pow(1f - t, 3f);
+                float alpha = 1f - eased;
+                ringRect.localScale = Vector3.one * Mathf.Lerp(1.015f, 1.055f, eased);
+
+                if (image != null)
+                {
+                    Color color = fillColor;
+                    color.a *= alpha;
+                    image.color = color;
+                }
+                if (outline != null)
+                {
+                    Color color = outlineColor;
+                    color.a *= alpha;
+                    outline.effectColor = color;
+                    outline.enabled = color.a > 0.001f;
+                }
+
+                yield return null;
+            }
+
+            HideCardFeedbackOverlay(ringRect);
+            _cardActionFeedbackRoutines.RemoveAll(r => r == null);
+        }
+
+        RectTransform EnsureCardFeedbackOverlay(RectTransform cardRect, string objectName)
+        {
+            if (cardRect == null || string.IsNullOrWhiteSpace(objectName)) return null;
+
+            Transform existing = cardRect.Find(objectName);
+            RectTransform overlayRect;
+            Image image;
+            Outline outline;
+            if (existing == null)
+            {
+                var overlayObject = new GameObject(objectName, typeof(RectTransform), typeof(Image), typeof(Outline));
+                overlayObject.transform.SetParent(cardRect, false);
+                overlayRect = overlayObject.GetComponent<RectTransform>();
+                image = overlayObject.GetComponent<Image>();
+                outline = overlayObject.GetComponent<Outline>();
+            }
+            else
+            {
+                overlayRect = existing as RectTransform;
+                image = existing.GetComponent<Image>();
+                if (image == null) image = existing.gameObject.AddComponent<Image>();
+                outline = existing.GetComponent<Outline>();
+                if (outline == null) outline = existing.gameObject.AddComponent<Outline>();
+            }
+
+            overlayRect.anchorMin = Vector2.zero;
+            overlayRect.anchorMax = Vector2.one;
+            overlayRect.offsetMin = new Vector2(-3f, -3f);
+            overlayRect.offsetMax = new Vector2(3f, 3f);
+            overlayRect.pivot = new Vector2(0.5f, 0.5f);
+            overlayRect.localScale = Vector3.one;
+            overlayRect.localEulerAngles = Vector3.zero;
+
+            if (image.sprite == null)
+            {
+                try
+                {
+                    image.sprite = Resources.GetBuiltinResource<Sprite>("UI/Skin/UISprite.psd");
+                    image.type = Image.Type.Sliced;
+                }
+                catch
+                {
+                    // Keep the plain image fallback if the built-in UI sprite is unavailable.
+                }
+            }
+
+            image.color = Color.clear;
+            image.raycastTarget = false;
+            outline.enabled = false;
+            outline.effectDistance = new Vector2(3f, -3f);
+            outline.useGraphicAlpha = true;
+            return overlayRect;
+        }
+
+        void HideCardFeedbackOverlay(RectTransform overlayRect)
+        {
+            if (overlayRect == null) return;
+
+            overlayRect.localScale = Vector3.one;
+            Image image = overlayRect.GetComponent<Image>();
+            if (image != null)
+            {
+                Color color = image.color;
+                color.a = 0f;
+                image.color = color;
+            }
+
+            Outline outline = overlayRect.GetComponent<Outline>();
+            if (outline != null) outline.enabled = false;
+            overlayRect.gameObject.SetActive(false);
+        }
+
+        void StopCardActionFeedbackRoutines()
+        {
+            if (_battlefieldActionFeedbackRoutine != null)
+            {
+                StopCoroutine(_battlefieldActionFeedbackRoutine);
+                _battlefieldActionFeedbackRoutine = null;
+                RestoreBattlefieldActionFeedbackState();
+            }
+
+            for (int i = 0; i < _cardActionFeedbackRoutines.Count; i++)
+            {
+                if (_cardActionFeedbackRoutines[i] != null)
+                {
+                    StopCoroutine(_cardActionFeedbackRoutines[i]);
+                }
+            }
+            _cardActionFeedbackRoutines.Clear();
         }
 
         void ApplyBattlefieldVisualLayer()
@@ -1284,6 +1780,11 @@ namespace UCG
                 new Vector2(0f, -9f),
                 new Vector2(0f, -7f),
                 UcgToolUiPalette.WithAlpha(UcgToolUiPalette.SoftWhite, 0.045f));
+            Color cornerPink = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.BrandPinkLight, 0.42f);
+            EnsureHudAccentImage(panelRect, "Top Prompt Corner TL H", new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(18f, -12f), new Vector2(42f, 2f), cornerPink);
+            EnsureHudAccentImage(panelRect, "Top Prompt Corner TL V", new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(12f, -18f), new Vector2(2f, 34f), cornerPink);
+            EnsureHudAccentImage(panelRect, "Top Prompt Corner TR H", new Vector2(1f, 1f), new Vector2(1f, 1f), new Vector2(-18f, -12f), new Vector2(42f, 2f), cornerPink);
+            EnsureHudAccentImage(panelRect, "Top Prompt Corner TR V", new Vector2(1f, 1f), new Vector2(1f, 1f), new Vector2(-12f, -18f), new Vector2(2f, 34f), cornerPink);
         }
 
         void StyleNavigationPillPanel(RectTransform panelRect)
@@ -1471,14 +1972,14 @@ namespace UCG
                 if (trackImage == null) trackImage = existingTrack.gameObject.AddComponent<Image>();
             }
 
-            _topPromptProgressTrackRect.anchorMin = new Vector2(0.14f, 0f);
-            _topPromptProgressTrackRect.anchorMax = new Vector2(0.86f, 0f);
+            _topPromptProgressTrackRect.anchorMin = new Vector2(0.20f, 0f);
+            _topPromptProgressTrackRect.anchorMax = new Vector2(0.74f, 0f);
             _topPromptProgressTrackRect.pivot = new Vector2(0.5f, 0f);
-            _topPromptProgressTrackRect.anchoredPosition = new Vector2(0f, 9f);
-            _topPromptProgressTrackRect.sizeDelta = new Vector2(0f, 3f);
+            _topPromptProgressTrackRect.anchoredPosition = new Vector2(0f, 10f);
+            _topPromptProgressTrackRect.sizeDelta = new Vector2(0f, 4f);
             _topPromptProgressTrackRect.localScale = Vector3.one;
             _topPromptProgressTrackRect.localEulerAngles = Vector3.zero;
-            trackImage.color = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.GlassBorder, 0.12f);
+            trackImage.color = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.DeepGlass, 0.74f);
             trackImage.raycastTarget = false;
 
             const string fillName = "Top Prompt Countdown Fill";
@@ -1504,15 +2005,64 @@ namespace UCG
             _topPromptProgressFillRect.offsetMax = Vector2.zero;
             _topPromptProgressFillRect.localScale = Vector3.one;
             _topPromptProgressFillRect.localEulerAngles = Vector3.zero;
-            fillImage.color = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.BrandPinkLight, 0.64f);
+            fillImage.color = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.BrandPinkLight, 0.88f);
             fillImage.raycastTarget = false;
 
             Shadow fillGlow = EnsureUiShadow(_topPromptProgressFillRect.gameObject);
-            fillGlow.effectColor = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.FocusCyan, 0.14f);
-            fillGlow.effectDistance = new Vector2(0f, -1f);
+            fillGlow.effectColor = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.BrandPinkLight, 0.38f);
+            fillGlow.effectDistance = new Vector2(0f, -2f);
             fillGlow.useGraphicAlpha = true;
 
+            EnsureTopPromptCountdownText(panelRect);
+
             SetTopPromptProgress(0f, false);
+        }
+
+        void EnsureTopPromptCountdownText(RectTransform panelRect)
+        {
+            if (panelRect == null) return;
+
+            const string textName = "Top Prompt Countdown Seconds";
+            Transform existingText = panelRect.Find(textName);
+            RectTransform textRect;
+            if (existingText == null)
+            {
+                var textObject = new GameObject(textName, typeof(RectTransform), typeof(Text), typeof(Outline));
+                textObject.transform.SetParent(panelRect, false);
+                textRect = textObject.GetComponent<RectTransform>();
+                _topPromptCountdownText = textObject.GetComponent<Text>();
+            }
+            else
+            {
+                textRect = existingText as RectTransform;
+                _topPromptCountdownText = existingText.GetComponent<Text>();
+                if (_topPromptCountdownText == null) _topPromptCountdownText = existingText.gameObject.AddComponent<Text>();
+                if (existingText.GetComponent<Outline>() == null) existingText.gameObject.AddComponent<Outline>();
+            }
+
+            textRect.anchorMin = new Vector2(0.76f, 0f);
+            textRect.anchorMax = new Vector2(0.88f, 0f);
+            textRect.pivot = new Vector2(0f, 0f);
+            textRect.anchoredPosition = new Vector2(0f, 2f);
+            textRect.sizeDelta = new Vector2(84f, 24f);
+            textRect.localScale = Vector3.one;
+            textRect.localEulerAngles = Vector3.zero;
+
+            _topPromptCountdownText.text = "";
+            _topPromptCountdownText.alignment = TextAnchor.MiddleLeft;
+            _topPromptCountdownText.color = UcgToolUiPalette.BrandPinkLight;
+            _topPromptCountdownText.fontSize = 16;
+            _topPromptCountdownText.fontStyle = FontStyle.Bold;
+            _topPromptCountdownText.resizeTextForBestFit = true;
+            _topPromptCountdownText.resizeTextMinSize = 11;
+            _topPromptCountdownText.resizeTextMaxSize = 16;
+            _topPromptCountdownText.raycastTarget = false;
+            Font font = LoadPlaceholderFont();
+            if (font != null) _topPromptCountdownText.font = font;
+
+            Outline outline = _topPromptCountdownText.GetComponent<Outline>();
+            outline.effectColor = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.GlassShadow, 0.72f);
+            outline.effectDistance = new Vector2(1f, -1f);
         }
 
         void ApplyTopPromptLayer(RectTransform textRect, RectTransform panelRect)
@@ -1780,8 +2330,8 @@ namespace UCG
             feedbackRect.anchorMin = new Vector2(0.5f, 0f);
             feedbackRect.anchorMax = new Vector2(0.5f, 0f);
             feedbackRect.pivot = new Vector2(0.5f, 0.5f);
-            feedbackRect.anchoredPosition = new Vector2(88f, 492f);
-            feedbackRect.sizeDelta = new Vector2(480f, 40f);
+            feedbackRect.anchoredPosition = new Vector2(76f, 386f);
+            feedbackRect.sizeDelta = new Vector2(400f, 36f);
             feedbackRect.localScale = Vector3.one;
             _effectFeedbackTextRect = feedbackRect;
             _effectFeedbackTextBasePosition = feedbackRect.anchoredPosition;
@@ -1830,8 +2380,8 @@ namespace UCG
             _effectFeedbackToastPanel.anchorMin = textRect.anchorMin;
             _effectFeedbackToastPanel.anchorMax = textRect.anchorMax;
             _effectFeedbackToastPanel.pivot = textRect.pivot;
-            _effectFeedbackToastPanel.anchoredPosition = new Vector2(0f, 492f);
-            _effectFeedbackToastPanel.sizeDelta = new Vector2(660f, 104f);
+            _effectFeedbackToastPanel.anchoredPosition = new Vector2(0f, 386f);
+            _effectFeedbackToastPanel.sizeDelta = new Vector2(560f, 92f);
             _effectFeedbackToastPanel.localScale = Vector3.one;
             _effectFeedbackToastPanel.localEulerAngles = Vector3.zero;
             _effectFeedbackToastPanel.SetSiblingIndex(Mathf.Max(0, textRect.GetSiblingIndex()));
@@ -1870,8 +2420,8 @@ namespace UCG
                 "Effect Feedback Toast Icon Frame",
                 new Vector2(0f, 0.5f),
                 new Vector2(0f, 0.5f),
-                new Vector2(30f, -28f),
-                new Vector2(86f, 28f),
+                new Vector2(24f, -24f),
+                new Vector2(72f, 24f),
                 Color.clear,
                 true);
             if (iconFrame != null)
@@ -1889,10 +2439,10 @@ namespace UCG
                 "Effect Feedback Toast Icon",
                 new Vector2(0f, 0.5f),
                 new Vector2(0f, 0.5f),
-                new Vector2(58f, 1f),
-                new Vector2(54f, 54f),
+                new Vector2(48f, 1f),
+                new Vector2(46f, 46f),
                 TextAnchor.MiddleCenter,
-                30);
+                25);
             _effectFeedbackToastIconText.text = "!";
 
             _effectFeedbackToastTitleText = EnsureEffectToastText(
@@ -1900,10 +2450,10 @@ namespace UCG
                 "Effect Feedback Toast Title",
                 new Vector2(0f, 0.5f),
                 new Vector2(0f, 0.5f),
-                new Vector2(142f, 24f),
-                new Vector2(500f, 30f),
+                new Vector2(122f, 21f),
+                new Vector2(410f, 28f),
                 TextAnchor.MiddleLeft,
-                19);
+                18);
             _effectFeedbackToastTitleText.text = "Effect";
 
             SetEffectFeedbackToastAlpha(0f, 0f);
@@ -1993,7 +2543,7 @@ namespace UCG
         {
             if (_effectFeedbackToastImage != null)
             {
-                _effectFeedbackToastImage.color = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.DeepGlass, 0.90f * alpha);
+                _effectFeedbackToastImage.color = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.DeepGlass, 0.84f * alpha);
             }
             if (_effectFeedbackToastAccentImage != null)
             {
@@ -2002,7 +2552,7 @@ namespace UCG
             if (_effectFeedbackToastPanel != null)
             {
                 _effectFeedbackToastPanel.anchoredPosition = _effectFeedbackToastBasePosition + new Vector2(0f, slideOffsetY);
-                SetGlassSurfaceOverlayAlpha(_effectFeedbackToastPanel, 0.86f * alpha);
+                SetGlassSurfaceOverlayAlpha(_effectFeedbackToastPanel, 0.72f * alpha);
 
                 var outline = _effectFeedbackToastPanel.GetComponent<Outline>();
                 if (outline != null)
@@ -2013,7 +2563,7 @@ namespace UCG
                 var shadow = _effectFeedbackToastPanel.GetComponent<Shadow>();
                 if (shadow != null)
                 {
-                    shadow.effectColor = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.GlassShadow, 0.15f * alpha);
+                    shadow.effectColor = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.GlassShadow, 0.12f * alpha);
                 }
 
                 Transform iconFrameTransform = _effectFeedbackToastPanel.Find("Effect Feedback Toast Icon Frame");
@@ -2592,11 +3142,20 @@ namespace UCG
             Transform buttonTransform = panelRect.Find("Confirm Button");
             _pendingConfirmButton = buttonTransform != null ? buttonTransform.GetComponent<Button>() : null;
 
+            Transform cancelTransform = panelRect.Find("Cancel Button");
+            _pendingCancelButton = cancelTransform != null ? cancelTransform.GetComponent<Button>() : null;
+
             if (_pendingConfirmButton != null)
             {
                 _pendingConfirmButton.interactable = true;
                 _pendingConfirmButton.onClick.RemoveListener(ConfirmPendingAction);
                 _pendingConfirmButton.onClick.AddListener(ConfirmPendingAction);
+            }
+            if (_pendingCancelButton != null)
+            {
+                _pendingCancelButton.interactable = true;
+                _pendingCancelButton.onClick.RemoveListener(CancelPendingAction);
+                _pendingCancelButton.onClick.AddListener(CancelPendingAction);
             }
 
             _pendingConfirmRoot.gameObject.SetActive(false);
@@ -2847,6 +3406,7 @@ namespace UCG
             EnsureModalConfirmTitle(panelRect, font);
             EnsureModalConfirmText(panelRect, font);
             EnsureModalConfirmSubtitle(panelRect, font);
+            EnsureModalCancelButton(panelRect, font);
             EnsureModalConfirmButton(panelRect, font);
             return panelRect;
         }
@@ -2892,18 +3452,19 @@ namespace UCG
                 if (titleText == null) titleText = existingTitle.gameObject.AddComponent<Text>();
             }
 
-            titleRect.anchorMin = new Vector2(0.12f, 0.73f);
-            titleRect.anchorMax = new Vector2(0.88f, 0.88f);
+            titleRect.anchorMin = new Vector2(0.12f, 0.80f);
+            titleRect.anchorMax = new Vector2(0.88f, 0.90f);
             titleRect.offsetMin = Vector2.zero;
             titleRect.offsetMax = Vector2.zero;
-            titleText.text = "確認操作";
+            titleText.text = "";
             titleText.alignment = TextAnchor.MiddleCenter;
-            titleText.color = UcgToolUiPalette.MutedWhite;
+            titleText.color = Color.clear;
             titleText.fontSize = 15;
             titleText.resizeTextForBestFit = true;
             titleText.resizeTextMinSize = 11;
             titleText.resizeTextMaxSize = 15;
             titleText.raycastTarget = false;
+            titleText.gameObject.SetActive(false);
             if (font != null) titleText.font = font;
         }
 
@@ -2928,18 +3489,18 @@ namespace UCG
                 if (text == null) text = existingText.gameObject.AddComponent<Text>();
             }
 
-            textRect.anchorMin = new Vector2(0.08f, 0.48f);
-            textRect.anchorMax = new Vector2(0.92f, 0.72f);
+            textRect.anchorMin = new Vector2(0.08f, 0.38f);
+            textRect.anchorMax = new Vector2(0.92f, 0.78f);
             textRect.offsetMin = Vector2.zero;
             textRect.offsetMax = Vector2.zero;
 
             text.alignment = TextAnchor.MiddleCenter;
             text.color = UcgToolUiPalette.BrandPinkLight;
-            text.fontSize = 25;
+            text.fontSize = 28;
             text.fontStyle = FontStyle.Bold;
             text.resizeTextForBestFit = true;
-            text.resizeTextMinSize = 17;
-            text.resizeTextMaxSize = 25;
+            text.resizeTextMinSize = 18;
+            text.resizeTextMaxSize = 28;
             text.raycastTarget = false;
             if (font != null) text.font = font;
         }
@@ -2964,24 +3525,34 @@ namespace UCG
                 if (subtitleText == null) subtitleText = existingSubtitle.gameObject.AddComponent<Text>();
             }
 
-            subtitleRect.anchorMin = new Vector2(0.10f, 0.36f);
-            subtitleRect.anchorMax = new Vector2(0.90f, 0.48f);
+            subtitleRect.anchorMin = new Vector2(0.10f, 0.32f);
+            subtitleRect.anchorMax = new Vector2(0.90f, 0.40f);
             subtitleRect.offsetMin = Vector2.zero;
             subtitleRect.offsetMax = Vector2.zero;
-            subtitleText.text = "確認後會執行目前選擇的操作。";
+            subtitleText.text = "";
             subtitleText.alignment = TextAnchor.MiddleCenter;
-            subtitleText.color = UcgToolUiPalette.MutedWhite;
+            subtitleText.color = Color.clear;
             subtitleText.fontSize = 14;
             subtitleText.resizeTextForBestFit = true;
             subtitleText.resizeTextMinSize = 10;
             subtitleText.resizeTextMaxSize = 14;
             subtitleText.raycastTarget = false;
+            subtitleText.gameObject.SetActive(false);
             if (font != null) subtitleText.font = font;
+        }
+
+        void EnsureModalCancelButton(RectTransform panelRect, Font font)
+        {
+            EnsureModalActionButton(panelRect, font, "Cancel Button", "取消", new Vector2(0.14f, 0.10f), new Vector2(0.46f, 0.31f), false);
         }
 
         void EnsureModalConfirmButton(RectTransform panelRect, Font font)
         {
-            const string buttonName = "Confirm Button";
+            EnsureModalActionButton(panelRect, font, "Confirm Button", "確認", new Vector2(0.54f, 0.10f), new Vector2(0.86f, 0.31f), true);
+        }
+
+        void EnsureModalActionButton(RectTransform panelRect, Font font, string buttonName, string labelText, Vector2 anchorMin, Vector2 anchorMax, bool primary)
+        {
             Transform existingButton = panelRect.Find(buttonName);
             RectTransform buttonRect;
             Button button;
@@ -3001,11 +3572,18 @@ namespace UCG
                 if (existingButton.GetComponent<Image>() == null) existingButton.gameObject.AddComponent<Image>();
             }
 
-            buttonRect.anchorMin = new Vector2(0.33f, 0.10f);
-            buttonRect.anchorMax = new Vector2(0.67f, 0.31f);
+            buttonRect.anchorMin = anchorMin;
+            buttonRect.anchorMax = anchorMax;
             buttonRect.offsetMin = Vector2.zero;
             buttonRect.offsetMax = Vector2.zero;
-            ApplyPrimaryHudButtonStyle(button);
+            if (primary)
+            {
+                ApplyPrimaryHudButtonStyle(button);
+            }
+            else
+            {
+                ApplySecondaryHudButtonStyle(button);
+            }
             button.interactable = true;
 
             Transform existingText = buttonRect.Find("Text");
@@ -3029,7 +3607,7 @@ namespace UCG
             buttonTextRect.anchorMax = Vector2.one;
             buttonTextRect.offsetMin = Vector2.zero;
             buttonTextRect.offsetMax = Vector2.zero;
-            buttonText.text = "確認";
+            buttonText.text = labelText;
             buttonText.alignment = TextAnchor.MiddleCenter;
             buttonText.color = UcgToolUiPalette.SoftWhite;
             buttonText.fontSize = 22;
@@ -3259,7 +3837,12 @@ namespace UCG
             Color grid = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.FocusCyan, debugBoardZones ? 0.40f : 0.050f);
             Color gridSoft = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.SoftWhite, debugBoardZones ? 0.30f : 0.026f);
             Color dot = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.FocusCyan, debugBoardZones ? 0.45f : 0.080f);
+            Color baseGlow = UcgToolUiPalette.WithAlpha(new Color(0.27f, 0.86f, 1f, 1f), debugBoardZones ? 0.26f : 0.095f);
+            Color baseSoft = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.FocusCyan, debugBoardZones ? 0.18f : 0.060f);
 
+            EnsureSceneContainerPulseImage(layer, "Scene Pedestal Soft Plate", new Vector2(0.08f, 0.12f), new Vector2(0.92f, 0.88f), Vector2.zero, Vector2.zero, baseSoft, 0.018f, 1.85f);
+            EnsureSceneContainerPulseImage(layer, "Scene Pedestal Front Glow", new Vector2(0.10f, 0.11f), new Vector2(0.90f, 0.11f), Vector2.zero, new Vector2(0f, 4f), baseGlow, 0.035f, 2.15f);
+            EnsureSceneContainerPulseImage(layer, "Scene Pedestal Back Glow", new Vector2(0.16f, 0.89f), new Vector2(0.84f, 0.89f), Vector2.zero, new Vector2(0f, 2f), UcgToolUiPalette.WithAlpha(UcgToolUiPalette.FocusCyan, debugBoardZones ? 0.22f : 0.075f), 0.024f, 2.4f);
             EnsureSceneContainerImage(layer, "Grid Horizontal Top", new Vector2(0.08f, 0.68f), new Vector2(0.92f, 0.68f), Vector2.zero, new Vector2(0f, 1f), grid);
             EnsureSceneContainerImage(layer, "Grid Horizontal Center", new Vector2(0.06f, 0.5f), new Vector2(0.94f, 0.5f), Vector2.zero, new Vector2(0f, 1f), gridSoft);
             EnsureSceneContainerImage(layer, "Grid Horizontal Bottom", new Vector2(0.08f, 0.32f), new Vector2(0.92f, 0.32f), Vector2.zero, new Vector2(0f, 1f), grid);
@@ -3307,13 +3890,13 @@ namespace UCG
         {
             if (layer == null) return;
 
-            Color cyan = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.FocusCyan, debugBoardZones ? 0.75f : 0.15f);
-            Color cyanSoft = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.FocusCyan, debugBoardZones ? 0.55f : 0.085f);
+            Color cyan = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.FocusCyan, debugBoardZones ? 0.80f : 0.20f);
+            Color cyanSoft = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.FocusCyan, debugBoardZones ? 0.58f : 0.12f);
             Color pink = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.BrandPinkLight, debugBoardZones ? 0.70f : 0.10f);
 
-            EnsureSceneContainerImage(layer, "Center Light Horizontal", new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(88f, 2f), cyanSoft);
-            EnsureSceneContainerImage(layer, "Center Light Vertical", new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(2f, 42f), cyanSoft);
-            EnsureSceneContainerImage(layer, "Center Light Core", new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(7f, 7f), cyan);
+            EnsureSceneContainerPulseImage(layer, "Center Light Horizontal", new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(118f, 2f), cyanSoft, 0.030f, 2.2f);
+            EnsureSceneContainerPulseImage(layer, "Center Light Vertical", new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(2f, 52f), cyanSoft, 0.022f, 2.05f);
+            EnsureSceneContainerPulseImage(layer, "Center Light Core", new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(7f, 7f), cyan, 0.050f, 2.45f);
             EnsureSceneContainerImage(layer, "Center Light Pink Spark", new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(3f, 3f), pink);
         }
 
@@ -3336,6 +3919,27 @@ namespace UCG
 
             EnsureSceneContainerImage(layer, "Overlay Highlight", Vector2.zero, Vector2.one, Vector2.zero, Vector2.zero, Color.clear);
             EnsureSceneContainerImage(layer, "Overlay Target Rim", new Vector2(0.04f, 0.10f), new Vector2(0.96f, 0.90f), Vector2.zero, Vector2.zero, Color.clear);
+        }
+
+        RectTransform EnsureSceneContainerPulseImage(RectTransform parent, string objectName, Vector2 anchorMin, Vector2 anchorMax, Vector2 anchoredPosition, Vector2 sizeDelta, Color color, float alphaAmplitude, float speed)
+        {
+            RectTransform rect = EnsureSceneContainerImage(parent, objectName, anchorMin, anchorMax, anchoredPosition, sizeDelta, color);
+            if (rect == null) return null;
+
+            Image image = rect.GetComponent<Image>();
+            UcgGuidancePulse pulse = rect.GetComponent<UcgGuidancePulse>();
+            if (pulse == null) pulse = rect.gameObject.AddComponent<UcgGuidancePulse>();
+            pulse.targetImage = image;
+            pulse.targetRect = rect;
+            pulse.pulseScale = false;
+            pulse.pulseAlpha = true;
+            pulse.alphaAmplitude = alphaAmplitude;
+            pulse.bobAmplitude = 0f;
+            pulse.rotateDegreesPerSecond = 0f;
+            pulse.speed = speed;
+            pulse.CaptureBaseState();
+            pulse.enabled = color.a > 0.001f;
+            return rect;
         }
 
         RectTransform EnsureSceneContainerImage(RectTransform parent, string objectName, Vector2 anchorMin, Vector2 anchorMax, Vector2 anchoredPosition, Vector2 sizeDelta, Color color)
@@ -6100,14 +6704,12 @@ namespace UCG
             string actionText = string.IsNullOrWhiteSpace(_topPromptActionText)
                 ? GetDefaultTopPromptActionText()
                 : _topPromptActionText;
-            string helperText = GetTopPromptHelperText(actionText);
 
             return $"<size=13><color={UcgToolUiPalette.SoftWhiteHex}>{phaseText}</color></size>\n"
-                + $"<size=23><color={UcgToolUiPalette.BrandPinkLightHex}>{actionText}</color></size>\n"
-                + $"<size=12><color={UcgToolUiPalette.MutedWhiteHex}>{helperText}</color></size>";
+                + $"<size=24><color={UcgToolUiPalette.BrandPinkLightHex}>{actionText}</color></size>";
         }
 
-        void SetTopPromptProgress(float progress, bool visible)
+        void SetTopPromptProgress(float progress, bool visible, float remainingSeconds = -1f)
         {
             if (_topPromptProgressTrackRect == null)
             {
@@ -6117,6 +6719,13 @@ namespace UCG
             if (_topPromptProgressTrackRect == null) return;
 
             _topPromptProgressTrackRect.gameObject.SetActive(visible);
+            if (_topPromptCountdownText != null)
+            {
+                _topPromptCountdownText.gameObject.SetActive(visible);
+                _topPromptCountdownText.text = visible && remainingSeconds >= 0f
+                    ? $"{remainingSeconds:0.0}s"
+                    : "";
+            }
             if (!visible) return;
 
             if (_topPromptProgressFillRect != null)
@@ -6134,14 +6743,121 @@ namespace UCG
 
             switch (phaseManager.CurrentPhase)
             {
+                case UcgGamePhase.SceneSetup:
+                    return "場景設置";
+                case UcgGamePhase.CharacterSetup:
+                    return "角色牌設置";
+                case UcgGamePhase.Upgrade:
+                    return "角色牌升級";
+                case UcgGamePhase.Open:
+                    return "角色牌公開";
                 case UcgGamePhase.EnterEffect:
+                    return "效果發動";
                 case UcgGamePhase.BattleEffect:
-                    return "效果處理階段";
+                    return "效果處理";
                 case UcgGamePhase.BattleJudgement:
-                    return "戰鬥判定階段";
+                    return "戰鬥判定";
+                case UcgGamePhase.End:
+                    return "勝負判定";
                 default:
-                    return phaseManager.GetPhaseDisplayName();
+                    return phaseManager.GetPhaseDisplayName().Replace("階段", "");
             }
+        }
+
+        RectTransform GetTopPromptPanelRect()
+        {
+            Transform panel = canvas != null ? canvas.transform.Find("Play Result HUD Panel") : null;
+            return panel as RectTransform;
+        }
+
+        void StartTopPromptIntro()
+        {
+            RectTransform panelRect = GetTopPromptPanelRect();
+            RectTransform textRect = playResultText != null ? playResultText.transform as RectTransform : null;
+            if (panelRect == null && textRect == null) return;
+
+            if (_topPromptIntroRoutine != null) StopCoroutine(_topPromptIntroRoutine);
+            _topPromptIntroRoutine = StartCoroutine(TopPromptIntroRoutine(panelRect, textRect));
+        }
+
+        IEnumerator TopPromptIntroRoutine(RectTransform panelRect, RectTransform textRect)
+        {
+            CanvasGroup panelGroup = panelRect != null ? panelRect.GetComponent<CanvasGroup>() : null;
+            if (panelRect != null && panelGroup == null) panelGroup = panelRect.gameObject.AddComponent<CanvasGroup>();
+            CanvasGroup textGroup = textRect != null ? textRect.GetComponent<CanvasGroup>() : null;
+            if (textRect != null && textGroup == null) textGroup = textRect.gameObject.AddComponent<CanvasGroup>();
+
+            float duration = 0.22f;
+            float elapsed = 0f;
+            Vector3 fromScale = Vector3.one * 0.965f;
+            Vector3 toScale = Vector3.one;
+            Vector2 fromOffset = new Vector2(0f, 8f);
+            Vector2 textBasePosition = textRect != null ? textRect.anchoredPosition : Vector2.zero;
+
+            if (panelGroup != null) panelGroup.alpha = 0f;
+            if (textGroup != null) textGroup.alpha = 0f;
+            if (panelRect != null) panelRect.localScale = fromScale;
+            if (textRect != null) textRect.anchoredPosition = textBasePosition + fromOffset;
+
+            while (elapsed < duration)
+            {
+                elapsed += Time.unscaledDeltaTime;
+                float t = Mathf.Clamp01(elapsed / duration);
+                float eased = t * t * (3f - 2f * t);
+                if (panelGroup != null) panelGroup.alpha = eased;
+                if (textGroup != null) textGroup.alpha = eased;
+                if (panelRect != null) panelRect.localScale = Vector3.Lerp(fromScale, toScale, eased);
+                if (textRect != null) textRect.anchoredPosition = Vector2.Lerp(textBasePosition + fromOffset, textBasePosition, eased);
+                yield return null;
+            }
+
+            if (panelGroup != null) panelGroup.alpha = 1f;
+            if (textGroup != null) textGroup.alpha = 1f;
+            if (panelRect != null) panelRect.localScale = Vector3.one;
+            if (textRect != null) textRect.anchoredPosition = textBasePosition;
+            _topPromptIntroRoutine = null;
+        }
+
+        void StartTopPromptClickPulse()
+        {
+            RectTransform panelRect = GetTopPromptPanelRect();
+            if (panelRect == null) return;
+
+            if (_topPromptPulseRoutine != null) StopCoroutine(_topPromptPulseRoutine);
+            _topPromptPulseRoutine = StartCoroutine(TopPromptClickPulseRoutine(panelRect));
+        }
+
+        IEnumerator TopPromptClickPulseRoutine(RectTransform panelRect)
+        {
+            Shadow shadow = panelRect != null ? EnsureUiShadow(panelRect.gameObject) : null;
+            Vector3 baseScale = Vector3.one;
+            Vector3 pulseScale = Vector3.one * 0.985f;
+            Color normalShadow = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.GlassShadow, 0.18f);
+            Color pulseShadow = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.BrandPinkLight, 0.34f);
+
+            float duration = 0.14f;
+            float elapsed = 0f;
+            while (elapsed < duration)
+            {
+                elapsed += Time.unscaledDeltaTime;
+                float t = Mathf.Clamp01(elapsed / duration);
+                float eased = t < 0.5f ? t * 2f : (1f - t) * 2f;
+                if (panelRect != null) panelRect.localScale = Vector3.Lerp(baseScale, pulseScale, eased);
+                if (shadow != null)
+                {
+                    shadow.effectColor = Color.Lerp(normalShadow, pulseShadow, eased);
+                    shadow.effectDistance = new Vector2(0f, Mathf.Lerp(-5f, -7f, eased));
+                }
+                yield return null;
+            }
+
+            if (panelRect != null) panelRect.localScale = Vector3.one;
+            if (shadow != null)
+            {
+                shadow.effectColor = normalShadow;
+                shadow.effectDistance = new Vector2(0f, -5f);
+            }
+            _topPromptPulseRoutine = null;
         }
 
         string GetDefaultTopPromptActionText()
@@ -6152,20 +6868,21 @@ namespace UCG
             switch (phaseManager.CurrentPhase)
             {
                 case UcgGamePhase.SceneSetup:
-                    return "請設置可用的場景卡";
+                    return "請選擇一張場景卡";
                 case UcgGamePhase.CharacterSetup:
                     return "請選擇一張角色卡";
                 case UcgGamePhase.Upgrade:
-                    return "可以升級已登場角色，也可以直接結束升級";
+                    return "請選擇可升級的角色卡";
                 case UcgGamePhase.Open:
-                    return "公開雙方設置的卡牌";
+                    return "請翻開角色卡";
                 case UcgGamePhase.EnterEffect:
+                    return "請選擇效果目標";
                 case UcgGamePhase.BattleEffect:
-                    return "正在處理卡牌效果";
+                    return "請選擇效果目標";
                 case UcgGamePhase.BattleJudgement:
-                    return "正在判定雙方 BP";
+                    return "請確認本路結果";
                 case UcgGamePhase.End:
-                    return "回合結束，整理戰場狀態";
+                    return "點擊完成，進入下一回合。";
                 case UcgGamePhase.Draw:
                     return "抽 1 張牌";
                 default:
@@ -6681,16 +7398,122 @@ namespace UCG
             }
         }
 
+        void EnsureDevOverlayRoot()
+        {
+            if (canvas == null) return;
+
+            const string rootName = "Dev Overlay";
+            Transform existingRoot = canvas.transform.Find(rootName);
+            if (existingRoot == null)
+            {
+                var rootObject = new GameObject(rootName, typeof(RectTransform), typeof(CanvasGroup));
+                rootObject.transform.SetParent(canvas.transform, false);
+                _devOverlayRoot = rootObject.GetComponent<RectTransform>();
+                _devOverlayCanvasGroup = rootObject.GetComponent<CanvasGroup>();
+            }
+            else
+            {
+                _devOverlayRoot = existingRoot as RectTransform;
+                _devOverlayCanvasGroup = existingRoot.GetComponent<CanvasGroup>();
+                if (_devOverlayCanvasGroup == null) _devOverlayCanvasGroup = existingRoot.gameObject.AddComponent<CanvasGroup>();
+            }
+
+            _devOverlayRoot.anchorMin = new Vector2(1f, 1f);
+            _devOverlayRoot.anchorMax = new Vector2(1f, 1f);
+            _devOverlayRoot.pivot = new Vector2(1f, 1f);
+            _devOverlayRoot.anchoredPosition = new Vector2(-28f, -54f);
+            _devOverlayRoot.sizeDelta = new Vector2(186f, 218f);
+            _devOverlayRoot.localScale = Vector3.one;
+            _devOverlayRoot.localEulerAngles = Vector3.zero;
+
+            UpdateDevOverlayVisibility();
+        }
+
+        Transform FindDevOverlayItem(string itemName)
+        {
+            if (canvas == null) return null;
+            if (_devOverlayRoot == null) EnsureDevOverlayRoot();
+
+            Transform existing = _devOverlayRoot != null ? _devOverlayRoot.Find(itemName) : null;
+            if (existing != null) return existing;
+
+            existing = canvas.transform.Find(itemName);
+            if (existing != null && _devOverlayRoot != null)
+            {
+                existing.SetParent(_devOverlayRoot, false);
+            }
+
+            return existing;
+        }
+
+        RectTransform GetDevOverlayParent()
+        {
+            if (_devOverlayRoot == null) EnsureDevOverlayRoot();
+            return _devOverlayRoot != null ? _devOverlayRoot : canvas.transform as RectTransform;
+        }
+
+        bool IsDebugModeEnabled()
+        {
+            return debugMode
+                || debugBoardZones
+                || debugBattlefieldLayout
+                || debugLayoutDiagnostics
+                || debugForceSidePileExtremeOffset
+                || debugEffectTestTools
+                || debugOpponentRuntime
+                || debugScenePlacement
+                || debugSceneSlotVerbose
+                || debugBpBreakdown
+                || debugEffectResolution
+                || debugDeckOperation
+                || debugAdvanceButton
+                || debugAdvancePrompt
+                || debugDropValidation
+                || debugInteractionLock;
+        }
+
+        void UpdateDevOverlayVisibility()
+        {
+            if (_devOverlayRoot == null) return;
+
+            bool visible = IsDebugModeEnabled();
+            if (_devOverlayRoot.gameObject.activeSelf != visible)
+            {
+                _devOverlayRoot.gameObject.SetActive(visible);
+            }
+
+            if (_devOverlayCanvasGroup != null)
+            {
+                _devOverlayCanvasGroup.alpha = visible ? 1f : 0f;
+                _devOverlayCanvasGroup.interactable = visible;
+                _devOverlayCanvasGroup.blocksRaycasts = visible;
+            }
+
+            if (visible)
+            {
+                _devOverlayRoot.SetAsLastSibling();
+            }
+        }
+
+        void UpdateDebugInfoVisibility()
+        {
+            if (cardInfoPanel == null) return;
+            if (IsDebugModeEnabled()) return;
+            if (!cardInfoPanel.gameObject.activeSelf) return;
+
+            cardInfoPanel.Clear();
+        }
+
         void EnsureRestartButton()
         {
             const string buttonName = "Restart Button";
-            Transform existingButton = canvas.transform.Find(buttonName);
+            Transform existingButton = FindDevOverlayItem(buttonName);
             RectTransform buttonRect;
 
             if (existingButton == null)
             {
                 var buttonObject = new GameObject(buttonName, typeof(RectTransform), typeof(Image), typeof(Button));
-                buttonObject.transform.SetParent(canvas.transform, false);
+                buttonObject.transform.SetParent(GetDevOverlayParent(), false);
                 buttonRect = buttonObject.GetComponent<RectTransform>();
                 restartButton = buttonObject.GetComponent<Button>();
             }
@@ -6705,8 +7528,8 @@ namespace UCG
             buttonRect.anchorMin = new Vector2(1f, 1f);
             buttonRect.anchorMax = new Vector2(1f, 1f);
             buttonRect.pivot = new Vector2(1f, 1f);
-            buttonRect.anchoredPosition = new Vector2(-36f, -64f);
-            buttonRect.sizeDelta = new Vector2(178f, 48f);
+            buttonRect.anchoredPosition = new Vector2(-8f, -8f);
+            buttonRect.sizeDelta = new Vector2(164f, 40f);
 
             ApplyTopHudButtonStyle(restartButton);
             restartButton.onClick.RemoveListener(RestartDemo);
@@ -6718,13 +7541,13 @@ namespace UCG
         void EnsureSwitchTestButton()
         {
             const string buttonName = "Switch Test Button";
-            Transform existingButton = canvas.transform.Find(buttonName);
+            Transform existingButton = FindDevOverlayItem(buttonName);
             RectTransform buttonRect;
 
             if (existingButton == null)
             {
                 var buttonObject = new GameObject(buttonName, typeof(RectTransform), typeof(Image), typeof(Button));
-                buttonObject.transform.SetParent(canvas.transform, false);
+                buttonObject.transform.SetParent(GetDevOverlayParent(), false);
                 buttonRect = buttonObject.GetComponent<RectTransform>();
                 switchTestButton = buttonObject.GetComponent<Button>();
             }
@@ -6739,8 +7562,8 @@ namespace UCG
             buttonRect.anchorMin = new Vector2(1f, 1f);
             buttonRect.anchorMax = new Vector2(1f, 1f);
             buttonRect.pivot = new Vector2(1f, 1f);
-            buttonRect.anchoredPosition = new Vector2(-36f, -118f);
-            buttonRect.sizeDelta = new Vector2(178f, 48f);
+            buttonRect.anchoredPosition = new Vector2(-8f, -54f);
+            buttonRect.sizeDelta = new Vector2(164f, 40f);
 
             ApplyTopHudButtonStyle(switchTestButton);
             switchTestButton.onClick.RemoveListener(SwitchTestMode);
@@ -6752,13 +7575,13 @@ namespace UCG
         void EnsureSkipTutorialButton()
         {
             const string buttonName = "Skip Tutorial Button";
-            Transform existingButton = canvas.transform.Find(buttonName);
+            Transform existingButton = FindDevOverlayItem(buttonName);
             RectTransform buttonRect;
 
             if (existingButton == null)
             {
                 var buttonObject = new GameObject(buttonName, typeof(RectTransform), typeof(Image), typeof(Button));
-                buttonObject.transform.SetParent(canvas.transform, false);
+                buttonObject.transform.SetParent(GetDevOverlayParent(), false);
                 buttonRect = buttonObject.GetComponent<RectTransform>();
                 skipTutorialButton = buttonObject.GetComponent<Button>();
             }
@@ -6773,8 +7596,8 @@ namespace UCG
             buttonRect.anchorMin = new Vector2(1f, 1f);
             buttonRect.anchorMax = new Vector2(1f, 1f);
             buttonRect.pivot = new Vector2(1f, 1f);
-            buttonRect.anchoredPosition = new Vector2(-36f, -172f);
-            buttonRect.sizeDelta = new Vector2(178f, 48f);
+            buttonRect.anchoredPosition = new Vector2(-8f, -100f);
+            buttonRect.sizeDelta = new Vector2(164f, 40f);
 
             ApplyTopHudButtonStyle(skipTutorialButton);
             skipTutorialButton.onClick.RemoveListener(SkipTutorialMode);
@@ -6790,13 +7613,13 @@ namespace UCG
             if (canvas == null) return;
 
             const string buttonName = "Board Debug Toggle Button";
-            Transform existingButton = canvas.transform.Find(buttonName);
+            Transform existingButton = FindDevOverlayItem(buttonName);
             RectTransform buttonRect;
 
             if (existingButton == null)
             {
                 var buttonObject = new GameObject(buttonName, typeof(RectTransform), typeof(Image), typeof(Button));
-                buttonObject.transform.SetParent(canvas.transform, false);
+                buttonObject.transform.SetParent(GetDevOverlayParent(), false);
                 buttonRect = buttonObject.GetComponent<RectTransform>();
                 _boardDebugToggleButton = buttonObject.GetComponent<Button>();
             }
@@ -6811,8 +7634,8 @@ namespace UCG
             buttonRect.anchorMin = new Vector2(1f, 1f);
             buttonRect.anchorMax = new Vector2(1f, 1f);
             buttonRect.pivot = new Vector2(1f, 1f);
-            buttonRect.anchoredPosition = new Vector2(-36f, -220f);
-            buttonRect.sizeDelta = new Vector2(188f, 42f);
+            buttonRect.anchoredPosition = new Vector2(-8f, -146f);
+            buttonRect.sizeDelta = new Vector2(164f, 38f);
 
             var image = _boardDebugToggleButton.GetComponent<Image>();
             image.raycastTarget = true;
@@ -8281,6 +9104,14 @@ namespace UCG
             button.colors = colors;
         }
 
+        void ApplySecondaryHudButtonStyle(Button button)
+        {
+            ApplyHudButtonStyle(
+                button,
+                UcgToolUiPalette.WithAlpha(UcgToolUiPalette.DeepGlass, 0.62f),
+                UcgToolUiPalette.WithAlpha(UcgToolUiPalette.FocusCyan, 0.42f));
+        }
+
         void EnsureButtonLabelWithIcon(RectTransform parent, string icon, string text)
         {
             Text iconText = EnsureButtonChildText(parent, "Icon", new Vector2(0.06f, 0f), new Vector2(0.30f, 1f));
@@ -8382,6 +9213,7 @@ namespace UCG
         {
             StopOpeningFirstPlayerRoutine();
             StopTurnStartBannerRoutine();
+            StopCardActionFeedbackRoutines();
             HideAdvanceButton();
             StopAutoPhaseRoutine();
             StopOpponentActionRoutine();
@@ -8813,10 +9645,11 @@ namespace UCG
             if (playResultText != null)
             {
                 playResultText.text =
-                    "本回合判定完成。\n點擊完成，進入下一回合。";
+                    "<size=13>勝負判定</size>\n<size=24>點擊完成，進入下一回合。</size>";
             }
 
             RefreshNextPhaseButtonState();
+            StartTopPromptIntro();
             return true;
         }
 
@@ -10231,6 +11064,7 @@ namespace UCG
                 return;
             }
 
+            PlayEffectTargetActionFeedback(lane, clickedSide);
             bool resolved = effectManager.ResolveTargetedEffect(_pendingTargetEffect, lane, this, out string message);
             ClearEffectTargetSelection();
             if (resolved)
@@ -10283,6 +11117,7 @@ namespace UCG
 
             if (_pendingSwapSourceLane == null)
             {
+                PlayEffectTargetActionFeedback(lane, clickedSide);
                 _pendingSwapSourceLane = lane;
                 HighlightEffectTargets();
                 if (playResultText != null)
@@ -10293,6 +11128,7 @@ namespace UCG
                 return;
             }
 
+            PlayEffectTargetActionFeedback(lane, clickedSide);
             bool resolved = ResolveSwapOwnCharactersEffect(
                 _pendingTargetEffect,
                 _pendingSwapSourceLane,
@@ -10319,6 +11155,7 @@ namespace UCG
                 return;
             }
 
+            PlayEffectTargetActionFeedback(lane, clickedSide);
             if (_pendingBp05005StepDownLane == null)
             {
                 if (!ApplyBp05005StepDown(_pendingTargetEffect, lane, out string stepDownMessage))
@@ -10375,6 +11212,7 @@ namespace UCG
                 return;
             }
 
+            PlayEffectTargetActionFeedback(lane, clickedSide);
             if (_pendingTargetEffect != null && _pendingTargetEffect.ownerSide == UcgPlayerSide.Player)
             {
                 bool selectionStarted = BeginBp05008DiscardSelection(_pendingTargetEffect, lane, out string selectionMessage);
@@ -10427,6 +11265,7 @@ namespace UCG
                 return;
             }
 
+            PlayEffectTargetActionFeedback(lane, clickedSide);
             FinishBp01105SceneUpgradeSelection(lane);
         }
 
@@ -11398,6 +12237,7 @@ namespace UCG
                     if (battlefieldManager != null)
                     {
                         var revealedEffects = battlefieldManager.FlipAllFaceDownCardsAndCollectEffects();
+                        PlayRevealFeedbackForOpenedLanes();
                         if (effectManager != null)
                         {
                             effectManager.ClearQueue();
@@ -11795,7 +12635,7 @@ namespace UCG
             {
                 _advancePromptCountdownText.text = "";
             }
-            SetTopPromptProgress(remaining / total, true);
+            SetTopPromptProgress(remaining / total, true, remaining);
 
             if (_advancePromptProgressFillRect != null)
             {
@@ -11831,6 +12671,10 @@ namespace UCG
             StopAdvanceCountdownRoutine();
             _advancePromptConfirmAction = null;
             SetTopPromptProgress(0f, false);
+            if (triggerSource == "click")
+            {
+                StartTopPromptClickPulse();
+            }
 
             if (IsAdvancePromptDebugEnabled())
             {
@@ -12824,6 +13668,7 @@ namespace UCG
         void PlayOpponentCardActionFeedback(UcgBattleLane lane, bool isUpgrade)
         {
             UcgCardView topCard = lane != null ? lane.GetOpponentTopCard() : null;
+            PlayLaneActionFeedback(lane, isUpgrade, topCard);
             if (topCard != null)
             {
                 topCard.PlayBoardActionFeedback(isUpgrade);
@@ -13465,7 +14310,9 @@ namespace UCG
                 playActionType = actionType,
                 previousParent = cardHolder,
                 previousSiblingIndex = cardHolder != null ? cardHolder.childCount : 0,
-                confirmMessage = $"是否確認設置到第 {lane.laneIndex + 1} 路？",
+                confirmMessage = pendingType == UcgPendingActionType.CharacterUpgrade
+                    ? $"升級第 {laneNumber} 路角色？"
+                    : $"設置角色至第 {laneNumber} 路？",
                 successMessage = successMessage
             };
 
@@ -13495,7 +14342,7 @@ namespace UCG
                 previousParent = cardHolder,
                 previousSiblingIndex = cardHolder != null ? cardHolder.childCount : 0,
                 previousSceneCard = previousSceneCard,
-                confirmMessage = replacing ? "是否替換目前場景卡？" : "是否設置這張場景卡？",
+                confirmMessage = replacing ? "替換目前場景卡？" : "設置場景卡？",
             };
 
             cardRect.SetParent(cardHolder, false);
@@ -13512,7 +14359,7 @@ namespace UCG
 
             if (_pendingConfirmText != null)
             {
-                _pendingConfirmText.text = string.IsNullOrWhiteSpace(message) ? "是否確認執行此操作？" : message;
+                _pendingConfirmText.text = string.IsNullOrWhiteSpace(message) ? "完成目前操作？" : message;
             }
 
             var modalCanvas = _pendingConfirmRoot.GetComponent<Canvas>();
@@ -13652,6 +14499,10 @@ namespace UCG
 
             if (pending != null)
             {
+                PlayLaneActionFeedback(
+                    pending.targetLane,
+                    pending.playActionType == UcgPlayActionType.Upgrade,
+                    pending.cardView);
                 yield return PlayBattlefieldCardCommitAnimation(pending.cardView, pending.playActionType);
             }
 
@@ -13768,6 +14619,7 @@ namespace UCG
             }
 
             cardView.PlayBoardActionFeedback(actionType == UcgPlayActionType.Upgrade);
+            PlayCardSpotlight(cardView, actionType == UcgPlayActionType.Upgrade ? 0.34f : 0.28f, actionType == UcgPlayActionType.Upgrade);
             if (sfxController != null)
             {
                 if (actionType == UcgPlayActionType.Upgrade)
@@ -15026,8 +15878,8 @@ namespace UCG
                 sharedSceneSlot.SetHighlight(false, false);
             }
             message = replacing
-                ? "場景卡已替換，請確認操作。"
-                : "場景卡已放到中央場景區，請確認操作。";
+                ? "場景卡已替換，按確認完成。"
+                : "場景卡已放到中央場景區，按確認完成。";
             return true;
         }
 
@@ -17269,6 +18121,7 @@ namespace UCG
                 LoadPlaceholderFont());
             if (view == null) return false;
 
+            PlayLaneActionFeedback(lane, true, view);
             _temporarySceneSummons.Add(new UcgTemporarySceneSummon
             {
                 lane = lane,
@@ -18544,6 +19397,7 @@ namespace UCG
             if (!IsDeckOperationStateCurrent(operationVersion)) yield break;
             if (cardRect == null || canvasGroup == null) yield break;
             if (cardView != null) cardView.SetFaceDown(false);
+            PlayRevealFeedback(cardView);
             cardRect.anchoredPosition = finalPosition;
             cardRect.localScale = Vector3.one;
             cardRect.localEulerAngles = Vector3.zero;

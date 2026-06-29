@@ -8,9 +8,9 @@ namespace UCG
     {
         Normal,
         Hover,
-        Selected,
+        Focus,
         Disabled,
-        Flip
+        Back
     }
 
     [DisallowMultipleComponent]
@@ -22,6 +22,13 @@ namespace UCG
         const string RimName = "Card Presentation Rim";
         const string HighlightName = "Card Presentation Highlight";
         const string DisabledWashName = "Card Presentation Disabled Wash";
+        const float MinFloatAmplitude = 1f;
+        const float MaxFloatAmplitude = 2f;
+        const float MinFloatPeriod = 3f;
+        const float MaxFloatPeriod = 5f;
+        const float MaxBreathScale = 1.008f;
+        const float HoverScaleBoost = 0.002f;
+        const float FocusScaleBoost = 0.012f;
 
         static Sprite _defaultCardBackSprite;
 
@@ -43,6 +50,11 @@ namespace UCG
         bool _isSelected;
         bool _isDisabled;
         float _flipBoost;
+        float _motionPhase;
+        float _motionSpeed;
+        float _floatAmplitude;
+        bool _motionSeedInitialized;
+        bool _allowPositionFloating;
         Color _baseTint = Color.white;
 
         public static Sprite DefaultCardBackSprite
@@ -62,9 +74,9 @@ namespace UCG
         {
             get
             {
-                if (_flipBoost > 0.01f) return UcgCardPresentationState.Flip;
                 if (_isDisabled) return UcgCardPresentationState.Disabled;
-                if (_isSelected) return UcgCardPresentationState.Selected;
+                if (_isCardBack) return UcgCardPresentationState.Back;
+                if (_isSelected || _flipBoost > 0.01f) return UcgCardPresentationState.Focus;
                 if (_isHovered) return UcgCardPresentationState.Hover;
                 return UcgCardPresentationState.Normal;
             }
@@ -74,6 +86,7 @@ namespace UCG
         {
             _targetImage = targetImage;
             _rectTransform = transform as RectTransform;
+            EnsureMotionSeed();
             EnsureVisuals();
             RefreshVisuals();
         }
@@ -85,8 +98,19 @@ namespace UCG
             _isSelected = isSelected;
             _isDisabled = isDisabled;
             _baseTint = baseTint;
+            EnsureMotionSeed();
             EnsureVisuals();
             RefreshVisuals();
+        }
+
+        public void SetPositionFloatingEnabled(bool enabled)
+        {
+            _allowPositionFloating = enabled;
+        }
+
+        void LateUpdate()
+        {
+            ApplyPresentationMotion();
         }
 
         public void PlayFlipFeedback()
@@ -140,10 +164,29 @@ namespace UCG
         {
             if (_rectTransform == null) _rectTransform = transform as RectTransform;
 
+            EnsureMotionSeed();
             EnsureShadow();
             EnsureRim();
             EnsureHighlight();
             EnsureDisabledWash();
+        }
+
+        void EnsureMotionSeed()
+        {
+            if (_motionSeedInitialized) return;
+
+            string entityKey = gameObject.GetEntityId().ToString();
+            int hash = entityKey.GetHashCode();
+            if (hash == int.MinValue) hash = 0;
+            hash = Mathf.Abs(hash);
+            float phaseSeed = (hash % 997) / 997f;
+            float periodSeed = ((hash / 7) % 991) / 991f;
+            float amplitudeSeed = ((hash / 17) % 983) / 983f;
+
+            _motionPhase = phaseSeed * Mathf.PI * 2f;
+            _motionSpeed = (Mathf.PI * 2f) / Mathf.Lerp(MinFloatPeriod, MaxFloatPeriod, periodSeed);
+            _floatAmplitude = Mathf.Lerp(MinFloatAmplitude, MaxFloatAmplitude, amplitudeSeed);
+            _motionSeedInitialized = true;
         }
 
         void EnsureShadow()
@@ -233,15 +276,17 @@ namespace UCG
         {
             if (_targetImage == null) _targetImage = GetComponent<Image>();
             float hover = _isHovered ? 1f : 0f;
-            float selected = _isSelected ? 1f : 0f;
+            float focus = _isSelected ? 1f : 0f;
             float disabled = _isDisabled ? 1f : 0f;
-            float materialLift = Mathf.Max(hover, selected, _flipBoost);
+            float back = _isCardBack ? 1f : 0f;
+            float focusLevel = Mathf.Max(focus, _flipBoost);
+            float materialLift = Mathf.Max(hover * 0.34f, focusLevel * 0.72f);
 
             if (_shadowRect != null)
             {
                 _shadowRect.anchorMin = new Vector2(0.08f, -0.10f);
-                _shadowRect.anchorMax = new Vector2(0.92f, 0.12f);
-                _shadowRect.offsetMin = new Vector2(-2f, Mathf.Lerp(-3f, -8f, materialLift));
+                _shadowRect.anchorMax = new Vector2(0.92f, 0.11f);
+                _shadowRect.offsetMin = new Vector2(-2f, Mathf.Lerp(-3f, -6f, materialLift));
                 _shadowRect.offsetMax = new Vector2(2f, Mathf.Lerp(3f, 1f, materialLift));
                 _shadowRect.localScale = Vector3.one;
                 _shadowRect.localEulerAngles = Vector3.zero;
@@ -251,7 +296,8 @@ namespace UCG
 
             if (_shadowImage != null)
             {
-                _shadowImage.color = new Color(4f / 255f, 9f / 255f, 18f / 255f, Mathf.Lerp(0.10f, 0.22f, materialLift) * (1f - disabled * 0.25f));
+                float shadowAlpha = Mathf.Lerp(0.098f + back * 0.012f, 0.19f, materialLift) * (1f - disabled * 0.35f);
+                _shadowImage.color = new Color(58f / 255f, 48f / 255f, 120f / 255f, shadowAlpha);
             }
 
             if (_rimRect != null)
@@ -274,18 +320,18 @@ namespace UCG
             if (_rimOutline != null)
             {
                 Color rimBase = UcgToolUiPalette.WithAlpha(
-                    _isCardBack ? UcgToolUiPalette.SoftWhite : UcgToolUiPalette.GlassBorder,
-                    _isCardBack ? 0.18f : 0.14f);
-                Color rimActive = _isSelected
-                    ? UcgToolUiPalette.WithAlpha(UcgToolUiPalette.FocusCyan, 0.76f)
-                    : UcgToolUiPalette.WithAlpha(UcgToolUiPalette.BrandPinkLight, Mathf.Lerp(0.16f, 0.32f, hover));
+                    _isCardBack ? UcgToolUiPalette.BrandPinkLight : UcgToolUiPalette.GlassBorder,
+                    _isCardBack ? 0.16f : 0.14f);
+                Color hoverRim = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.BrandPinkLight, 0.24f);
+                Color focusRim = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.FocusCyan, 0.58f);
+                Color rimActive = Color.Lerp(hoverRim, focusRim, Mathf.Max(focus, _flipBoost * 0.6f));
 
                 _rimOutline.enabled = true;
                 _rimOutline.effectColor = Color.Lerp(
                     rimBase,
                     rimActive,
-                    Mathf.Max(selected, hover * 0.62f, _flipBoost * 0.42f));
-                _rimOutline.effectDistance = new Vector2(Mathf.Lerp(0.75f, 1.8f, materialLift), Mathf.Lerp(-0.75f, -1.8f, materialLift));
+                    Mathf.Max(Mathf.Max(focus * 0.86f, hover * 0.52f), _flipBoost * 0.48f));
+                _rimOutline.effectDistance = new Vector2(Mathf.Lerp(0.65f, 1.22f, materialLift), Mathf.Lerp(-0.65f, -1.22f, materialLift));
             }
 
             if (_highlightRect != null)
@@ -302,10 +348,13 @@ namespace UCG
 
             if (_highlightImage != null)
             {
-                float baseHighlightAlpha = _isCardBack ? 0.006f : 0.004f;
-                float activeHighlightAlpha = _isCardBack ? 0.026f : 0.018f;
-                float alpha = Mathf.Lerp(baseHighlightAlpha, activeHighlightAlpha, Mathf.Max(hover, _flipBoost * 0.6f));
-                _highlightImage.color = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.SoftWhite, alpha * (1f - disabled * 0.4f));
+                float baseHighlightAlpha = _isCardBack ? 0.012f : 0.004f;
+                float activeHighlightAlpha = _isCardBack ? 0.032f : 0.018f;
+                float alpha = Mathf.Lerp(baseHighlightAlpha, activeHighlightAlpha, Mathf.Max(Mathf.Max(hover * 0.36f, focus * 0.68f), _flipBoost * 0.52f));
+                Color highlightColor = _isCardBack
+                    ? UcgToolUiPalette.BrandPinkLight
+                    : Color.Lerp(UcgToolUiPalette.SoftWhite, UcgToolUiPalette.BrandPinkLight, 0.34f);
+                _highlightImage.color = UcgToolUiPalette.WithAlpha(highlightColor, alpha * (1f - disabled * 0.65f));
             }
 
             if (_disabledWashRect != null)
@@ -322,7 +371,7 @@ namespace UCG
 
             if (_disabledWashImage != null)
             {
-                _disabledWashImage.color = new Color(0.08f, 0.09f, 0.10f, _isDisabled ? 0.36f : 0f);
+                _disabledWashImage.color = new Color(0.08f, 0.08f, 0.13f, _isDisabled ? 0.22f : 0f);
             }
 
             if (_targetImage != null)
@@ -334,13 +383,48 @@ namespace UCG
                 }
                 else if (_isDisabled)
                 {
-                    tint = Color.Lerp(tint, new Color(0.48f, 0.48f, 0.48f, tint.a), 0.64f);
+                    tint = Color.Lerp(tint, new Color(0.62f, 0.62f, 0.68f, tint.a), 0.38f);
                     tint.a = Mathf.Min(tint.a, 0.96f);
+                }
+                else
+                {
+                    tint = Color.Lerp(tint, Color.white, hover * 0.05f + focusLevel * 0.07f);
                 }
 
                 if (!_isDisabled) tint.a = 1f;
                 _targetImage.color = tint;
             }
+
+            ApplyPresentationMotion();
+        }
+
+        void ApplyPresentationMotion()
+        {
+            if (!_motionSeedInitialized) EnsureMotionSeed();
+
+            float disabledFactor = _isDisabled ? 0.45f : 1f;
+            float hover = _isHovered ? 1f : 0f;
+            float focus = Mathf.Max(_isSelected ? 1f : 0f, _flipBoost);
+            float time = Time.unscaledTime;
+            float floatY = _allowPositionFloating
+                ? Mathf.Sin(time * _motionSpeed + _motionPhase) * _floatAmplitude * disabledFactor
+                : 0f;
+            float breath = 0.5f + Mathf.Sin(time * (_motionSpeed * 0.78f) + _motionPhase * 1.37f) * 0.5f;
+            float scale = Mathf.Min(1.02f, Mathf.Lerp(1f, MaxBreathScale, breath) + hover * HoverScaleBoost + focus * FocusScaleBoost);
+            float shadowScale = Mathf.Min(1.015f, 1f + focus * 0.012f + hover * 0.004f);
+
+            ApplyMotionTo(_shadowRect, new Vector3(0f, floatY * 0.22f, 0f), new Vector3(shadowScale, 1f + (shadowScale - 1f) * 0.5f, 1f));
+            ApplyMotionTo(_rimRect, new Vector3(0f, floatY, 0f), Vector3.one * scale);
+            ApplyMotionTo(_highlightRect, new Vector3(0f, floatY, 0f), Vector3.one * scale);
+            ApplyMotionTo(_disabledWashRect, new Vector3(0f, floatY, 0f), Vector3.one * scale);
+        }
+
+        static void ApplyMotionTo(RectTransform rect, Vector3 localPosition, Vector3 localScale)
+        {
+            if (rect == null) return;
+
+            rect.localPosition = localPosition;
+            rect.localScale = localScale;
         }
 
         static void ApplySlicedUiSprite(Image image)

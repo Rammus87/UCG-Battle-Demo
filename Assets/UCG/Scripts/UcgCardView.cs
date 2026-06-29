@@ -62,6 +62,7 @@ namespace UCG
         Outline _placedCardRimOutline;
         UcgCardPresentation _cardPresentation;
         bool _isPointerHovering;
+        bool _isPresentationFocused;
         float _placedCardBreathSeed;
         bool _suppressPointerPreview;
 
@@ -203,16 +204,19 @@ namespace UCG
 
         public void SetPlayableHighlight(bool active)
         {
-            SetCardFocusOutline(active, UcgToolUiPalette.FocusCyan, 0.78f, 4.2f);
+            SetCardFocusOutline(active, UcgToolUiPalette.FocusCyan, 0.58f, 2.8f);
         }
 
         public void SetEffectTargetHighlight(bool active)
         {
-            SetCardFocusOutline(active, UcgToolUiPalette.BrandPinkLight, 0.84f, 4.2f);
+            SetCardFocusOutline(active, UcgToolUiPalette.BrandPinkLight, 0.62f, 2.9f);
         }
 
         void SetCardFocusOutline(bool active, Color accentColor, float alpha, float distance)
         {
+            _isPresentationFocused = active;
+            RefreshCardPresentationState();
+
             if (!active && _playableHighlight == null) return;
 
             if (_playableHighlight == null)
@@ -232,14 +236,14 @@ namespace UCG
                 _playableHighlightPulse.targetRect = transform as RectTransform;
                 _playableHighlightPulse.pulseScale = !isLockedInBattlefield;
                 _playableHighlightPulse.pulseAlpha = true;
-                _playableHighlightPulse.scaleAmplitude = 0.024f;
-                _playableHighlightPulse.alphaAmplitude = 0.14f;
-                _playableHighlightPulse.bobAmplitude = isLockedInBattlefield ? 0f : 8f;
+                _playableHighlightPulse.scaleAmplitude = 0.012f;
+                _playableHighlightPulse.alphaAmplitude = 0.08f;
+                _playableHighlightPulse.bobAmplitude = 0f;
                 _playableHighlightPulse.speed = 2.8f;
             }
 
             _playableHighlightPulse.pulseScale = !isLockedInBattlefield;
-            _playableHighlightPulse.bobAmplitude = isLockedInBattlefield ? 0f : 8f;
+            _playableHighlightPulse.bobAmplitude = 0f;
             _playableHighlightPulse.CaptureBaseState();
             _playableHighlightPulse.enabled = active;
         }
@@ -639,12 +643,32 @@ namespace UCG
             if (_cardPresentation == null) return;
 
             bool hasOfficialBack = isFaceDown && UcgCardPresentation.DefaultCardBackSprite != null;
+            Button cardButton = GetComponent<Button>();
+            bool isPresentationDisabled = cardButton != null && !cardButton.interactable && !_suppressPointerPreview;
+            _cardPresentation.SetPositionFloatingEnabled(isLockedInBattlefield);
             _cardPresentation.ApplyState(
                 hasOfficialBack,
                 _isPointerHovering,
-                _isSelected,
-                false,
+                _isSelected || _isPresentationFocused,
+                isPresentationDisabled,
                 GetCardBaseTint());
+
+            if (_cardArtImage != null && !isLockedInBattlefield)
+            {
+                Color artColor = imageCardColor;
+                if (isPresentationDisabled)
+                {
+                    artColor = Color.Lerp(artColor, new Color(0.72f, 0.72f, 0.78f, artColor.a), 0.32f);
+                }
+                else
+                {
+                    float brightness = (_isSelected || _isPresentationFocused) ? 0.07f : (_isPointerHovering ? 0.05f : 0f);
+                    artColor = Color.Lerp(artColor, Color.white, brightness);
+                    artColor.a = imageCardColor.a;
+                }
+
+                _cardArtImage.color = artColor;
+            }
         }
 
         void EnsurePlacedCardDepthVisuals()
@@ -736,7 +760,7 @@ namespace UCG
 
             if (_placedCardShadowImage != null)
             {
-                _placedCardShadowImage.color = new Color(4f / 255f, 9f / 255f, 18f / 255f, Mathf.Lerp(0.18f, 0.30f, hover));
+                _placedCardShadowImage.color = new Color(58f / 255f, 48f / 255f, 120f / 255f, Mathf.Lerp(0.12f, 0.20f, hover));
             }
 
             if (_placedCardRimRect != null)
@@ -754,17 +778,17 @@ namespace UCG
             {
                 _placedCardRimOutline.enabled = true;
                 _placedCardRimOutline.effectColor = Color.Lerp(
-                    UcgToolUiPalette.WithAlpha(UcgToolUiPalette.GlassBorder, 0.46f),
-                    UcgToolUiPalette.WithAlpha(UcgToolUiPalette.BrandPinkLight, 0.66f),
+                    UcgToolUiPalette.WithAlpha(UcgToolUiPalette.GlassBorder, 0.24f),
+                    UcgToolUiPalette.WithAlpha(UcgToolUiPalette.BrandPinkLight, 0.38f),
                     hover);
-                _placedCardRimOutline.effectDistance = new Vector2(Mathf.Lerp(1.4f, 2.4f, hover), Mathf.Lerp(-1.4f, -2.4f, hover));
+                _placedCardRimOutline.effectDistance = new Vector2(Mathf.Lerp(0.8f, 1.2f, hover), Mathf.Lerp(-0.8f, -1.2f, hover));
             }
 
             RefreshCardPresentationState();
 
             if (_cardArtImage != null)
             {
-                Color brightened = Color.Lerp(imageCardColor, Color.white, 0.14f * hover);
+                Color brightened = Color.Lerp(imageCardColor, Color.white, 0.05f * hover);
                 brightened.a = imageCardColor.a;
                 _cardArtImage.color = brightened;
             }
@@ -795,8 +819,8 @@ namespace UCG
             if (_playableHighlightPulse != null && _playableHighlightPulse.enabled) return;
 
             float breath = 0.5f + Mathf.Sin((Time.unscaledTime + _placedCardBreathSeed) * 1.15f) * 0.5f;
-            float restingScale = Mathf.Lerp(1f, 1.006f, breath);
-            float targetScale = _isPointerHovering ? 1.03f : restingScale;
+            float restingScale = Mathf.Lerp(1f, 1.004f, breath);
+            float targetScale = _isPointerHovering ? 1.01f : restingScale;
             float lerpSpeed = _isPointerHovering ? 12f : 3.6f;
             _rectTransform.localScale = Vector3.Lerp(_rectTransform.localScale, Vector3.one * targetScale, Time.unscaledDeltaTime * lerpSpeed);
         }
