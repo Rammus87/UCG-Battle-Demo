@@ -400,12 +400,12 @@ namespace UCG
             {
                 case UcgEffectTargetType.OwnLane:
                 case UcgEffectTargetType.OwnCharacter:
-                    return $"{phaseText}｜請選擇我方一條 Lane";
+                    return $"{phaseText}｜請選擇我方一條路";
                 case UcgEffectTargetType.OpponentLane:
                 case UcgEffectTargetType.OpponentCharacter:
-                    return $"{phaseText}｜請選擇對手一條 Lane";
+                    return $"{phaseText}｜請選擇對手一條路";
                 case UcgEffectTargetType.AnyLane:
-                    return $"{phaseText}｜請選擇一條 Lane";
+                    return $"{phaseText}｜請選擇一條路";
                 default:
                     return $"{phaseText}｜請選擇效果目標";
             }
