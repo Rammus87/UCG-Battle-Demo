@@ -1,5 +1,6 @@
 ﻿using System.Collections;
 using System.Collections.Generic;
+using System.IO;
 using CardFanUI;
 using UnityEngine;
 using UnityEngine.EventSystems;
@@ -31,6 +32,11 @@ namespace UCG
         const int DemoCardCount = 6;
         const string BattleBackgroundAssetPath = "Assets/UCG/Art/Backgrounds/battle_bg_mobile_symmetry.png";
         const string BattleBackgroundResourcePath = "UCG/Backgrounds/battle_bg_mobile_symmetry";
+        const string PlaymatSurfaceAssetRelativePath = ".agents/components/artpack/unity-ready/02_playmat_surface.png";
+        const string PlaymatSurfaceLayerObjectName = "Playmat Surface Layer";
+        const string PlaymatSurfaceObjectName = "02_playmat_surface.png";
+        const float PlaymatViewportReferenceWidth = 1080f;
+        const float PlaymatViewportReferenceHeight = 1920f;
         const float MinSceneSafeWidth = 520f;
         const float MinSceneSafeHeight = 220f;
         const float MinSceneLaneGap = 48f;
@@ -38,6 +44,8 @@ namespace UCG
         const float MinLaneVisualGap = 42f;
         const float MinSidePileLaneGap = 48f;
         static Sprite _cardSelectionFocusZoneSprite;
+        static Sprite _playmatSurfaceSprite;
+        static bool _playmatSurfaceSpriteLoadAttempted;
         static readonly string[] EffectTestCardIds =
         {
             "BP05-002",
@@ -188,6 +196,7 @@ namespace UCG
         public float pileGroupVerticalSeparation = 16f;
         public float sidePileColumnMargin = 32f;
         public bool sidePileFollowFocus = false;
+        [Range(0f, 1f)] public float playmatViewportHorizontalOffset = 1f;
         public float sidePileFocusCompensationFactor = 0.18f;
         public float sidePileToLaneGap = 48f;
         public float sidePileTooFarGap = 160f;
@@ -302,6 +311,9 @@ namespace UCG
         RectTransform _battlefieldVisualLayer;
         Image _battlefieldVisualImage;
         Outline _battlefieldVisualOutline;
+        RectTransform _playmatSurfaceLayer;
+        Image _playmatSurfaceImage;
+        float _lastAppliedPlaymatViewportHorizontalOffset = float.MinValue;
         Coroutine _battlefieldActionFeedbackRoutine;
         readonly List<Image> _battlefieldFeedbackImages = new List<Image>();
         readonly List<Color> _battlefieldFeedbackBaseColors = new List<Color>();
@@ -482,6 +494,7 @@ namespace UCG
             UpdateTopPhaseHud();
             EnsureTutorialPanelTopLayer();
             UpdateHandRaycastDebugProbe();
+            UpdatePlaymatViewportOffset();
         }
 
         void EnsureDebugBoardZonesActivePanel()
@@ -851,7 +864,9 @@ namespace UCG
             RetireLegacyVisualChild(_battlefieldVisualLayer, "Battle Board Center Wash");
             RetireLegacyVisualChild(_battlefieldVisualLayer, "Battle Board Left Edge");
             RetireLegacyVisualChild(_battlefieldVisualLayer, "Battle Board Right Edge");
+            RetireLegacyVisualChild(_battlefieldVisualLayer, PlaymatSurfaceLayerObjectName);
 
+            EnsurePlaymatSurface();
             EnsureBattlefieldFrameAccents(_battlefieldVisualLayer);
             ApplyBattlefieldVisualLayer();
         }
@@ -909,10 +924,10 @@ namespace UCG
         {
             if (parent == null) return;
 
-            Color cyan = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.FocusCyan, debugBoardZones ? 0.88f : 0.22f);
-            Color cyanSoft = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.FocusCyan, debugBoardZones ? 0.72f : 0.095f);
-            Color pink = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.BrandPinkLight, debugBoardZones ? 0.86f : 0.17f);
-            Color pinkSoft = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.BrandPinkLight, debugBoardZones ? 0.70f : 0.082f);
+            Color cyan = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.FocusCyan, debugBoardZones ? 0.88f : 0f);
+            Color cyanSoft = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.FocusCyan, debugBoardZones ? 0.72f : 0f);
+            Color pink = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.BrandPinkLight, debugBoardZones ? 0.86f : 0f);
+            Color pinkSoft = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.BrandPinkLight, debugBoardZones ? 0.70f : 0f);
 
             EnsureBattlefieldAccent(parent, "Battlefield Frame TL H", new Vector2(0.055f, 0.91f), new Vector2(0.055f, 0.91f), new Vector2(42f, 0f), new Vector2(84f, 2f), cyan);
             EnsureBattlefieldAccent(parent, "Battlefield Frame TL V", new Vector2(0.055f, 0.91f), new Vector2(0.055f, 0.91f), new Vector2(0f, -34f), new Vector2(2f, 68f), pink);
@@ -928,24 +943,219 @@ namespace UCG
             EnsureBattlefieldAccent(parent, "Battlefield Frame Left Trace", new Vector2(0.055f, 0.27f), new Vector2(0.055f, 0.73f), Vector2.zero, new Vector2(1.2f, 0f), pinkSoft);
             EnsureBattlefieldAccent(parent, "Battlefield Frame Right Trace", new Vector2(0.945f, 0.27f), new Vector2(0.945f, 0.73f), Vector2.zero, new Vector2(1.2f, 0f), pinkSoft);
             EnsureBattlefieldAccent(parent, "Battlefield Center Spine Trace", new Vector2(0.5f, 0.20f), new Vector2(0.5f, 0.80f), Vector2.zero, new Vector2(1.2f, 0f), cyanSoft);
-            EnsureBattlefieldAreaLabel(parent, "Battlefield Opponent Area Label", "Opponent", new Vector2(0.5f, 0.79f), UcgToolUiPalette.WithAlpha(UcgToolUiPalette.SoftWhite, debugBoardZones ? 0.90f : 0.42f), 19);
-            EnsureBattlefieldAreaLabel(parent, "Battlefield Player Area Label", "Player", new Vector2(0.5f, 0.21f), UcgToolUiPalette.WithAlpha(UcgToolUiPalette.SoftWhite, debugBoardZones ? 0.90f : 0.42f), 19);
-            EnsureBattlefieldAreaLabel(parent, "Battlefield Scene Axis Label", "Scene", new Vector2(0.5f, 0.50f), UcgToolUiPalette.WithAlpha(UcgToolUiPalette.FocusCyan, debugBoardZones ? 0.90f : 0.34f), 16);
+            EnsureBattlefieldAreaLabel(parent, "Battlefield Opponent Area Label", "Opponent", new Vector2(0.5f, 0.79f), UcgToolUiPalette.WithAlpha(UcgToolUiPalette.SoftWhite, debugBoardZones ? 0.90f : 0f), 19);
+            EnsureBattlefieldAreaLabel(parent, "Battlefield Player Area Label", "Player", new Vector2(0.5f, 0.21f), UcgToolUiPalette.WithAlpha(UcgToolUiPalette.SoftWhite, debugBoardZones ? 0.90f : 0f), 19);
+            EnsureBattlefieldAreaLabel(parent, "Battlefield Scene Axis Label", "Scene", new Vector2(0.5f, 0.50f), UcgToolUiPalette.WithAlpha(UcgToolUiPalette.FocusCyan, debugBoardZones ? 0.90f : 0f), 16);
             EnsureBattlefieldCompositionGuides(parent);
+        }
+
+        void EnsurePlaymatSurface()
+        {
+            if (canvas == null) return;
+
+            Transform existingLayer = canvas.transform.Find(PlaymatSurfaceLayerObjectName);
+            RectTransform layerRect;
+            if (existingLayer == null)
+            {
+                var layerObject = new GameObject(PlaymatSurfaceLayerObjectName, typeof(RectTransform), typeof(RectMask2D));
+                layerObject.transform.SetParent(canvas.transform, false);
+                layerRect = layerObject.GetComponent<RectTransform>();
+            }
+            else
+            {
+                layerRect = existingLayer as RectTransform;
+                if (existingLayer.GetComponent<RectMask2D>() == null) existingLayer.gameObject.AddComponent<RectMask2D>();
+            }
+
+            _playmatSurfaceLayer = layerRect;
+            layerRect.anchorMin = Vector2.zero;
+            layerRect.anchorMax = Vector2.one;
+            layerRect.pivot = new Vector2(0.5f, 0.5f);
+            layerRect.anchoredPosition = Vector2.zero;
+            layerRect.offsetMin = Vector2.zero;
+            layerRect.offsetMax = Vector2.zero;
+            layerRect.localScale = Vector3.one;
+            layerRect.localEulerAngles = Vector3.zero;
+
+            Transform existing = layerRect.Find(PlaymatSurfaceObjectName);
+            RectTransform imageRect;
+            Image image;
+            if (existing == null)
+            {
+                var playmatObject = new GameObject(PlaymatSurfaceObjectName, typeof(RectTransform), typeof(Image));
+                playmatObject.transform.SetParent(layerRect, false);
+                imageRect = playmatObject.GetComponent<RectTransform>();
+                image = playmatObject.GetComponent<Image>();
+            }
+            else
+            {
+                imageRect = existing as RectTransform;
+                image = existing.GetComponent<Image>();
+                if (image == null) image = existing.gameObject.AddComponent<Image>();
+            }
+
+            _playmatSurfaceImage = image;
+            imageRect.anchorMin = new Vector2(0.5f, 0.5f);
+            imageRect.anchorMax = new Vector2(0.5f, 0.5f);
+            imageRect.pivot = new Vector2(0.5f, 0.5f);
+            imageRect.localScale = Vector3.one;
+            imageRect.localEulerAngles = Vector3.zero;
+
+            Sprite playmatSprite = LoadPlaymatSurfaceSprite();
+            image.sprite = playmatSprite;
+            image.type = Image.Type.Simple;
+            image.preserveAspect = true;
+            image.color = playmatSprite != null ? Color.white : Color.clear;
+            image.enabled = playmatSprite != null;
+            image.raycastTarget = false;
+
+            ApplyPlaymatViewportLayout(layerRect, imageRect, playmatSprite);
+            ApplyPlaymatLayerOrder(playmatSprite != null);
+        }
+
+        void UpdatePlaymatViewportOffset()
+        {
+            if (_playmatSurfaceLayer == null || _playmatSurfaceImage == null || _playmatSurfaceImage.sprite == null) return;
+
+            float normalizedOffset = GetPlaymatViewportHorizontalOffset();
+            if (Mathf.Approximately(_lastAppliedPlaymatViewportHorizontalOffset, normalizedOffset)) return;
+
+            ApplyPlaymatViewportLayout(_playmatSurfaceLayer, _playmatSurfaceImage.rectTransform, _playmatSurfaceImage.sprite);
+        }
+
+        float GetPlaymatViewportHorizontalOffset()
+        {
+            if (battlefieldManager != null && battlefieldManager.scrollRect != null)
+            {
+                return Mathf.Clamp01(battlefieldManager.scrollRect.horizontalNormalizedPosition);
+            }
+
+            return Mathf.Clamp01(playmatViewportHorizontalOffset);
+        }
+
+        void ApplyPlaymatViewportLayout(RectTransform viewportRect, RectTransform imageRect, Sprite playmatSprite)
+        {
+            if (viewportRect == null || imageRect == null || playmatSprite == null) return;
+
+            Vector2 viewportSize = GetPlaymatViewportSize(viewportRect);
+            float spriteWidth = Mathf.Max(1f, playmatSprite.rect.width);
+            float spriteHeight = Mathf.Max(1f, playmatSprite.rect.height);
+            float aspect = spriteWidth / spriteHeight;
+            float imageHeight = viewportSize.y;
+            float imageWidth = Mathf.Max(viewportSize.x, imageHeight * aspect);
+            float maxShift = Mathf.Max(0f, (imageWidth - viewportSize.x) * 0.5f);
+            float normalizedOffset = GetPlaymatViewportHorizontalOffset();
+
+            imageRect.sizeDelta = new Vector2(imageWidth, imageHeight);
+            imageRect.anchoredPosition = new Vector2(Mathf.Lerp(maxShift, -maxShift, normalizedOffset), 0f);
+            _lastAppliedPlaymatViewportHorizontalOffset = normalizedOffset;
+        }
+
+        Vector2 GetPlaymatViewportSize(RectTransform viewportRect)
+        {
+            if (viewportRect != null && viewportRect.rect.width > 1f && viewportRect.rect.height > 1f)
+            {
+                return viewportRect.rect.size;
+            }
+
+            CanvasScaler scaler = canvas != null ? canvas.GetComponent<CanvasScaler>() : null;
+            if (scaler != null && scaler.referenceResolution.x > 1f && scaler.referenceResolution.y > 1f)
+            {
+                return scaler.referenceResolution;
+            }
+
+            return new Vector2(PlaymatViewportReferenceWidth, PlaymatViewportReferenceHeight);
+        }
+
+        void ApplyPlaymatLayerOrder(bool hasPlaymatSurface)
+        {
+            if (canvas == null || _playmatSurfaceLayer == null) return;
+
+            Transform background = canvas.transform.Find("UCG HUD Background");
+            int targetIndex = background != null ? background.GetSiblingIndex() + 1 : 0;
+            targetIndex = Mathf.Clamp(targetIndex, 0, canvas.transform.childCount - 1);
+            _playmatSurfaceLayer.SetSiblingIndex(targetIndex);
+            SetHudBackgroundArtworkVisible(!hasPlaymatSurface);
+        }
+
+        void SetHudBackgroundArtworkVisible(bool visible)
+        {
+            if (canvas == null) return;
+
+            Transform background = canvas.transform.Find("UCG HUD Background");
+            if (background == null) return;
+
+            Graphic[] graphics = background.GetComponentsInChildren<Graphic>(true);
+            for (int i = 0; i < graphics.Length; i++)
+            {
+                if (graphics[i] == null) continue;
+                graphics[i].enabled = visible;
+            }
+        }
+
+        static Sprite LoadPlaymatSurfaceSprite()
+        {
+            if (_playmatSurfaceSprite != null) return _playmatSurfaceSprite;
+            if (_playmatSurfaceSpriteLoadAttempted) return null;
+
+            _playmatSurfaceSpriteLoadAttempted = true;
+
+            string path = GetProjectRelativePath(PlaymatSurfaceAssetRelativePath);
+            if (string.IsNullOrWhiteSpace(path) || !File.Exists(path)) return null;
+
+            try
+            {
+                byte[] bytes = File.ReadAllBytes(path);
+                var texture = new Texture2D(2, 2, TextureFormat.RGBA32, false)
+                {
+                    name = "02_playmat_surface"
+                };
+
+                if (!texture.LoadImage(bytes) || texture.width <= 0 || texture.height <= 0)
+                {
+                    return null;
+                }
+
+                texture.wrapMode = TextureWrapMode.Clamp;
+                texture.filterMode = FilterMode.Bilinear;
+
+                _playmatSurfaceSprite = Sprite.Create(
+                    texture,
+                    new Rect(0f, 0f, texture.width, texture.height),
+                    new Vector2(0.5f, 0.5f),
+                    100f);
+                _playmatSurfaceSprite.name = "02_playmat_surface";
+                return _playmatSurfaceSprite;
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
+        static string GetProjectRelativePath(string relativePath)
+        {
+            if (string.IsNullOrWhiteSpace(relativePath) || string.IsNullOrWhiteSpace(Application.dataPath)) return "";
+
+            DirectoryInfo assetsDirectory = new DirectoryInfo(Application.dataPath);
+            DirectoryInfo projectDirectory = assetsDirectory.Parent;
+            if (projectDirectory == null) return "";
+
+            return Path.GetFullPath(Path.Combine(projectDirectory.FullName, relativePath));
         }
 
         void EnsureBattlefieldCompositionGuides(RectTransform parent)
         {
             if (parent == null) return;
 
-            float guideAlpha = debugBoardZones ? 0.52f : 0.24f;
-            float guideSoftAlpha = debugBoardZones ? 0.30f : 0.12f;
+            float guideAlpha = debugBoardZones ? 0.52f : 0f;
+            float guideSoftAlpha = debugBoardZones ? 0.30f : 0f;
             Color laneCore = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.FocusCyan, guideAlpha);
             Color laneSoft = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.FocusCyan, guideSoftAlpha);
-            Color sceneGlow = UcgToolUiPalette.WithAlpha(new Color(0.27f, 0.86f, 1f, 1f), debugBoardZones ? 0.22f : 0.085f);
-            Color sceneEdge = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.FocusCyan, debugBoardZones ? 0.70f : 0.28f);
-            Color characterGround = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.FocusCyan, debugBoardZones ? 0.42f : 0.16f);
-            Color laneLabelColor = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.SoftWhite, debugBoardZones ? 0.86f : 0.58f);
+            Color sceneGlow = UcgToolUiPalette.WithAlpha(new Color(0.27f, 0.86f, 1f, 1f), debugBoardZones ? 0.22f : 0f);
+            Color sceneEdge = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.FocusCyan, debugBoardZones ? 0.70f : 0f);
+            Color characterGround = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.FocusCyan, debugBoardZones ? 0.42f : 0f);
+            Color laneLabelColor = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.SoftWhite, debugBoardZones ? 0.86f : 0f);
 
             EnsureBattlefieldPulseImage(parent, "Battlefield Lane 3 Guide Core", new Vector2(0.235f, 0.20f), new Vector2(0.235f, 0.80f), Vector2.zero, new Vector2(1.8f, 0f), laneCore, 0.035f, 2.1f);
             EnsureBattlefieldPulseImage(parent, "Battlefield Lane 2 Guide Core", new Vector2(0.5f, 0.20f), new Vector2(0.5f, 0.80f), Vector2.zero, new Vector2(1.8f, 0f), laneCore, 0.035f, 2.35f);
@@ -991,7 +1201,7 @@ namespace UCG
                 new Vector2(xAnchor, yAnchor - 0.02f),
                 Vector2.zero,
                 new Vector2(112f, 18f),
-                UcgToolUiPalette.WithAlpha(UcgToolUiPalette.FocusCyan, debugBoardZones ? 0.14f : 0.045f));
+                UcgToolUiPalette.WithAlpha(UcgToolUiPalette.FocusCyan, debugBoardZones ? 0.14f : 0f));
         }
 
         void EnsureBattlefieldPulseImage(RectTransform parent, string objectName, Vector2 anchorMin, Vector2 anchorMax, Vector2 anchoredPosition, Vector2 sizeDelta, Color color, float alphaAmplitude, float speed)
@@ -1507,8 +1717,10 @@ namespace UCG
         {
             if (canvas == null || _battlefieldVisualLayer == null) return;
 
-            Transform background = canvas.transform.Find("UCG HUD Background");
-            int targetIndex = background != null ? background.GetSiblingIndex() + 1 : 0;
+            Transform layerBelowBattlefield = _playmatSurfaceLayer != null
+                ? _playmatSurfaceLayer
+                : canvas.transform.Find("UCG HUD Background");
+            int targetIndex = layerBelowBattlefield != null ? layerBelowBattlefield.GetSiblingIndex() + 1 : 0;
             targetIndex = Mathf.Clamp(targetIndex, 0, canvas.transform.childCount - 1);
             _battlefieldVisualLayer.SetSiblingIndex(targetIndex);
         }
@@ -3834,11 +4046,11 @@ namespace UCG
         {
             if (layer == null) return;
 
-            Color grid = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.FocusCyan, debugBoardZones ? 0.40f : 0.050f);
-            Color gridSoft = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.SoftWhite, debugBoardZones ? 0.30f : 0.026f);
-            Color dot = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.FocusCyan, debugBoardZones ? 0.45f : 0.080f);
-            Color baseGlow = UcgToolUiPalette.WithAlpha(new Color(0.27f, 0.86f, 1f, 1f), debugBoardZones ? 0.26f : 0.095f);
-            Color baseSoft = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.FocusCyan, debugBoardZones ? 0.18f : 0.060f);
+            Color grid = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.FocusCyan, debugBoardZones ? 0.40f : 0f);
+            Color gridSoft = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.SoftWhite, debugBoardZones ? 0.30f : 0f);
+            Color dot = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.FocusCyan, debugBoardZones ? 0.45f : 0f);
+            Color baseGlow = UcgToolUiPalette.WithAlpha(new Color(0.27f, 0.86f, 1f, 1f), debugBoardZones ? 0.26f : 0f);
+            Color baseSoft = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.FocusCyan, debugBoardZones ? 0.18f : 0f);
 
             EnsureSceneContainerPulseImage(layer, "Scene Pedestal Soft Plate", new Vector2(0.08f, 0.12f), new Vector2(0.92f, 0.88f), Vector2.zero, Vector2.zero, baseSoft, 0.018f, 1.85f);
             EnsureSceneContainerPulseImage(layer, "Scene Pedestal Front Glow", new Vector2(0.10f, 0.11f), new Vector2(0.90f, 0.11f), Vector2.zero, new Vector2(0f, 4f), baseGlow, 0.035f, 2.15f);
@@ -3857,9 +4069,9 @@ namespace UCG
         {
             if (layer == null) return;
 
-            Color cyan = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.FocusCyan, debugBoardZones ? 0.90f : 0.40f);
-            Color cyanSoft = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.FocusCyan, debugBoardZones ? 0.70f : 0.18f);
-            Color pinkSoft = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.BrandPinkLight, debugBoardZones ? 0.70f : 0.14f);
+            Color cyan = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.FocusCyan, debugBoardZones ? 0.90f : 0f);
+            Color cyanSoft = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.FocusCyan, debugBoardZones ? 0.70f : 0f);
+            Color pinkSoft = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.BrandPinkLight, debugBoardZones ? 0.70f : 0f);
 
             EnsureSceneContainerImage(layer, "Frame Top Line", new Vector2(0.08f, 1f), new Vector2(0.92f, 1f), new Vector2(0f, -9f), new Vector2(0f, 1.4f), cyan);
             EnsureSceneContainerImage(layer, "Frame Bottom Line", new Vector2(0.08f, 0f), new Vector2(0.92f, 0f), new Vector2(0f, 9f), new Vector2(0f, 1.4f), cyan);
@@ -3873,8 +4085,8 @@ namespace UCG
         {
             if (layer == null) return;
 
-            Color cyan = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.FocusCyan, debugBoardZones ? 0.96f : 0.62f);
-            Color pink = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.BrandPinkLight, debugBoardZones ? 0.92f : 0.42f);
+            Color cyan = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.FocusCyan, debugBoardZones ? 0.96f : 0f);
+            Color pink = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.BrandPinkLight, debugBoardZones ? 0.92f : 0f);
 
             EnsureSceneContainerImage(layer, "Corner TL H", new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(30f, -9f), new Vector2(56f, 2f), cyan);
             EnsureSceneContainerImage(layer, "Corner TL V", new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(9f, -30f), new Vector2(2f, 56f), pink);
@@ -3890,9 +4102,9 @@ namespace UCG
         {
             if (layer == null) return;
 
-            Color cyan = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.FocusCyan, debugBoardZones ? 0.80f : 0.20f);
-            Color cyanSoft = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.FocusCyan, debugBoardZones ? 0.58f : 0.12f);
-            Color pink = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.BrandPinkLight, debugBoardZones ? 0.70f : 0.10f);
+            Color cyan = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.FocusCyan, debugBoardZones ? 0.80f : 0f);
+            Color cyanSoft = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.FocusCyan, debugBoardZones ? 0.58f : 0f);
+            Color pink = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.BrandPinkLight, debugBoardZones ? 0.70f : 0f);
 
             EnsureSceneContainerPulseImage(layer, "Center Light Horizontal", new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(118f, 2f), cyanSoft, 0.030f, 2.2f);
             EnsureSceneContainerPulseImage(layer, "Center Light Vertical", new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(2f, 52f), cyanSoft, 0.022f, 2.05f);
@@ -3904,8 +4116,8 @@ namespace UCG
         {
             if (layer == null) return;
 
-            Color line = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.FocusCyan, debugBoardZones ? 0.76f : 0.11f);
-            Color edge = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.BrandPinkLight, debugBoardZones ? 0.66f : 0.06f);
+            Color line = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.FocusCyan, debugBoardZones ? 0.76f : 0f);
+            Color edge = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.BrandPinkLight, debugBoardZones ? 0.66f : 0f);
 
             EnsureSceneContainerImage(layer, "Battle Line Opponent", new Vector2(0.5f, 0.56f), new Vector2(0.5f, 1f), new Vector2(0f, -16f), new Vector2(1.2f, 0f), line);
             EnsureSceneContainerImage(layer, "Battle Line Player", new Vector2(0.5f, 0f), new Vector2(0.5f, 0.44f), new Vector2(0f, 16f), new Vector2(1.2f, 0f), line);
@@ -4022,10 +4234,10 @@ namespace UCG
 
             Color cyan = debugBoardZones
                 ? new Color(0.72f, 1f, 1f, 0.92f)
-                : UcgToolUiPalette.WithAlpha(UcgToolUiPalette.FocusCyan, 0.32f);
+                : Color.clear;
             Color pink = debugBoardZones
                 ? new Color(1f, 0.46f, 0.74f, 0.9f)
-                : UcgToolUiPalette.WithAlpha(UcgToolUiPalette.BrandPinkLight, 0.23f);
+                : Color.clear;
 
             EnsureSceneZoneCornerMarker(parent, "Scene Corner TL H", new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(18f, -14f), new Vector2(34f, 2f), cyan);
             EnsureSceneZoneCornerMarker(parent, "Scene Corner TL V", new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(14f, -14f), new Vector2(2f, 20f), pink);
@@ -4043,17 +4255,17 @@ namespace UCG
 
             Color cyan = debugBoardZones
                 ? new Color(0.72f, 1f, 1f, 0.95f)
-                : UcgToolUiPalette.WithAlpha(UcgToolUiPalette.FocusCyan, 0.12f);
+                : Color.clear;
             Color pink = debugBoardZones
                 ? new Color(1f, 0.46f, 0.74f, 0.9f)
-                : UcgToolUiPalette.WithAlpha(UcgToolUiPalette.BrandPinkLight, 0.07f);
+                : Color.clear;
 
             EnsureSceneZoneCornerMarker(parent, "Scene Battle Line Top", new Vector2(0.5f, 1f), new Vector2(0.5f, 0f), new Vector2(0f, -4f), new Vector2(1.2f, 34f), cyan);
             EnsureSceneZoneCornerMarker(parent, "Scene Battle Line Bottom", new Vector2(0.5f, 0f), new Vector2(0.5f, 1f), new Vector2(0f, 4f), new Vector2(1.2f, 34f), cyan);
             EnsureSceneZoneCornerMarker(parent, "Scene Center Light Core", new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(6f, 6f), pink);
-            EnsureSceneZoneCornerMarker(parent, "Scene Center Light Halo", new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(44f, 3f), UcgToolUiPalette.WithAlpha(UcgToolUiPalette.FocusCyan, debugBoardZones ? 0.72f : 0.055f));
-            EnsureSceneZoneCornerMarker(parent, "Scene Top Hairline", new Vector2(0.24f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -9f), new Vector2(112f, 1.2f), UcgToolUiPalette.WithAlpha(UcgToolUiPalette.FocusCyan, debugBoardZones ? 0.72f : 0.10f));
-            EnsureSceneZoneCornerMarker(parent, "Scene Bottom Hairline", new Vector2(0.76f, 0f), new Vector2(0.5f, 0f), new Vector2(0f, 9f), new Vector2(112f, 1.2f), UcgToolUiPalette.WithAlpha(UcgToolUiPalette.BrandPinkLight, debugBoardZones ? 0.72f : 0.055f));
+            EnsureSceneZoneCornerMarker(parent, "Scene Center Light Halo", new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(44f, 3f), UcgToolUiPalette.WithAlpha(UcgToolUiPalette.FocusCyan, debugBoardZones ? 0.72f : 0f));
+            EnsureSceneZoneCornerMarker(parent, "Scene Top Hairline", new Vector2(0.24f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -9f), new Vector2(112f, 1.2f), UcgToolUiPalette.WithAlpha(UcgToolUiPalette.FocusCyan, debugBoardZones ? 0.72f : 0f));
+            EnsureSceneZoneCornerMarker(parent, "Scene Bottom Hairline", new Vector2(0.76f, 0f), new Vector2(0.5f, 0f), new Vector2(0f, 9f), new Vector2(112f, 1.2f), UcgToolUiPalette.WithAlpha(UcgToolUiPalette.BrandPinkLight, debugBoardZones ? 0.72f : 0f));
         }
 
         void EnsureSceneZoneCornerMarker(RectTransform parent, string markerName, Vector2 anchor, Vector2 pivot, Vector2 anchoredPosition, Vector2 size, Color color)
