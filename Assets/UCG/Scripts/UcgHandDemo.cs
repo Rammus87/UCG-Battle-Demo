@@ -4548,6 +4548,7 @@ namespace UCG
         {
             RectTransform sceneAreaRoot = sceneZoneAnchor != null ? sceneZoneAnchor.parent as RectTransform : null;
             if (sceneAreaRoot == null || battlefieldManager == null || battlefieldManager.content == null) return;
+            if (battlefieldManager.IsViewTransformOnlyActive) return;
 
             float contentScale = Mathf.Max(0.1f, battlefieldManager.content.localScale.x);
             float overviewBlend = battlefieldManager.GetOverviewLayoutBlend(contentScale);
@@ -22134,6 +22135,7 @@ namespace UCG
         void RefreshBoardZoneLayoutIfBattlefieldViewChanged()
         {
             if (pileSideRegionRoot == null || battlefieldManager == null) return;
+            if (battlefieldManager.IsViewTransformOnlyActive) return;
 
             RectTransform root = GetBoardZoneLayoutRoot();
             if (root == null) return;

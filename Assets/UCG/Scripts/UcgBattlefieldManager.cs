@@ -27,7 +27,7 @@ namespace UCG
         const float OverviewLaneRightRailGap = 170f;
         const float OverviewRotatedCardClearance = 72f;
         const float OverviewSceneRowGap = 36f;
-        const float OverviewRowCenterlineTighten = 0.88f;
+        const float OverviewRowCenterlineTighten = 0.80f;
         const float OverviewLaneAreaLeftPadding = 24f;
         const float OverviewRightRailCardPadding = 48f;
         const float OverviewViewportRightPadding = 36f;
@@ -78,12 +78,14 @@ namespace UCG
         public float rightAuxiliaryColumnGutterWidth;
         public bool debugBattlefieldLayout;
         public bool hasInitializedBattlefieldView;
+        [SerializeField] bool showViewTransformDebugButtons = true;
 
         readonly List<UcgBattleLane> _lanes = new List<UcgBattleLane>();
         Coroutine _activeLaneScrollCoroutine;
         UcgBattlefieldViewMode _currentViewMode = UcgBattlefieldViewMode.OverviewAll;
 
         public List<UcgBattleLane> Lanes => _lanes;
+        public bool IsViewTransformOnlyActive { get; private set; }
 
         public void Configure(UcgTutorialGuide guide, UcgTurnManager turns, UcgPhaseManager phases, UcgCardInfoPanel infoPanel, Text sharedResultText, Vector2 cardSize, Sprite fixedOpponentSprite, Font font)
         {
@@ -300,6 +302,8 @@ namespace UCG
             if (content == null || viewport == null) return;
             if (_lanes.Count == 0) return;
             if (smooth && IsAnyCardDragging()) return;
+
+            IsViewTransformOnlyActive = false;
 
             if (forceOverviewOnly)
             {
@@ -683,6 +687,298 @@ namespace UCG
 
             SetContentView(clampedTargetX, clampedTargetScale);
             _activeLaneScrollCoroutine = null;
+        }
+
+        public void PreviewFocusLaneViewTransformOnly(int laneIndex)
+        {
+            if (content == null || viewport == null || _lanes.Count == 0) return;
+
+            int clampedLaneIndex = Mathf.Clamp(laneIndex, 0, _lanes.Count - 1);
+            float viewportWidth = viewport.rect.width > 0f ? viewport.rect.width : 1040f;
+            float lanePitch = GetLanePitchForView(clampedLaneIndex);
+            float footprintWidth = GetViewTransformRotatedFootprintWidth(clampedLaneIndex);
+            float targetScale = CalculateFocusLaneScale(viewportWidth, lanePitch, footprintWidth, 0.88f);
+            float laneCenterX = GetLaneCenterForView(clampedLaneIndex);
+            float viewportRatio = GetFocusLaneViewportRatio(clampedLaneIndex);
+            float targetX = GetContentTargetXForWorldPoint(laneCenterX, viewportRatio, targetScale);
+            float targetY = GetContentTargetYForFocusLaneView(clampedLaneIndex, targetScale);
+
+            SetViewTransformOnly(targetX, targetY, targetScale);
+        }
+
+        [ContextMenu("UCG/Test ViewTransform Focus Lane 01")]
+        void TestViewTransformFocusLane01()
+        {
+            PreviewFocusLaneViewTransformOnly(1);
+        }
+
+        [ContextMenu("UCG/Test ViewTransform Focus Lane 02")]
+        void TestViewTransformFocusLane02()
+        {
+            PreviewFocusLaneViewTransformOnly(2);
+        }
+
+        [ContextMenu("UCG/Test ViewTransform Focus Lane 04")]
+        void TestViewTransformFocusLane04()
+        {
+            PreviewFocusLaneViewTransformOnly(4);
+        }
+
+        [ContextMenu("UCG/Test ViewTransform Overview")]
+        void TestViewTransformOverview()
+        {
+            ShowOverviewInstant();
+        }
+
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+        void OnGUI()
+        {
+            if (!showViewTransformDebugButtons) return;
+
+            const float panelWidth = 132f;
+            const float panelHeight = 138f;
+            GUILayout.BeginArea(new Rect(12f, 12f, panelWidth, panelHeight), "View Transform", GUI.skin.window);
+            if (GUILayout.Button("Focus 01")) PreviewFocusLaneViewTransformOnly(1);
+            if (GUILayout.Button("Focus 02")) PreviewFocusLaneViewTransformOnly(2);
+            if (GUILayout.Button("Focus 04")) PreviewFocusLaneViewTransformOnly(4);
+            if (GUILayout.Button("Overview")) ShowOverviewInstant();
+            GUILayout.EndArea();
+        }
+#endif
+
+        public float CalculateFocusLaneScale(
+            float viewportWidth,
+            float lanePitch,
+            float footprintWidth,
+            float sideVisibilityRatio)
+        {
+            float safeViewportWidth = Mathf.Max(1f, viewportWidth);
+            float safeLanePitch = Mathf.Max(1f, lanePitch);
+            float safeFootprintWidth = Mathf.Max(1f, footprintWidth);
+            float sideRatio = Mathf.Clamp(sideVisibilityRatio, 0.5f, 0.95f);
+            float visibleWorldWidth = 2f * (safeLanePitch + (sideRatio - 0.5f) * safeFootprintWidth);
+            float rawScale = safeViewportWidth / Mathf.Max(1f, visibleWorldWidth);
+            float minimumScale = Mathf.Clamp(overviewScale, 0.1f, 1f);
+            return Mathf.Clamp(rawScale, minimumScale, 1f);
+        }
+
+        public float GetLaneCenterForView(int laneIndex)
+        {
+            if (content == null || laneIndex < 0 || laneIndex >= _lanes.Count)
+            {
+                return GetLaneLeftX(Mathf.Max(0, laneIndex)) + laneSize.x * 0.5f;
+            }
+
+            UcgBattleLane lane = _lanes[laneIndex];
+            RectTransform slot = lane != null
+                ? (lane.playerSlot != null ? lane.playerSlot : lane.opponentSlot)
+                : null;
+            if (slot != null)
+            {
+                Vector3 slotWorldCenter = slot.TransformPoint(slot.rect.center);
+                return content.InverseTransformPoint(slotWorldCenter).x;
+            }
+
+            RectTransform laneRect = lane != null ? lane.transform as RectTransform : null;
+            if (laneRect != null)
+            {
+                Vector3 laneWorldCenter = laneRect.TransformPoint(laneRect.rect.center);
+                return content.InverseTransformPoint(laneWorldCenter).x;
+            }
+
+            return GetLaneLeftX(laneIndex) + laneSize.x * 0.5f;
+        }
+
+        public float GetContentTargetXForWorldPoint(
+            float worldX,
+            float viewportRatio,
+            float scale)
+        {
+            float viewportWidth = viewport != null && viewport.rect.width > 0f ? viewport.rect.width : 1040f;
+            float targetViewportX = viewportWidth * Mathf.Clamp01(viewportRatio);
+            return targetViewportX - worldX * Mathf.Max(0.1f, scale) - combatAreaOffsetX;
+        }
+
+        public void SetViewTransformOnly(float targetX, float targetScale)
+        {
+            SetViewTransformOnly(targetX, 0f, targetScale);
+        }
+
+        public void SetViewTransformOnly(float targetX, float targetY, float targetScale)
+        {
+            if (content == null) return;
+
+            IsViewTransformOnlyActive = true;
+            ViewTransformOnlyLayoutSnapshot beforeSnapshot = CaptureViewTransformOnlyLayoutSnapshot();
+            float clampedScale = Mathf.Max(0.1f, targetScale);
+            float maxScrollX = GetMaxScrollX(clampedScale);
+            float clampedTargetX = Mathf.Clamp(targetX, -maxScrollX, 0f);
+            content.localScale = new Vector3(clampedScale, clampedScale, 1f);
+            content.anchoredPosition = new Vector2(clampedTargetX + combatAreaOffsetX, targetY);
+
+            if (scrollRect != null)
+            {
+                scrollRect.StopMovement();
+                scrollRect.velocity = Vector2.zero;
+                scrollRect.horizontalNormalizedPosition = maxScrollX > 0f ? -clampedTargetX / maxScrollX : 0f;
+            }
+
+            AssertViewTransformOnlyDidNotMutateBattleLayout(beforeSnapshot);
+        }
+
+        public IEnumerator SmoothViewTransformOnly(float targetX, float targetScale)
+        {
+            if (!Application.isPlaying || activeLaneScrollDuration <= 0f)
+            {
+                SetViewTransformOnly(targetX, targetScale);
+                yield break;
+            }
+
+            StopActiveLaneScroll();
+            float startX = content != null ? content.anchoredPosition.x - combatAreaOffsetX : 0f;
+            float startScale = content != null ? content.localScale.x : 1f;
+            float clampedTargetScale = Mathf.Max(0.1f, targetScale);
+            float maxScrollX = GetMaxScrollX(clampedTargetScale);
+            float clampedTargetX = Mathf.Clamp(targetX, -maxScrollX, 0f);
+            float elapsed = 0f;
+
+            while (elapsed < activeLaneScrollDuration)
+            {
+                elapsed += Time.unscaledDeltaTime;
+                float t = Mathf.Clamp01(elapsed / activeLaneScrollDuration);
+                float eased = Mathf.SmoothStep(0f, 1f, t);
+                SetViewTransformOnly(
+                    Mathf.Lerp(startX, clampedTargetX, eased),
+                    0f,
+                    Mathf.Lerp(startScale, clampedTargetScale, eased));
+                yield return null;
+            }
+
+            SetViewTransformOnly(clampedTargetX, clampedTargetScale);
+            _activeLaneScrollCoroutine = null;
+        }
+
+        float GetContentTargetYForFocusLaneView(int laneIndex, float scale)
+        {
+            if (viewport == null || laneIndex < 0 || laneIndex >= _lanes.Count) return 0f;
+
+            UcgBattleLane lane = _lanes[laneIndex];
+            RectTransform opponentSlot = lane != null ? lane.opponentSlot : null;
+            if (opponentSlot == null) return 0f;
+
+            float viewportHeight = viewport.rect.height > 0f ? viewport.rect.height : 960f;
+            float safeScale = Mathf.Max(0.1f, scale);
+            Vector3 opponentWorldCenter = opponentSlot.TransformPoint(opponentSlot.rect.center);
+            float opponentCenterY = content != null ? content.InverseTransformPoint(opponentWorldCenter).y : opponentSlot.anchoredPosition.y;
+            float opponentHeight = Mathf.Max(1f, opponentSlot.rect.height);
+            float viewportTop = viewportHeight * 0.5f;
+            float maximumTopOverflow = opponentHeight * safeScale * 0.4f;
+            float targetY = viewportTop - (opponentCenterY + opponentHeight * 0.5f) * safeScale + maximumTopOverflow;
+            return Mathf.Min(0f, targetY);
+        }
+
+        float GetLanePitchForView(int laneIndex)
+        {
+            if (_lanes.Count > 1)
+            {
+                int neighborIndex = laneIndex <= 0 ? 1 : laneIndex - 1;
+                if (neighborIndex >= 0 && neighborIndex < _lanes.Count)
+                {
+                    float pitch = Mathf.Abs(GetLaneCenterForView(laneIndex) - GetLaneCenterForView(neighborIndex));
+                    if (pitch > 1f) return pitch;
+                }
+            }
+
+            return Mathf.Max(GetLaneStep(), GetOverviewLaneFootprintWidth() + Mathf.Max(0f, OverviewRotatedCardClearance));
+        }
+
+        float GetViewTransformRotatedFootprintWidth(int laneIndex)
+        {
+            UcgBattleLane lane = laneIndex >= 0 && laneIndex < _lanes.Count ? _lanes[laneIndex] : null;
+            float slotHeight = 0f;
+            if (lane != null)
+            {
+                if (lane.playerSlot != null) slotHeight = Mathf.Max(slotHeight, lane.playerSlot.sizeDelta.y);
+                if (lane.opponentSlot != null) slotHeight = Mathf.Max(slotHeight, lane.opponentSlot.sizeDelta.y);
+            }
+
+            return Mathf.Max(slotHeight, GetOverviewLaneFootprintWidth());
+        }
+
+        float GetFocusLaneViewportRatio(int laneIndex)
+        {
+            if (laneIndex <= 0) return 0.45f;
+            if (laneIndex >= _lanes.Count - 1) return 0.55f;
+            return 0.5f;
+        }
+
+        struct ViewTransformOnlyLayoutSnapshot
+        {
+            public Vector2[] lanePositions;
+            public Vector3[] laneScales;
+            public Vector2[] opponentSlotPositions;
+            public Vector2[] playerSlotPositions;
+            public Vector2[] opponentSlotSizes;
+            public Vector2[] playerSlotSizes;
+        }
+
+        ViewTransformOnlyLayoutSnapshot CaptureViewTransformOnlyLayoutSnapshot()
+        {
+            int count = _lanes.Count;
+            var snapshot = new ViewTransformOnlyLayoutSnapshot
+            {
+                lanePositions = new Vector2[count],
+                laneScales = new Vector3[count],
+                opponentSlotPositions = new Vector2[count],
+                playerSlotPositions = new Vector2[count],
+                opponentSlotSizes = new Vector2[count],
+                playerSlotSizes = new Vector2[count]
+            };
+
+            for (int i = 0; i < count; i++)
+            {
+                UcgBattleLane lane = _lanes[i];
+                RectTransform laneRect = lane != null ? lane.transform as RectTransform : null;
+                snapshot.lanePositions[i] = laneRect != null ? laneRect.anchoredPosition : Vector2.zero;
+                snapshot.laneScales[i] = laneRect != null ? laneRect.localScale : Vector3.one;
+                snapshot.opponentSlotPositions[i] = lane != null && lane.opponentSlot != null ? lane.opponentSlot.anchoredPosition : Vector2.zero;
+                snapshot.playerSlotPositions[i] = lane != null && lane.playerSlot != null ? lane.playerSlot.anchoredPosition : Vector2.zero;
+                snapshot.opponentSlotSizes[i] = lane != null && lane.opponentSlot != null ? lane.opponentSlot.sizeDelta : Vector2.zero;
+                snapshot.playerSlotSizes[i] = lane != null && lane.playerSlot != null ? lane.playerSlot.sizeDelta : Vector2.zero;
+            }
+
+            return snapshot;
+        }
+
+        void AssertViewTransformOnlyDidNotMutateBattleLayout(ViewTransformOnlyLayoutSnapshot snapshot)
+        {
+            if (!debugBattlefieldLayout || snapshot.lanePositions == null) return;
+
+            for (int i = 0; i < _lanes.Count && i < snapshot.lanePositions.Length; i++)
+            {
+                UcgBattleLane lane = _lanes[i];
+                RectTransform laneRect = lane != null ? lane.transform as RectTransform : null;
+                if (laneRect != null
+                    && (Vector2.SqrMagnitude(laneRect.anchoredPosition - snapshot.lanePositions[i]) > 0.01f
+                        || (laneRect.localScale - snapshot.laneScales[i]).sqrMagnitude > 0.0001f))
+                {
+                    Debug.LogWarning($"ViewTransformOnly mutated Lane {i + 1} layout.");
+                }
+
+                if (lane != null && lane.opponentSlot != null
+                    && (Vector2.SqrMagnitude(lane.opponentSlot.anchoredPosition - snapshot.opponentSlotPositions[i]) > 0.01f
+                        || Vector2.SqrMagnitude(lane.opponentSlot.sizeDelta - snapshot.opponentSlotSizes[i]) > 0.01f))
+                {
+                    Debug.LogWarning($"ViewTransformOnly mutated Lane {i + 1} opponent slot layout.");
+                }
+
+                if (lane != null && lane.playerSlot != null
+                    && (Vector2.SqrMagnitude(lane.playerSlot.anchoredPosition - snapshot.playerSlotPositions[i]) > 0.01f
+                        || Vector2.SqrMagnitude(lane.playerSlot.sizeDelta - snapshot.playerSlotSizes[i]) > 0.01f))
+                {
+                    Debug.LogWarning($"ViewTransformOnly mutated Lane {i + 1} player slot layout.");
+                }
+            }
         }
 
         Vector2 GetTargetContentPosition(float targetX, float targetScale)
