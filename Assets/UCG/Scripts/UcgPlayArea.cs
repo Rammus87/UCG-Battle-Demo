@@ -16,6 +16,7 @@ namespace UCG
         public UcgCardView topCard;
         public Vector2 placedCardSize = new Vector2(204f, 296f);
         public Vector2 upgradeStackOffset = new Vector2(14f, 18f);
+        public bool centerPlacedCardsInSlot;
         public Text resultText;
         public UcgTutorialGuide tutorialGuide;
         public UcgBattleLane ownerLane;
@@ -474,6 +475,7 @@ namespace UCG
 
         Vector2 GetPlacedCardPosition(UcgPlayActionType actionType, int existingCardCount)
         {
+            if (centerPlacedCardsInSlot) return Vector2.zero;
             if (actionType == UcgPlayActionType.PlayToEmptyArea) return Vector2.zero;
             int upgradeIndex = Mathf.Max(1, existingCardCount);
             return upgradeStackOffset * upgradeIndex;

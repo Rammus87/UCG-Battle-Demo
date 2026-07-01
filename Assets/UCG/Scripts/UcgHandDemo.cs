@@ -32,20 +32,40 @@ namespace UCG
         const int DemoCardCount = 6;
         const string BattleBackgroundAssetPath = "Assets/UCG/Art/Backgrounds/battle_bg_mobile_symmetry.png";
         const string BattleBackgroundResourcePath = "UCG/Backgrounds/battle_bg_mobile_symmetry";
-        const string PlaymatSurfaceAssetRelativePath = ".agents/components/artpack/unity-ready/02_playmat_surface.png";
-        const string PlaymatSurfaceLayerObjectName = "Playmat Surface Layer";
-        const string PlaymatSurfaceObjectName = "02_playmat_surface.png";
-        const float PlaymatViewportReferenceWidth = 1080f;
-        const float PlaymatViewportReferenceHeight = 1920f;
+        const string WorldBackgroundAssetRelativePath = ".agents/components/artpack/unity-ready/01_tabletop_world_background.png";
+        const string WorldBackgroundLayerObjectName = "World Background Layer";
+        const string WorldBackgroundObjectName = "01_tabletop_world_background.png";
+        const string LegacyPlaymatSurfaceLayerObjectName = "Playmat Surface Layer";
+        const float WorldBackgroundViewportReferenceWidth = 1080f;
+        const float WorldBackgroundViewportReferenceHeight = 1920f;
+        const float WorldBackgroundZoomOutReferenceScale = 0.4f;
         const float MinSceneSafeWidth = 520f;
         const float MinSceneSafeHeight = 220f;
+        const float OverviewSceneAreaMinHeight = 190f;
+        const float OverviewSceneAreaMaxHeight = 240f;
+        const float OverviewSceneAreaCardPadding = 24f;
         const float MinSceneLaneGap = 48f;
         const float MinHorizontalCardSafeWidth = 260f;
         const float MinLaneVisualGap = 42f;
         const float MinSidePileLaneGap = 48f;
+        const float ForcedZoomOutBattlefieldCardScaleMultiplier = 1.65f;
+        const float ForcedZoomOutLaneSpacingMultiplier = 1.30f;
+        const float ForcedZoomOutContentLeftShift = 0f;
+        const float ForcedZoomOutRowScreenOffset = 0f;
+        // Deck / Trash are laid out in the battlefield manager's playmat right rail.
+        const float OverviewPileColumnPadding = 14f;
+        const float BattlePortraitCardAspect = 0.716f;
+        const float BattleLandscapeCardAspect = 1f / BattlePortraitCardAspect;
+        const float OverviewPortraitCardAspect = BattlePortraitCardAspect;
+        const float OverviewPileZoneWidth = 168f;
+        const float OverviewPileZoneHeight = 226f;
+        const float OverviewOpponentDeckRowRatio = 0.14f;
+        const float OverviewOpponentTrashRowRatio = 0.34f;
+        const float OverviewPlayerDeckRowRatio = 0.66f;
+        const float OverviewPlayerTrashRowRatio = 0.86f;
         static Sprite _cardSelectionFocusZoneSprite;
-        static Sprite _playmatSurfaceSprite;
-        static bool _playmatSurfaceSpriteLoadAttempted;
+        static Sprite _worldBackgroundSprite;
+        static bool _worldBackgroundSpriteLoadAttempted;
         static readonly string[] EffectTestCardIds =
         {
             "BP05-002",
@@ -158,6 +178,10 @@ namespace UCG
         public float rightSidePileColumnDownShift = 0f;
         public float boardCardSlotWidth = 162f;
         public float boardCardSlotHeight = 224f;
+        public float playerBattlefieldCardScale = 1.10f;
+        public float zoomOutBattlefieldCardScaleMultiplier = 1.22f;
+        public float opponentBattlefieldCardRelativeScale = 0.95f;
+        public float sceneCardRelativeScale = 1.05f;
         public float portraitSlotWidth = 162f;
         public float portraitSlotHeight = 224f;
         public float battleSlotWidth = 162f;
@@ -165,17 +189,18 @@ namespace UCG
         public float pileSlotWidth = 108f;
         public float pileSlotHeight = 128f;
         public float horizontalCardSafePadding = 36f;
-        public float laneGapForHorizontalCard = 42f;
-        public float minLaneGap = 36f;
+        public float laneGapForHorizontalCard = 54f;
+        public float zoomOutLaneSpacingMultiplier = 1.18f;
+        public float minLaneGap = 45f;
         public float combatToPileGap = 96f;
-        public float boardZoneSectionGap = 42f;
+        public float boardZoneSectionGap = 54f;
         public float opponentRowY = 240f;
         public float playerRowY = -240f;
         public float sceneAreaY = 0f;
         public float sceneAreaWidth = 560f;
-        public float sceneAreaHeight = 230f;
-        public float sceneToOpponentLaneGap = 48f;
-        public float sceneToPlayerLaneGap = 48f;
+        public float sceneAreaHeight = 260f;
+        public float sceneToOpponentLaneGap = 120f;
+        public float sceneToPlayerLaneGap = 120f;
         public float fieldColumnX = 0f;
         public float pileColumnRightInset = 96f;
         public bool useFixedReferenceBoardLayout = true;
@@ -198,10 +223,10 @@ namespace UCG
         public bool sidePileFollowFocus = false;
         [Range(0f, 1f)] public float playmatViewportHorizontalOffset = 1f;
         public float sidePileFocusCompensationFactor = 0.18f;
-        public float sidePileToLaneGap = 48f;
+        public float sidePileToLaneGap = 72f;
         public float sidePileTooFarGap = 160f;
-        public float sidePileMinGapFromLane = 40f;
-        public float combatToPileGapX = 48f;
+        public float sidePileMinGapFromLane = 56f;
+        public float combatToPileGapX = 64f;
         public float sidePileColumnNudgeX = 40f;
         public float sidePanelWidth = 260f;
         public float sidePanelRightMargin = 96f;
@@ -311,9 +336,10 @@ namespace UCG
         RectTransform _battlefieldVisualLayer;
         Image _battlefieldVisualImage;
         Outline _battlefieldVisualOutline;
-        RectTransform _playmatSurfaceLayer;
-        Image _playmatSurfaceImage;
-        float _lastAppliedPlaymatViewportHorizontalOffset = float.MinValue;
+        RectTransform _worldBackgroundLayer;
+        Image _worldBackgroundImage;
+        float _lastAppliedWorldBackgroundHorizontalOffset = float.MinValue;
+        float _lastAppliedWorldBackgroundZoomScale = float.MinValue;
         Coroutine _battlefieldActionFeedbackRoutine;
         readonly List<Image> _battlefieldFeedbackImages = new List<Image>();
         readonly List<Color> _battlefieldFeedbackBaseColors = new List<Color>();
@@ -494,7 +520,8 @@ namespace UCG
             UpdateTopPhaseHud();
             EnsureTutorialPanelTopLayer();
             UpdateHandRaycastDebugProbe();
-            UpdatePlaymatViewportOffset();
+            UpdateWorldBackgroundViewport();
+            UpdateSceneAreaOverviewVisualScale();
         }
 
         void EnsureDebugBoardZonesActivePanel()
@@ -864,9 +891,9 @@ namespace UCG
             RetireLegacyVisualChild(_battlefieldVisualLayer, "Battle Board Center Wash");
             RetireLegacyVisualChild(_battlefieldVisualLayer, "Battle Board Left Edge");
             RetireLegacyVisualChild(_battlefieldVisualLayer, "Battle Board Right Edge");
-            RetireLegacyVisualChild(_battlefieldVisualLayer, PlaymatSurfaceLayerObjectName);
+            RetireLegacyVisualChild(_battlefieldVisualLayer, LegacyPlaymatSurfaceLayerObjectName);
 
-            EnsurePlaymatSurface();
+            EnsureWorldBackground();
             EnsureBattlefieldFrameAccents(_battlefieldVisualLayer);
             ApplyBattlefieldVisualLayer();
         }
@@ -949,15 +976,17 @@ namespace UCG
             EnsureBattlefieldCompositionGuides(parent);
         }
 
-        void EnsurePlaymatSurface()
+        void EnsureWorldBackground()
         {
             if (canvas == null) return;
 
-            Transform existingLayer = canvas.transform.Find(PlaymatSurfaceLayerObjectName);
+            RetireCanvasVisualChild(LegacyPlaymatSurfaceLayerObjectName);
+
+            Transform existingLayer = canvas.transform.Find(WorldBackgroundLayerObjectName);
             RectTransform layerRect;
             if (existingLayer == null)
             {
-                var layerObject = new GameObject(PlaymatSurfaceLayerObjectName, typeof(RectTransform), typeof(RectMask2D));
+                var layerObject = new GameObject(WorldBackgroundLayerObjectName, typeof(RectTransform), typeof(RectMask2D));
                 layerObject.transform.SetParent(canvas.transform, false);
                 layerRect = layerObject.GetComponent<RectTransform>();
             }
@@ -967,7 +996,7 @@ namespace UCG
                 if (existingLayer.GetComponent<RectMask2D>() == null) existingLayer.gameObject.AddComponent<RectMask2D>();
             }
 
-            _playmatSurfaceLayer = layerRect;
+            _worldBackgroundLayer = layerRect;
             layerRect.anchorMin = Vector2.zero;
             layerRect.anchorMax = Vector2.one;
             layerRect.pivot = new Vector2(0.5f, 0.5f);
@@ -977,15 +1006,15 @@ namespace UCG
             layerRect.localScale = Vector3.one;
             layerRect.localEulerAngles = Vector3.zero;
 
-            Transform existing = layerRect.Find(PlaymatSurfaceObjectName);
+            Transform existing = layerRect.Find(WorldBackgroundObjectName);
             RectTransform imageRect;
             Image image;
             if (existing == null)
             {
-                var playmatObject = new GameObject(PlaymatSurfaceObjectName, typeof(RectTransform), typeof(Image));
-                playmatObject.transform.SetParent(layerRect, false);
-                imageRect = playmatObject.GetComponent<RectTransform>();
-                image = playmatObject.GetComponent<Image>();
+                var backgroundObject = new GameObject(WorldBackgroundObjectName, typeof(RectTransform), typeof(Image));
+                backgroundObject.transform.SetParent(layerRect, false);
+                imageRect = backgroundObject.GetComponent<RectTransform>();
+                image = backgroundObject.GetComponent<Image>();
             }
             else
             {
@@ -994,36 +1023,59 @@ namespace UCG
                 if (image == null) image = existing.gameObject.AddComponent<Image>();
             }
 
-            _playmatSurfaceImage = image;
+            _worldBackgroundImage = image;
             imageRect.anchorMin = new Vector2(0.5f, 0.5f);
             imageRect.anchorMax = new Vector2(0.5f, 0.5f);
             imageRect.pivot = new Vector2(0.5f, 0.5f);
             imageRect.localScale = Vector3.one;
             imageRect.localEulerAngles = Vector3.zero;
 
-            Sprite playmatSprite = LoadPlaymatSurfaceSprite();
-            image.sprite = playmatSprite;
+            Sprite backgroundSprite = LoadWorldBackgroundSprite();
+            image.sprite = backgroundSprite;
             image.type = Image.Type.Simple;
             image.preserveAspect = true;
-            image.color = playmatSprite != null ? Color.white : Color.clear;
-            image.enabled = playmatSprite != null;
+            image.color = backgroundSprite != null ? Color.white : Color.clear;
+            image.enabled = backgroundSprite != null;
             image.raycastTarget = false;
 
-            ApplyPlaymatViewportLayout(layerRect, imageRect, playmatSprite);
-            ApplyPlaymatLayerOrder(playmatSprite != null);
+            ApplyWorldBackgroundViewportLayout(layerRect, imageRect, backgroundSprite);
+            ApplyWorldBackgroundLayerOrder(backgroundSprite != null);
         }
 
-        void UpdatePlaymatViewportOffset()
+        void RetireCanvasVisualChild(string objectName)
         {
-            if (_playmatSurfaceLayer == null || _playmatSurfaceImage == null || _playmatSurfaceImage.sprite == null) return;
+            if (canvas == null || string.IsNullOrWhiteSpace(objectName)) return;
 
-            float normalizedOffset = GetPlaymatViewportHorizontalOffset();
-            if (Mathf.Approximately(_lastAppliedPlaymatViewportHorizontalOffset, normalizedOffset)) return;
+            Transform existing = canvas.transform.Find(objectName);
+            if (existing == null) return;
 
-            ApplyPlaymatViewportLayout(_playmatSurfaceLayer, _playmatSurfaceImage.rectTransform, _playmatSurfaceImage.sprite);
+            Graphic[] graphics = existing.GetComponentsInChildren<Graphic>(true);
+            for (int i = 0; i < graphics.Length; i++)
+            {
+                if (graphics[i] == null) continue;
+                graphics[i].color = Color.clear;
+                graphics[i].raycastTarget = false;
+            }
+
+            existing.gameObject.SetActive(false);
         }
 
-        float GetPlaymatViewportHorizontalOffset()
+        void UpdateWorldBackgroundViewport()
+        {
+            if (_worldBackgroundLayer == null || _worldBackgroundImage == null || _worldBackgroundImage.sprite == null) return;
+
+            float normalizedOffset = GetWorldBackgroundHorizontalOffset();
+            float zoomScale = GetWorldBackgroundZoomScale();
+            if (Mathf.Approximately(_lastAppliedWorldBackgroundHorizontalOffset, normalizedOffset)
+                && Mathf.Approximately(_lastAppliedWorldBackgroundZoomScale, zoomScale))
+            {
+                return;
+            }
+
+            ApplyWorldBackgroundViewportLayout(_worldBackgroundLayer, _worldBackgroundImage.rectTransform, _worldBackgroundImage.sprite);
+        }
+
+        float GetWorldBackgroundHorizontalOffset()
         {
             if (battlefieldManager != null && battlefieldManager.scrollRect != null)
             {
@@ -1033,25 +1085,43 @@ namespace UCG
             return Mathf.Clamp01(playmatViewportHorizontalOffset);
         }
 
-        void ApplyPlaymatViewportLayout(RectTransform viewportRect, RectTransform imageRect, Sprite playmatSprite)
+        float GetWorldBackgroundZoomScale()
         {
-            if (viewportRect == null || imageRect == null || playmatSprite == null) return;
+            if (battlefieldManager != null && battlefieldManager.content != null)
+            {
+                return Mathf.Clamp(battlefieldManager.content.localScale.x, WorldBackgroundZoomOutReferenceScale, 1f);
+            }
 
-            Vector2 viewportSize = GetPlaymatViewportSize(viewportRect);
-            float spriteWidth = Mathf.Max(1f, playmatSprite.rect.width);
-            float spriteHeight = Mathf.Max(1f, playmatSprite.rect.height);
+            return 1f;
+        }
+
+        void ApplyWorldBackgroundViewportLayout(RectTransform viewportRect, RectTransform imageRect, Sprite backgroundSprite)
+        {
+            if (viewportRect == null || imageRect == null || backgroundSprite == null) return;
+
+            Vector2 viewportSize = GetWorldBackgroundViewportSize(viewportRect);
+            float spriteWidth = Mathf.Max(1f, backgroundSprite.rect.width);
+            float spriteHeight = Mathf.Max(1f, backgroundSprite.rect.height);
             float aspect = spriteWidth / spriteHeight;
             float imageHeight = viewportSize.y;
             float imageWidth = Mathf.Max(viewportSize.x, imageHeight * aspect);
+
+            float zoomScale = GetWorldBackgroundZoomScale();
+            float zoomT = Mathf.InverseLerp(WorldBackgroundZoomOutReferenceScale, 1f, zoomScale);
+            float zoomMultiplier = Mathf.Lerp(1f, 1f / WorldBackgroundZoomOutReferenceScale, zoomT);
+            imageWidth *= zoomMultiplier;
+            imageHeight *= zoomMultiplier;
+
             float maxShift = Mathf.Max(0f, (imageWidth - viewportSize.x) * 0.5f);
-            float normalizedOffset = GetPlaymatViewportHorizontalOffset();
+            float normalizedOffset = GetWorldBackgroundHorizontalOffset();
 
             imageRect.sizeDelta = new Vector2(imageWidth, imageHeight);
             imageRect.anchoredPosition = new Vector2(Mathf.Lerp(maxShift, -maxShift, normalizedOffset), 0f);
-            _lastAppliedPlaymatViewportHorizontalOffset = normalizedOffset;
+            _lastAppliedWorldBackgroundHorizontalOffset = normalizedOffset;
+            _lastAppliedWorldBackgroundZoomScale = zoomScale;
         }
 
-        Vector2 GetPlaymatViewportSize(RectTransform viewportRect)
+        Vector2 GetWorldBackgroundViewportSize(RectTransform viewportRect)
         {
             if (viewportRect != null && viewportRect.rect.width > 1f && viewportRect.rect.height > 1f)
             {
@@ -1064,18 +1134,18 @@ namespace UCG
                 return scaler.referenceResolution;
             }
 
-            return new Vector2(PlaymatViewportReferenceWidth, PlaymatViewportReferenceHeight);
+            return new Vector2(WorldBackgroundViewportReferenceWidth, WorldBackgroundViewportReferenceHeight);
         }
 
-        void ApplyPlaymatLayerOrder(bool hasPlaymatSurface)
+        void ApplyWorldBackgroundLayerOrder(bool hasWorldBackground)
         {
-            if (canvas == null || _playmatSurfaceLayer == null) return;
+            if (canvas == null || _worldBackgroundLayer == null) return;
 
             Transform background = canvas.transform.Find("UCG HUD Background");
             int targetIndex = background != null ? background.GetSiblingIndex() + 1 : 0;
             targetIndex = Mathf.Clamp(targetIndex, 0, canvas.transform.childCount - 1);
-            _playmatSurfaceLayer.SetSiblingIndex(targetIndex);
-            SetHudBackgroundArtworkVisible(!hasPlaymatSurface);
+            _worldBackgroundLayer.SetSiblingIndex(targetIndex);
+            SetHudBackgroundArtworkVisible(!hasWorldBackground);
         }
 
         void SetHudBackgroundArtworkVisible(bool visible)
@@ -1093,14 +1163,14 @@ namespace UCG
             }
         }
 
-        static Sprite LoadPlaymatSurfaceSprite()
+        static Sprite LoadWorldBackgroundSprite()
         {
-            if (_playmatSurfaceSprite != null) return _playmatSurfaceSprite;
-            if (_playmatSurfaceSpriteLoadAttempted) return null;
+            if (_worldBackgroundSprite != null) return _worldBackgroundSprite;
+            if (_worldBackgroundSpriteLoadAttempted) return null;
 
-            _playmatSurfaceSpriteLoadAttempted = true;
+            _worldBackgroundSpriteLoadAttempted = true;
 
-            string path = GetProjectRelativePath(PlaymatSurfaceAssetRelativePath);
+            string path = GetProjectRelativePath(WorldBackgroundAssetRelativePath);
             if (string.IsNullOrWhiteSpace(path) || !File.Exists(path)) return null;
 
             try
@@ -1108,7 +1178,7 @@ namespace UCG
                 byte[] bytes = File.ReadAllBytes(path);
                 var texture = new Texture2D(2, 2, TextureFormat.RGBA32, false)
                 {
-                    name = "02_playmat_surface"
+                    name = "01_tabletop_world_background"
                 };
 
                 if (!texture.LoadImage(bytes) || texture.width <= 0 || texture.height <= 0)
@@ -1119,13 +1189,13 @@ namespace UCG
                 texture.wrapMode = TextureWrapMode.Clamp;
                 texture.filterMode = FilterMode.Bilinear;
 
-                _playmatSurfaceSprite = Sprite.Create(
+                _worldBackgroundSprite = Sprite.Create(
                     texture,
                     new Rect(0f, 0f, texture.width, texture.height),
                     new Vector2(0.5f, 0.5f),
                     100f);
-                _playmatSurfaceSprite.name = "02_playmat_surface";
-                return _playmatSurfaceSprite;
+                _worldBackgroundSprite.name = "01_tabletop_world_background";
+                return _worldBackgroundSprite;
             }
             catch
             {
@@ -1167,8 +1237,8 @@ namespace UCG
 
             EnsureBattlefieldAccent(parent, "Battlefield Scene Pedestal Wash", new Vector2(0.16f, 0.42f), new Vector2(0.84f, 0.58f), Vector2.zero, Vector2.zero, sceneGlow);
             EnsureBattlefieldPulseImage(parent, "Battlefield Scene Pedestal Front Edge", new Vector2(0.19f, 0.39f), new Vector2(0.81f, 0.39f), Vector2.zero, new Vector2(0f, 2.2f), sceneEdge, 0.035f, 2.25f);
-            EnsureBattlefieldPulseImage(parent, "Battlefield Scene Pedestal Back Edge", new Vector2(0.22f, 0.61f), new Vector2(0.78f, 0.61f), Vector2.zero, new Vector2(0f, 1.4f), UcgToolUiPalette.WithAlpha(UcgToolUiPalette.FocusCyan, debugBoardZones ? 0.42f : 0.16f), 0.025f, 2.05f);
-            EnsureBattlefieldAccent(parent, "Battlefield Scene Pedestal Center Node", new Vector2(0.5f, 0.39f), new Vector2(0.5f, 0.39f), Vector2.zero, new Vector2(9f, 9f), UcgToolUiPalette.WithAlpha(UcgToolUiPalette.FocusCyan, debugBoardZones ? 0.78f : 0.34f));
+            EnsureBattlefieldPulseImage(parent, "Battlefield Scene Pedestal Back Edge", new Vector2(0.22f, 0.61f), new Vector2(0.78f, 0.61f), Vector2.zero, new Vector2(0f, 1.4f), UcgToolUiPalette.WithAlpha(UcgToolUiPalette.FocusCyan, debugBoardZones ? 0.42f : 0f), 0.025f, 2.05f);
+            EnsureBattlefieldAccent(parent, "Battlefield Scene Pedestal Center Node", new Vector2(0.5f, 0.39f), new Vector2(0.5f, 0.39f), Vector2.zero, new Vector2(9f, 9f), UcgToolUiPalette.WithAlpha(UcgToolUiPalette.FocusCyan, debugBoardZones ? 0.78f : 0f));
 
             EnsureBattlefieldCharacterGround(parent, "Battlefield Lane 3 Opponent Ground", 0.235f, 0.70f, characterGround);
             EnsureBattlefieldCharacterGround(parent, "Battlefield Lane 2 Opponent Ground", 0.5f, 0.70f, characterGround);
@@ -1717,8 +1787,8 @@ namespace UCG
         {
             if (canvas == null || _battlefieldVisualLayer == null) return;
 
-            Transform layerBelowBattlefield = _playmatSurfaceLayer != null
-                ? _playmatSurfaceLayer
+            Transform layerBelowBattlefield = _worldBackgroundLayer != null
+                ? _worldBackgroundLayer
                 : canvas.transform.Find("UCG HUD Background");
             int targetIndex = layerBelowBattlefield != null ? layerBelowBattlefield.GetSiblingIndex() + 1 : 0;
             targetIndex = Mathf.Clamp(targetIndex, 0, canvas.transform.childCount - 1);
@@ -2835,6 +2905,7 @@ namespace UCG
             battlefieldManager.laneSpacing = GetBattleLaneSpacing();
             battlefieldManager.opponentCardSize = GetOpponentCardBoardSize();
             battlefieldManager.combatAreaOffsetX = GetCombatAreaOffsetX();
+            ApplyBattlefieldOverviewVisualTuning();
             ApplyCombatFocusViewportPosition("EnsureBattlefieldManager");
             battlefieldManager.rightAuxiliaryColumnGutterWidth = rightAuxiliaryColumnGutterWidth;
             battlefieldManager.debugBattlefieldLayout = debugBattlefieldLayout || debugLayoutDiagnostics;
@@ -2920,34 +2991,60 @@ namespace UCG
 
         Vector2 GetBattleSlotSize()
         {
-            return GetPortraitCardSlotSize();
+            return GetBattleSlotSizeForCard(GetPlacedBattleCardSize());
         }
 
         Vector2 GetOpponentBattleSlotSize()
         {
-            return GetPortraitCardSlotSize();
+            return GetBattleSlotSizeForCard(GetOpponentCardBoardSize());
+        }
+
+        Vector2 GetBattleSlotSizeForCard(Vector2 cardSize)
+        {
+            float width = cardSize.x * 1.12f;
+            return new Vector2(width, width / BattlePortraitCardAspect);
         }
 
         Vector2 GetPlacedBattleCardSize()
         {
-            return GetPortraitCardSlotSize();
+            return GetPortraitCardSlotSize() * GetPlayerBattlefieldCardScale();
         }
 
         Vector2 GetOpponentCardBoardSize()
         {
-            return GetPlacedBattleCardSize();
+            Vector2 playerSize = GetPlacedBattleCardSize();
+            float relativeScale = Mathf.Max(0.01f, opponentBattlefieldCardRelativeScale);
+            return playerSize * relativeScale;
+        }
+
+        Vector2 GetBattleCardSizeForOwner(UcgPlayerSide owner)
+        {
+            return owner == UcgPlayerSide.Opponent
+                ? GetOpponentCardBoardSize()
+                : GetPlacedBattleCardSize();
+        }
+
+        float GetPlayerBattlefieldCardScale()
+        {
+            return Mathf.Max(0.01f, playerBattlefieldCardScale);
+        }
+
+        float GetSceneCardScale()
+        {
+            return Mathf.Max(0.01f, sceneCardRelativeScale);
         }
 
         float GetBattleLaneWidth()
         {
-            Vector2 portraitSize = GetPortraitCardSlotSize();
-            float safeWidth = GetHorizontalCardSafeWidth(portraitSize);
-            return Mathf.Clamp(Mathf.Max(portraitSize.x, safeWidth), 190f, 340f);
+            Vector2 cardSize = GetPlacedBattleCardSize();
+            Vector2 slotSize = GetBattleSlotSize();
+            float safeWidth = GetHorizontalCardSafeWidth(cardSize);
+            return Mathf.Clamp(Mathf.Max(slotSize.x, safeWidth), 260f, 420f);
         }
 
-        float GetHorizontalCardSafeWidth(Vector2 portraitSize)
+        float GetHorizontalCardSafeWidth(Vector2 cardSize)
         {
-            float horizontalCardWidth = portraitSize.y;
+            float horizontalCardWidth = cardSize.y;
             return Mathf.Max(
                 MinHorizontalCardSafeWidth,
                 horizontalCardWidth + Mathf.Max(0f, horizontalCardSafePadding));
@@ -2955,22 +3052,37 @@ namespace UCG
 
         float GetHorizontalCardRightOverhang()
         {
-            Vector2 portraitSize = GetPortraitCardSlotSize();
-            float safeHorizontalWidth = GetHorizontalCardSafeWidth(portraitSize);
-            return Mathf.Max(0f, (safeHorizontalWidth - portraitSize.x) * 0.5f);
+            Vector2 cardSize = GetPlacedBattleCardSize();
+            float safeHorizontalWidth = GetHorizontalCardSafeWidth(cardSize);
+            return Mathf.Max(0f, (safeHorizontalWidth - cardSize.x) * 0.5f);
         }
 
         float GetBattleLaneSpacing()
         {
-            return Mathf.Clamp(Mathf.Max(MinLaneVisualGap, minLaneGap, laneGapForHorizontalCard, boardZoneSectionGap), 36f, 72f);
+            Vector2 cardSize = GetPlacedBattleCardSize();
+            float laneWidth = GetBattleLaneWidth();
+            float safeGap = Mathf.Max(MinLaneVisualGap, minLaneGap, laneGapForHorizontalCard, boardZoneSectionGap);
+            float configuredGap = safeGap * 1.25f;
+            float requiredCenterDistance = cardSize.x + cardSize.y + safeGap;
+            float requiredGap = Mathf.Max(0f, requiredCenterDistance - laneWidth);
+            return Mathf.Clamp(
+                Mathf.Max(configuredGap, requiredGap),
+                54f,
+                340f);
         }
 
         Vector2 GetPortraitCardSlotSize()
         {
             float requestedWidth = boardCardSlotWidth > 0f ? boardCardSlotWidth : portraitSlotWidth;
             float requestedHeight = boardCardSlotHeight > 0f ? boardCardSlotHeight : portraitSlotHeight;
-            float width = Mathf.Clamp(requestedWidth, 140f, 210f);
-            float height = Mathf.Clamp(requestedHeight, 190f, 286f);
+            float widthFromHeight = requestedHeight * BattlePortraitCardAspect;
+            float minWidth = Mathf.Max(140f, 190f * BattlePortraitCardAspect);
+            float maxWidth = Mathf.Min(210f, 286f * BattlePortraitCardAspect);
+            float width = Mathf.Clamp(
+                requestedWidth > 0f ? requestedWidth : widthFromHeight,
+                minWidth,
+                maxWidth);
+            float height = width / BattlePortraitCardAspect;
             return new Vector2(width, height);
         }
 
@@ -2992,7 +3104,7 @@ namespace UCG
             float y = sceneCenterY
                 + GetSceneAreaSize().y * 0.5f
                 + Mathf.Max(MinSceneLaneGap, sceneToOpponentLaneGap)
-                + GetBattleSlotSize().y * 0.5f;
+                + GetOpponentBattleSlotSize().y * 0.5f;
             return new Vector2(referenceOpponentBattleSlotPos.x, y);
         }
 
@@ -3004,6 +3116,16 @@ namespace UCG
                 - Mathf.Max(MinSceneLaneGap, sceneToPlayerLaneGap)
                 - GetBattleSlotSize().y * 0.5f;
             return new Vector2(referencePlayerBattleSlotPos.x, y);
+        }
+
+        void ApplyBattlefieldOverviewVisualTuning()
+        {
+            if (battlefieldManager == null) return;
+
+            battlefieldManager.overviewVisualCompensationScale = ForcedZoomOutBattlefieldCardScaleMultiplier;
+            battlefieldManager.overviewLaneSpacingMultiplier = ForcedZoomOutLaneSpacingMultiplier;
+            battlefieldManager.overviewContentLeftShift = ForcedZoomOutContentLeftShift;
+            battlefieldManager.overviewRowScreenOffset = ForcedZoomOutRowScreenOffset;
         }
 
         void ApplyReferenceBattleSlotLayout()
@@ -3033,6 +3155,7 @@ namespace UCG
             if (battlefieldManager != null)
             {
                 battlefieldManager.combatAreaOffsetX = GetCombatAreaOffsetX();
+                ApplyBattlefieldOverviewVisualTuning();
                 ApplyCombatFocusViewportPosition("ApplyPortraitBattlefieldLayout");
                 battlefieldManager.rightAuxiliaryColumnGutterWidth = rightAuxiliaryColumnGutterWidth;
                 battlefieldManager.debugBattlefieldLayout = debugBattlefieldLayout || debugLayoutDiagnostics;
@@ -3186,14 +3309,7 @@ namespace UCG
         {
             if (battlefieldManager == null) return 1f;
 
-            float viewportWidth = battlefieldManager.viewport != null && battlefieldManager.viewport.rect.width > 0f
-                ? battlefieldManager.viewport.rect.width
-                : 1040f;
-            float targetWidth = GetDiagnosticContentWidth(Mathf.Clamp(laneCount, 1, Mathf.Max(1, battlefieldManager.maxLaneCount)));
-            if (targetWidth <= 0f) return 1f;
-
-            float fitScale = viewportWidth / targetWidth;
-            return Mathf.Clamp(fitScale, battlefieldManager.overviewScale, 1f);
+            return Mathf.Clamp(battlefieldManager.overviewScale, 0.1f, 1f);
         }
 
         float GetDiagnosticOverviewTargetX(float scale, int laneCount)
@@ -3911,15 +4027,22 @@ namespace UCG
                 Mathf.Max(MinSceneSafeHeight, height * scale));
         }
 
+        Vector2 GetOverviewSceneAreaSize()
+        {
+            if (battlefieldManager != null)
+            {
+                return battlefieldManager.GetOverviewSceneAreaSize();
+            }
+
+            Vector2 standardCardSize = GetBattleSlotSize();
+            return new Vector2(standardCardSize.y, standardCardSize.x);
+        }
+
         Vector2 GetSceneCardBoardSize()
         {
-            float scale = Mathf.Clamp(sceneAreaScale, 0.75f, 1f);
-            float width = Mathf.Clamp(sceneAreaWidth - 40f, 360f, 600f);
-            float height = Mathf.Clamp(sceneAreaHeight - 26f, 144f, 238f);
-            Vector2 sceneAreaSize = GetSceneAreaSize();
-            return new Vector2(
-                Mathf.Min(width * scale, sceneAreaSize.x - 36f),
-                Mathf.Min(height * scale, sceneAreaSize.y - 24f));
+            Vector2 playerSize = GetPlacedBattleCardSize();
+            float height = playerSize.x;
+            return new Vector2(height * BattleLandscapeCardAspect, height) * GetSceneCardScale();
         }
 
         void EnsureSceneZoneMatFrame(RectTransform parent, Vector2 anchoredPosition, Vector2 size)
@@ -3960,17 +4083,17 @@ namespace UCG
             frameRect.localEulerAngles = Vector3.zero;
             frameRect.SetAsFirstSibling();
 
-            frameImage.enabled = false;
+            frameImage.enabled = true;
             frameImage.color = debugBoardZones
                 ? new Color(0.025f, 0.16f, 0.22f, 0.24f)
-                : Color.clear;
+                : UcgToolUiPalette.WithAlpha(UcgToolUiPalette.DeepGlass, 0.055f);
             frameImage.raycastTarget = false;
 
             Outline outline = frameRect.GetComponent<Outline>();
-            outline.enabled = false;
+            outline.enabled = true;
             outline.effectColor = debugBoardZones
                 ? new Color(0.72f, 1f, 1f, 0.9f)
-                : UcgToolUiPalette.WithAlpha(UcgToolUiPalette.GlassBorder, Mathf.Min(sceneAreaOutlineAlpha, 0.14f));
+                : UcgToolUiPalette.WithAlpha(UcgToolUiPalette.FocusCyan, 0.18f);
             outline.effectDistance = new Vector2(0.8f, -0.8f);
 
             EnsureSceneContainerStructure(frameRect);
@@ -4046,11 +4169,11 @@ namespace UCG
         {
             if (layer == null) return;
 
-            Color grid = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.FocusCyan, debugBoardZones ? 0.40f : 0f);
-            Color gridSoft = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.SoftWhite, debugBoardZones ? 0.30f : 0f);
-            Color dot = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.FocusCyan, debugBoardZones ? 0.45f : 0f);
-            Color baseGlow = UcgToolUiPalette.WithAlpha(new Color(0.27f, 0.86f, 1f, 1f), debugBoardZones ? 0.26f : 0f);
-            Color baseSoft = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.FocusCyan, debugBoardZones ? 0.18f : 0f);
+            Color grid = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.FocusCyan, debugBoardZones ? 0.40f : 0.040f);
+            Color gridSoft = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.SoftWhite, debugBoardZones ? 0.30f : 0.030f);
+            Color dot = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.FocusCyan, debugBoardZones ? 0.45f : 0.10f);
+            Color baseGlow = UcgToolUiPalette.WithAlpha(new Color(0.27f, 0.86f, 1f, 1f), debugBoardZones ? 0.26f : 0.055f);
+            Color baseSoft = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.FocusCyan, debugBoardZones ? 0.18f : 0.045f);
 
             EnsureSceneContainerPulseImage(layer, "Scene Pedestal Soft Plate", new Vector2(0.08f, 0.12f), new Vector2(0.92f, 0.88f), Vector2.zero, Vector2.zero, baseSoft, 0.018f, 1.85f);
             EnsureSceneContainerPulseImage(layer, "Scene Pedestal Front Glow", new Vector2(0.10f, 0.11f), new Vector2(0.90f, 0.11f), Vector2.zero, new Vector2(0f, 4f), baseGlow, 0.035f, 2.15f);
@@ -4069,9 +4192,9 @@ namespace UCG
         {
             if (layer == null) return;
 
-            Color cyan = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.FocusCyan, debugBoardZones ? 0.90f : 0f);
-            Color cyanSoft = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.FocusCyan, debugBoardZones ? 0.70f : 0f);
-            Color pinkSoft = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.BrandPinkLight, debugBoardZones ? 0.70f : 0f);
+            Color cyan = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.FocusCyan, debugBoardZones ? 0.90f : 0.22f);
+            Color cyanSoft = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.FocusCyan, debugBoardZones ? 0.70f : 0.16f);
+            Color pinkSoft = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.BrandPinkLight, debugBoardZones ? 0.70f : 0.12f);
 
             EnsureSceneContainerImage(layer, "Frame Top Line", new Vector2(0.08f, 1f), new Vector2(0.92f, 1f), new Vector2(0f, -9f), new Vector2(0f, 1.4f), cyan);
             EnsureSceneContainerImage(layer, "Frame Bottom Line", new Vector2(0.08f, 0f), new Vector2(0.92f, 0f), new Vector2(0f, 9f), new Vector2(0f, 1.4f), cyan);
@@ -4085,8 +4208,8 @@ namespace UCG
         {
             if (layer == null) return;
 
-            Color cyan = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.FocusCyan, debugBoardZones ? 0.96f : 0f);
-            Color pink = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.BrandPinkLight, debugBoardZones ? 0.92f : 0f);
+            Color cyan = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.FocusCyan, debugBoardZones ? 0.96f : 0.24f);
+            Color pink = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.BrandPinkLight, debugBoardZones ? 0.92f : 0.16f);
 
             EnsureSceneContainerImage(layer, "Corner TL H", new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(30f, -9f), new Vector2(56f, 2f), cyan);
             EnsureSceneContainerImage(layer, "Corner TL V", new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(9f, -30f), new Vector2(2f, 56f), pink);
@@ -4102,9 +4225,9 @@ namespace UCG
         {
             if (layer == null) return;
 
-            Color cyan = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.FocusCyan, debugBoardZones ? 0.80f : 0f);
-            Color cyanSoft = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.FocusCyan, debugBoardZones ? 0.58f : 0f);
-            Color pink = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.BrandPinkLight, debugBoardZones ? 0.70f : 0f);
+            Color cyan = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.FocusCyan, debugBoardZones ? 0.80f : 0.10f);
+            Color cyanSoft = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.FocusCyan, debugBoardZones ? 0.58f : 0.070f);
+            Color pink = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.BrandPinkLight, debugBoardZones ? 0.70f : 0.080f);
 
             EnsureSceneContainerPulseImage(layer, "Center Light Horizontal", new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(118f, 2f), cyanSoft, 0.030f, 2.2f);
             EnsureSceneContainerPulseImage(layer, "Center Light Vertical", new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(2f, 52f), cyanSoft, 0.022f, 2.05f);
@@ -4116,8 +4239,8 @@ namespace UCG
         {
             if (layer == null) return;
 
-            Color line = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.FocusCyan, debugBoardZones ? 0.76f : 0f);
-            Color edge = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.BrandPinkLight, debugBoardZones ? 0.66f : 0f);
+            Color line = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.FocusCyan, debugBoardZones ? 0.76f : 0.060f);
+            Color edge = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.BrandPinkLight, debugBoardZones ? 0.66f : 0.075f);
 
             EnsureSceneContainerImage(layer, "Battle Line Opponent", new Vector2(0.5f, 0.56f), new Vector2(0.5f, 1f), new Vector2(0f, -16f), new Vector2(1.2f, 0f), line);
             EnsureSceneContainerImage(layer, "Battle Line Player", new Vector2(0.5f, 0f), new Vector2(0.5f, 0.44f), new Vector2(0f, 16f), new Vector2(1.2f, 0f), line);
@@ -4358,18 +4481,15 @@ namespace UCG
         RectTransform EnsureSharedSceneAreaRoot()
         {
             const string areaName = "SharedSceneAreaRoot";
-            RectTransform boardRoot = EnsureBattlefieldZoneRoot();
-            RectTransform parentRoot = EnsureCombatBoardRegionRoot(boardRoot);
+            RectTransform parentRoot = battlefieldManager != null && battlefieldManager.content != null
+                ? battlefieldManager.content
+                : null;
             if (parentRoot == null && canvas != null)
             {
                 parentRoot = canvas.transform as RectTransform;
             }
 
             Transform existingArea = parentRoot != null ? parentRoot.Find(areaName) : null;
-            if (existingArea == null && boardRoot != null)
-            {
-                existingArea = boardRoot.Find(areaName);
-            }
             if (existingArea == null && battlefieldManager != null && battlefieldManager.content != null)
             {
                 existingArea = battlefieldManager.content.Find(areaName);
@@ -4422,6 +4542,50 @@ namespace UCG
             areaRect.SetAsLastSibling();
             if (debugLayoutDiagnostics) Debug.Log($"SharedSceneBand rect: anchoredPosition={areaRect.anchoredPosition}, sizeDelta={areaRect.sizeDelta}, rect={areaRect.rect}");
             return areaRect;
+        }
+
+        void UpdateSceneAreaOverviewVisualScale()
+        {
+            RectTransform sceneAreaRoot = sceneZoneAnchor != null ? sceneZoneAnchor.parent as RectTransform : null;
+            if (sceneAreaRoot == null || battlefieldManager == null || battlefieldManager.content == null) return;
+
+            float contentScale = Mathf.Max(0.1f, battlefieldManager.content.localScale.x);
+            float overviewBlend = battlefieldManager.GetOverviewLayoutBlend(contentScale);
+            float visualScale = Mathf.Lerp(1f, battlefieldManager.GetOverviewLayoutVisualScale(contentScale), overviewBlend);
+            sceneAreaRoot.localScale = new Vector3(visualScale, visualScale, 1f);
+            if (overviewBlend > 0f)
+            {
+                sceneZoneAnchor.sizeDelta = GetOverviewSceneAreaSize();
+                if (sharedSceneSlot != null)
+                {
+                    sharedSceneSlot.sceneCardSize = sceneZoneAnchor.sizeDelta;
+                }
+                ApplyOverviewSceneLayout(sceneAreaRoot, visualScale);
+            }
+            else
+            {
+                sceneZoneAnchor.anchoredPosition = GetReferenceSceneAreaPosition();
+                sceneZoneAnchor.sizeDelta = GetSceneAreaSize();
+                if (sharedSceneSlot != null)
+                {
+                    sharedSceneSlot.sceneCardSize = GetSceneCardBoardSize();
+                }
+            }
+            EnsureSceneZoneMatFrame(sceneAreaRoot, sceneZoneAnchor.anchoredPosition, sceneZoneAnchor.sizeDelta);
+        }
+
+        void ApplyOverviewSceneLayout(RectTransform sceneAreaRoot, float visualScale)
+        {
+            if (sceneAreaRoot == null || sceneZoneAnchor == null || battlefieldManager == null || battlefieldManager.content == null) return;
+
+            Vector2 sceneCenter = battlefieldManager.GetOverviewSceneCenter();
+            float contentWidth = battlefieldManager.content.rect.width > 0f ? battlefieldManager.content.rect.width : battlefieldManager.content.sizeDelta.x;
+            float sceneLocalX = sceneCenter.x - contentWidth * 0.5f;
+            float sceneLocalY = sceneCenter.y;
+            float netScale = Mathf.Max(0.1f, visualScale);
+            sceneZoneAnchor.anchoredPosition = new Vector2(
+                sceneLocalX / netScale,
+                sceneLocalY / netScale);
         }
 
         void EnsureTurnManager()
@@ -4647,12 +4811,12 @@ namespace UCG
 
         Vector2 GetBoardZoneCardSize()
         {
-            Vector2 portraitSize = GetPortraitCardSlotSize();
-            float width = pileSlotWidth > 0f ? pileSlotWidth : portraitSize.x;
-            float height = pileSlotHeight > 0f ? pileSlotHeight : portraitSize.y;
+            Vector2 slotSize = GetBattleSlotSize();
+            float width = pileSlotWidth > 0f ? Mathf.Max(pileSlotWidth, slotSize.x) : slotSize.x;
+            float height = pileSlotHeight > 0f ? Mathf.Max(pileSlotHeight, slotSize.y) : slotSize.y;
             return new Vector2(
-                Mathf.Clamp(width, 96f, 116f),
-                Mathf.Clamp(height, 108f, 136f));
+                Mathf.Clamp(width, 180f, 280f),
+                Mathf.Clamp(height, 240f, 360f));
         }
 
         float GetEffectiveSidePileScale()
@@ -4667,6 +4831,81 @@ namespace UCG
         float GetBoardZoneVerticalGap(Vector2 zoneSize)
         {
             return Mathf.Clamp(deckDiscardGroupGap, 16f, 34f);
+        }
+
+        bool TryGetOverviewPlaymatSafeArea(RectTransform root, out Rect safeArea)
+        {
+            return TryTranslateBattlefieldOverviewRect(root, battlefieldManager?.GetOverviewPlaymatSafeArea() ?? new Rect(), out safeArea);
+        }
+
+        bool TryGetOverviewRightRailRect(RectTransform root, out Rect rightRailRect)
+        {
+            return TryTranslateBattlefieldOverviewRect(root, battlefieldManager?.GetOverviewRightRailRect() ?? new Rect(), out rightRailRect);
+        }
+
+        bool TryGetOverviewPlaymatInnerRect(RectTransform root, out Rect playmatInnerRect)
+        {
+            return TryTranslateBattlefieldOverviewRect(root, battlefieldManager?.GetOverviewPlaymatInnerRect() ?? new Rect(), out playmatInnerRect);
+        }
+
+        bool TryTranslateBattlefieldOverviewRect(RectTransform root, Rect contentRect, out Rect translatedRect)
+        {
+            translatedRect = new Rect();
+            if (root == null || battlefieldManager == null || battlefieldManager.content == null) return false;
+
+            float contentScale = Mathf.Max(0.1f, battlefieldManager.content.localScale.x);
+            float overviewBlend = battlefieldManager.GetOverviewLayoutBlend(contentScale);
+            if (overviewBlend <= 0f) return false;
+            if (contentRect.width <= 1f || contentRect.height <= 1f) return false;
+
+            if (root == battlefieldManager.content)
+            {
+                translatedRect = contentRect;
+                return true;
+            }
+
+            if (!IsBoardZoneRootUnderBattlefieldContent(root)) return false;
+
+            Vector2 rootOffset = root.anchoredPosition;
+            translatedRect = Rect.MinMaxRect(
+                contentRect.xMin - rootOffset.x,
+                contentRect.yMin - rootOffset.y,
+                contentRect.xMax - rootOffset.x,
+                contentRect.yMax - rootOffset.y);
+            return translatedRect.width > 1f && translatedRect.height > 1f;
+        }
+
+        float GetOverviewRowY(Rect safeArea, float rowRatio)
+        {
+            return safeArea.yMax - safeArea.height * Mathf.Clamp01(rowRatio);
+        }
+
+        Vector2 GetOverviewPileZoneSize(Rect safeArea)
+        {
+            Vector2 standardCardSize = battlefieldManager != null
+                ? battlefieldManager.GetOverviewCardSize()
+                : GetBattleSlotSize();
+            float overviewVisualScale = battlefieldManager != null
+                ? battlefieldManager.GetOverviewLayoutVisualScale(battlefieldManager.overviewScale)
+                : ForcedZoomOutBattlefieldCardScaleMultiplier;
+            float targetWidth = standardCardSize.x * Mathf.Max(0.1f, overviewVisualScale);
+            float targetHeight = standardCardSize.y * Mathf.Max(0.1f, overviewVisualScale);
+            if (targetWidth <= 1f || targetHeight <= 1f)
+            {
+                targetWidth = OverviewPileZoneWidth;
+                targetHeight = OverviewPileZoneHeight;
+            }
+            return new Vector2(Mathf.Max(1f, targetWidth), Mathf.Max(1f, targetHeight));
+        }
+
+        void ApplyOverviewPileColumnRightPin(RectTransform root, Rect playmatInnerRect, Rect rightRailRect, ref Vector2 requestedSize, out float anchoredX, out float anchoredY)
+        {
+            float rootRight = root != null ? root.rect.xMax : 540f;
+            requestedSize.x = Mathf.Max(1f, rightRailRect.width);
+            requestedSize.y = Mathf.Max(requestedSize.y, playmatInnerRect.height);
+
+            anchoredX = rightRailRect.xMax - rootRight;
+            anchoredY = playmatInnerRect.center.y;
         }
 
         void ApplyReferenceBoardLayout(RectTransform root, Vector2 zoneSize)
@@ -4705,21 +4944,37 @@ namespace UCG
         {
             if (pileSideRegionRoot == null) return 0f;
 
+            RectTransform layoutRoot = GetBoardZoneLayoutRoot();
+            Rect overviewPlaymatInnerRect = new Rect();
+            Rect overviewRightRailRect = new Rect();
+            bool hasOverviewPlaymatInnerRect = TryGetOverviewPlaymatInnerRect(layoutRoot, out overviewPlaymatInnerRect);
+            bool hasOverviewRightRailRect = TryGetOverviewRightRailRect(layoutRoot, out overviewRightRailRect);
+            bool useOverviewLayout = hasOverviewPlaymatInnerRect && hasOverviewRightRailRect;
+            Vector2 layoutZoneSize = useOverviewLayout
+                ? GetOverviewPileZoneSize(overviewRightRailRect)
+                : requestedZoneSize;
+
             float regionWidth = pileSideRegionRoot.rect.width > 0f ? pileSideRegionRoot.rect.width : pileSideRegionRoot.sizeDelta.x;
             float regionHeight = pileSideRegionRoot.rect.height > 0f ? pileSideRegionRoot.rect.height : pileSideRegionRoot.sizeDelta.y;
-            if (regionWidth <= 0f) regionWidth = Mathf.Max(1f, requestedZoneSize.x + 24f);
-            if (regionHeight <= 0f) regionHeight = Mathf.Max(1f, requestedZoneSize.y * 4f + deckDiscardGroupGap * 3f + 24f);
+            if (regionWidth <= 0f) regionWidth = Mathf.Max(1f, layoutZoneSize.x + 24f);
+            if (regionHeight <= 0f) regionHeight = Mathf.Max(1f, layoutZoneSize.y * 4f + deckDiscardGroupGap * 3f + 24f);
 
             float horizontalPadding = 10f;
             float desiredGap = Mathf.Clamp(deckDiscardGroupGap, 8f, 22f);
             float minVerticalPadding = 4f;
             float maxWidth = Mathf.Max(1f, regionWidth - horizontalPadding * 2f);
             float maxHeight = Mathf.Max(1f, (regionHeight - minVerticalPadding * 2f - desiredGap * 3f) / 4f);
-            float scale = Mathf.Min(1f, maxWidth / Mathf.Max(1f, requestedZoneSize.x), maxHeight / Mathf.Max(1f, requestedZoneSize.y));
+            float scale = Mathf.Min(1f, maxWidth / Mathf.Max(1f, layoutZoneSize.x), maxHeight / Mathf.Max(1f, layoutZoneSize.y));
             Vector2 zoneSize = new Vector2(
-                Mathf.Max(1f, requestedZoneSize.x * scale),
-                Mathf.Max(1f, requestedZoneSize.y * scale));
+                Mathf.Max(1f, layoutZoneSize.x * scale),
+                Mathf.Max(1f, layoutZoneSize.y * scale));
             float groupNudgeX = 0f;
+
+            if (useOverviewLayout)
+            {
+                ApplyOverviewPileSideInternalLayout(zoneSize, desiredGap, overviewPlaymatInnerRect, source);
+                return groupNudgeX;
+            }
 
             float freeHeight = Mathf.Max(0f, regionHeight - zoneSize.y * 4f - desiredGap * 3f);
             float topPadding = Mathf.Max(minVerticalPadding, freeHeight * 0.5f);
@@ -4752,6 +5007,45 @@ namespace UCG
 
             LogPileSideInternalLayout(zoneSize, desiredGap, topPadding, bottomPadding, source);
             return groupNudgeX;
+        }
+
+        void ApplyOverviewPileSideInternalLayout(Vector2 zoneSize, float desiredGap, Rect safeArea, string source)
+        {
+            float regionCenterY = pileSideRegionRoot != null ? pileSideRegionRoot.anchoredPosition.y : safeArea.center.y;
+            float availableVerticalSpace = Mathf.Max(0f, safeArea.height - zoneSize.y * 4f);
+            float edgeMargin = Mathf.Clamp(
+                availableVerticalSpace * 0.18f,
+                OverviewPileColumnPadding,
+                Mathf.Max(OverviewPileColumnPadding, availableVerticalSpace * 0.35f));
+            float pairGap = Mathf.Clamp(
+                availableVerticalSpace * 0.16f,
+                Mathf.Max(0f, desiredGap),
+                Mathf.Max(Mathf.Max(0f, desiredGap), availableVerticalSpace * 0.35f));
+            float opponentDeckY = safeArea.yMax - edgeMargin - zoneSize.y * 0.5f - regionCenterY;
+            float opponentTrashY = opponentDeckY - zoneSize.y - pairGap;
+            float playerDeckY = safeArea.yMin + edgeMargin + zoneSize.y * 0.5f - regionCenterY;
+            float playerTrashY = playerDeckY + zoneSize.y + pairGap;
+
+            LayoutPileSideGroupWithTwoZones(
+                opponentSidePileGroup,
+                opponentDeckAnchor,
+                opponentDeckY,
+                opponentDiscardAnchor,
+                opponentTrashY,
+                zoneSize,
+                0f,
+                $"{source}.OverviewOpponentPileGroup");
+            LayoutPileSideGroupWithTwoZones(
+                playerSidePileGroup,
+                playerDeckAnchor,
+                playerDeckY,
+                playerDiscardAnchor,
+                playerTrashY,
+                zoneSize,
+                0f,
+                $"{source}.OverviewPlayerPileGroup");
+
+            LogPileSideInternalLayout(zoneSize, desiredGap, 0f, 0f, $"{source}.OverviewFixed");
         }
 
         void LayoutPileSideGroupWithTwoZones(
@@ -4794,9 +5088,17 @@ namespace UCG
             float baseX = battleAreaRight == float.MinValue
                 ? pileRegionPos.x
                 : battleAreaRight + battleAreaPadding + requestedSize.x * 0.5f;
+            float pileRegionY = pileRegionPos.y;
             float maxSafeX = baseX;
             float afterNudgeX = baseX + sidePileColumnNudgeX;
             float safeX = maxSafeX;
+            bool useOverviewRightPin = false;
+            if (TryGetOverviewPlaymatInnerRect(root, out Rect overviewPlaymatInnerRect)
+                && TryGetOverviewRightRailRect(root, out Rect overviewRightRailRect))
+            {
+                ApplyOverviewPileColumnRightPin(root, overviewPlaymatInnerRect, overviewRightRailRect, ref requestedSize, out safeX, out pileRegionY);
+                useOverviewRightPin = true;
+            }
 
             Vector2 beforePosition = pileSideRegionRoot.anchoredPosition;
             _lastPileRegionNudgeMethod = "ApplyPileSideRegionSafeVisibilityLayout";
@@ -4810,11 +5112,11 @@ namespace UCG
             _lastPileRegionViewportRight = viewportRight;
             _lastPileRegionClampApplied = Mathf.Abs(safeX - afterNudgeX) > 0.1f;
             _lastPileRegionLayoutFrame = Time.frameCount;
-            pileSideRegionRoot.anchorMin = new Vector2(0.5f, 0.5f);
-            pileSideRegionRoot.anchorMax = new Vector2(0.5f, 0.5f);
-            pileSideRegionRoot.pivot = new Vector2(0.5f, 0.5f);
+            pileSideRegionRoot.anchorMin = useOverviewRightPin ? new Vector2(1f, 0.5f) : new Vector2(0.5f, 0.5f);
+            pileSideRegionRoot.anchorMax = useOverviewRightPin ? new Vector2(1f, 0.5f) : new Vector2(0.5f, 0.5f);
+            pileSideRegionRoot.pivot = useOverviewRightPin ? new Vector2(1f, 0.5f) : new Vector2(0.5f, 0.5f);
             pileSideRegionRoot.sizeDelta = requestedSize;
-            pileSideRegionRoot.anchoredPosition = new Vector2(safeX, pileRegionPos.y);
+            pileSideRegionRoot.anchoredPosition = new Vector2(safeX, pileRegionY);
             pileSideRegionRoot.localScale = Vector3.one;
             pileSideRegionRoot.localEulerAngles = Vector3.zero;
             pileSideRegionRoot.gameObject.SetActive(true);
@@ -5322,14 +5624,56 @@ namespace UCG
         {
             if (zone == null) return;
 
-            zone.anchorMin = new Vector2(0.5f, 0.5f);
-            zone.anchorMax = new Vector2(0.5f, 0.5f);
-            zone.pivot = new Vector2(0.5f, 0.5f);
+            ApplyOverviewCardSize(zone, size);
             zone.anchoredPosition = anchoredPosition;
-            zone.sizeDelta = size;
-            zone.localScale = Vector3.one;
             zone.localEulerAngles = Vector3.zero;
+            SyncBoardZoneVisibleFrame(zone);
             UpdateBoardZoneDebugText(zone);
+        }
+
+        static void ApplyOverviewCardSize(RectTransform rect, Vector2 size)
+        {
+            if (rect == null) return;
+
+            rect.anchorMin = new Vector2(0.5f, 0.5f);
+            rect.anchorMax = new Vector2(0.5f, 0.5f);
+            rect.pivot = new Vector2(0.5f, 0.5f);
+            if (size.x > 0f && size.y > 0f)
+            {
+                rect.sizeDelta = size;
+                rect.SetSizeWithCurrentAnchors(RectTransform.Axis.Horizontal, size.x);
+                rect.SetSizeWithCurrentAnchors(RectTransform.Axis.Vertical, size.y);
+            }
+            rect.localScale = Vector3.one;
+        }
+
+        void SyncBoardZoneVisibleFrame(RectTransform zone)
+        {
+            if (zone == null) return;
+
+            RectTransform cardFrame = zone.Find("Card Frame") as RectTransform;
+            if (cardFrame != null)
+            {
+                cardFrame.anchorMin = Vector2.zero;
+                cardFrame.anchorMax = Vector2.one;
+                cardFrame.pivot = new Vector2(0.5f, 0.5f);
+                cardFrame.offsetMin = Vector2.zero;
+                cardFrame.offsetMax = Vector2.zero;
+                cardFrame.localScale = Vector3.one;
+                cardFrame.localEulerAngles = Vector3.zero;
+            }
+
+            Transform valueGlowTransform = zone.Find("Zone Value Glow");
+            RectTransform valueGlow = valueGlowTransform as RectTransform;
+            if (valueGlow != null)
+            {
+                valueGlow.anchorMin = new Vector2(0.18f, 0.25f);
+                valueGlow.anchorMax = new Vector2(0.82f, 0.58f);
+                valueGlow.offsetMin = Vector2.zero;
+                valueGlow.offsetMax = Vector2.zero;
+                valueGlow.localScale = Vector3.one;
+                valueGlow.localEulerAngles = Vector3.zero;
+            }
         }
 
         void UpdateBoardZoneDebugText(RectTransform zone)
@@ -6070,7 +6414,7 @@ namespace UCG
             {
                 image.color = debugBoardZones
                     ? new Color(0.26f, 0.78f, 1f, 0.26f)
-                    : UcgToolUiPalette.WithAlpha(UcgToolUiPalette.DeepGlass, 0.08f);
+                    : Color.clear;
                 outline.effectColor = debugBoardZones
                     ? new Color(0.45f, 0.95f, 1f, 0.85f)
                     : UcgToolUiPalette.WithAlpha(UcgToolUiPalette.GlassBorder, 0.16f);
@@ -6102,14 +6446,9 @@ namespace UCG
 
         RectTransform GetBoardZoneParentRoot()
         {
-            if (battlefieldManager != null && battlefieldManager.viewport != null)
+            if (battlefieldManager != null && battlefieldManager.content != null)
             {
-                return battlefieldManager.viewport;
-            }
-
-            if (battlefieldManager != null)
-            {
-                return battlefieldManager.transform as RectTransform;
+                return battlefieldManager.content;
             }
 
             return canvas != null ? canvas.transform as RectTransform : null;
@@ -6156,6 +6495,12 @@ namespace UCG
 
         Vector2 GetBoardZoneRootSize()
         {
+            RectTransform contentRect = battlefieldManager != null ? battlefieldManager.content : null;
+            if (contentRect != null && contentRect.rect.width > 0f && contentRect.rect.height > 0f)
+            {
+                return contentRect.rect.size;
+            }
+
             RectTransform battlefieldRect = battlefieldManager != null
                 ? battlefieldManager.transform as RectTransform
                 : null;
@@ -6171,6 +6516,12 @@ namespace UCG
 
         float GetBoardZoneRootCenterXForActiveLane()
         {
+            RectTransform contentRect = battlefieldManager != null ? battlefieldManager.content : null;
+            if (contentRect != null && contentRect.rect.width > 0f)
+            {
+                return contentRect.rect.width * 0.5f;
+            }
+
             if (battlefieldManager == null) return 0f;
 
             int laneCount = Mathf.Max(1, battlefieldManager.maxLaneCount);
@@ -6267,7 +6618,7 @@ namespace UCG
             rect.anchorMin = new Vector2(0.5f, 0.5f);
             rect.anchorMax = new Vector2(0.5f, 0.5f);
             rect.pivot = new Vector2(0.5f, 0.5f);
-            rect.sizeDelta = size;
+            ApplyOverviewCardSize(rect, size);
             rect.localScale = Vector3.one;
             rect.localEulerAngles = Vector3.zero;
             rect.gameObject.SetActive(true);
@@ -6306,6 +6657,7 @@ namespace UCG
 
             EnsureZoneInnerFrame(rect);
             EnsureZoneInfoCardDecor(rect, objectName.Contains("Discard"));
+            SyncBoardZoneVisibleFrame(rect);
             bool hasLabel = !string.IsNullOrWhiteSpace(label);
             Text titleText = EnsureZoneText(rect, "Zone Label", new Vector2(0.14f, 0.70f), new Vector2(0.86f, 0.88f), font, 11, UcgToolUiPalette.MutedWhite);
             titleText.text = label;
@@ -11898,7 +12250,7 @@ namespace UCG
                     returnedTopCard,
                     cardInfoPanel,
                     GetTestCardSprite(effect.ownerSide == UcgPlayerSide.Player ? 0 : 1),
-                    GetPlacedBattleCardSize(),
+                    GetBattleCardSizeForOwner(effect.ownerSide),
                     LoadPlaceholderFont());
                 message = "手牌加入失敗，效果結束。";
                 return false;
@@ -12002,7 +12354,7 @@ namespace UCG
                 selectedCard,
                 cardInfoPanel,
                 GetTestCardSprite(owner == UcgPlayerSide.Player ? 0 : 1),
-                GetPlacedBattleCardSize(),
+                GetBattleCardSizeForOwner(owner),
                 LoadPlaceholderFont());
             if (newTopCard == null)
             {
@@ -16917,12 +17269,13 @@ namespace UCG
             if (battlefieldManager == null || turnManager == null) return;
 
             var lanes = battlefieldManager.GetOpenedLanes(turnManager.currentTurn);
+            bool allowFocusVisual = !battlefieldManager.forceOverviewOnly;
             for (int i = 0; i < lanes.Count; i++)
             {
                 UcgBattleLane lane = lanes[i];
                 if (lane == null) continue;
 
-                lane.SetActiveLaneFocus(lane.laneIndex == turnManager.ActiveNewLaneIndex);
+                lane.SetActiveLaneFocus(allowFocusVisual && lane.laneIndex == turnManager.ActiveNewLaneIndex);
             }
         }
 
@@ -18329,7 +18682,7 @@ namespace UCG
                 card,
                 cardInfoPanel,
                 fallbackSprite,
-                GetPlacedBattleCardSize(),
+                GetBattleCardSizeForOwner(owner),
                 LoadPlaceholderFont());
             if (view == null) return false;
 
@@ -21619,7 +21972,6 @@ namespace UCG
                 hoverScale = 1.01f;
                 selectedScale = 1.04f;
             }
-
             for (int i = 0; i < cardHolder.childCount; i++)
             {
                 RectTransform cardRect = cardHolder.GetChild(i) as RectTransform;

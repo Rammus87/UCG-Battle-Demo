@@ -15,6 +15,26 @@ namespace UCG
     [RequireComponent(typeof(RectTransform))]
     public class UcgBattlefieldManager : MonoBehaviour
     {
+        const float OverviewPlaymatInnerLeftRatio = 0.03f;
+        const float OverviewPlaymatInnerRightRatio = 0.97f;
+        const float OverviewPlaymatInnerTopRatio = 0.80f;
+        const float OverviewPlaymatInnerBottomRatio = 0.36f;
+        const float OverviewLaneAreaLeftRatio = 0.03f;
+        const float OverviewLaneAreaRightRatio = 0.86f;
+        const float OverviewRightRailLeftRatio = 0.88f;
+        const float OverviewRightRailRightRatio = 0.97f;
+        const float OverviewLaneLayoutCount = 8f;
+        const float OverviewLaneRightRailGap = 170f;
+        const float OverviewRotatedCardClearance = 72f;
+        const float OverviewSceneRowGap = 36f;
+        const float OverviewRowCenterlineTighten = 0.88f;
+        const float OverviewLaneAreaLeftPadding = 24f;
+        const float OverviewRightRailCardPadding = 48f;
+        const float OverviewViewportRightPadding = 36f;
+        const float OverviewVerticalEdgeMargin = 96f;
+        const float OverviewPortraitCardAspect = 0.716f;
+        const float OverviewPlaymatWorldAspect = 853f / 1280f; // Matches Docs/LayoutRefs/target_playmat_layout.png.
+
         public int maxLaneCount = 8;
         public int initialLaneCount = 3;
         public int visibleLaneCount = 3;
@@ -33,6 +53,7 @@ namespace UCG
         public UcgOpponentScript opponentScript;
         public UcgTestMode opponentTestMode;
         public bool debugBattlefieldScroll;
+        public bool forceOverviewOnly = true;
 
         public Vector2 placedCardSize = new Vector2(190f, 276f);
         public Vector2 opponentCardSize = new Vector2(172f, 250f);
@@ -42,6 +63,16 @@ namespace UCG
         public float laneSpacing = 30f;
         public float activeLaneScrollDuration = 0.32f;
         public float overviewScale = 0.4f;
+        public float focusScale = 0.88f;
+        public float overviewVisualCompensationScale = 1.65f;
+        public float overviewLaneSpacingMultiplier = 1.3f;
+        public float overviewContentLeftShift = 0f;
+        public float overviewRowScreenOffset = 0f;
+        public float overviewSafeLeftPadding = 70f;
+        public float overviewSafeRightReservedWidth = 325f;
+        public float overviewSafeRightPadding = 76f;
+        public float overviewSafeTopPadding = 90f;
+        public float overviewSafeBottomPadding = 150f;
         public float focusViewportPosition = 0.42f;
         public float combatAreaOffsetX;
         public float rightAuxiliaryColumnGutterWidth;
@@ -50,7 +81,7 @@ namespace UCG
 
         readonly List<UcgBattleLane> _lanes = new List<UcgBattleLane>();
         Coroutine _activeLaneScrollCoroutine;
-        UcgBattlefieldViewMode _currentViewMode = UcgBattlefieldViewMode.FocusLane;
+        UcgBattlefieldViewMode _currentViewMode = UcgBattlefieldViewMode.OverviewAll;
 
         public List<UcgBattleLane> Lanes => _lanes;
 
@@ -75,7 +106,7 @@ namespace UCG
 
             int laneCount = Mathf.Max(1, maxLaneCount);
             float contentWidth = GetContentWidth(laneCount);
-            content.sizeDelta = new Vector2(contentWidth, laneSize.y);
+            content.sizeDelta = new Vector2(contentWidth, GetContentHeight(contentWidth));
 
             for (int i = 0; i < laneCount; i++)
             {
@@ -179,8 +210,7 @@ namespace UCG
 
         int GetVisibleLaneCount(int currentTurn)
         {
-            int minimumVisibleLanes = Mathf.Max(1, initialLaneCount);
-            return Mathf.Clamp(Mathf.Max(currentTurn, minimumVisibleLanes), 1, _lanes.Count);
+            return Mathf.Clamp(maxLaneCount, 1, _lanes.Count);
         }
 
         public void SetLaneOpened(int laneIndex, bool opened)
@@ -231,11 +261,23 @@ namespace UCG
 
         public void FocusActiveLane(int laneIndex, string source = "FocusActiveLane")
         {
+            if (forceOverviewOnly)
+            {
+                ShowOverviewInstant(source);
+                return;
+            }
+
             SetBattlefieldView(UcgBattlefieldViewMode.FocusLane, laneIndex, false, source);
         }
 
         public void SmoothFocusActiveLane(int laneIndex)
         {
+            if (forceOverviewOnly)
+            {
+                ShowOverviewInstant("SmoothFocusActiveLane");
+                return;
+            }
+
             SetBattlefieldView(UcgBattlefieldViewMode.FocusLane, laneIndex, true, "SmoothFocusActiveLane");
         }
 
@@ -243,7 +285,7 @@ namespace UCG
         {
             int currentTurn = turnManager != null ? turnManager.currentTurn : 1;
             int overviewLaneCount = GetOverviewTargetLaneCount(currentTurn);
-            SetBattlefieldView(UcgBattlefieldViewMode.OverviewAll, overviewLaneCount - 1, true, "ShowOverview");
+            SetBattlefieldView(UcgBattlefieldViewMode.OverviewAll, overviewLaneCount - 1, !forceOverviewOnly, "ShowOverview");
         }
 
         public void ShowOverviewInstant(string source = "ShowOverviewInstant")
@@ -259,11 +301,21 @@ namespace UCG
             if (_lanes.Count == 0) return;
             if (smooth && IsAnyCardDragging()) return;
 
+            if (forceOverviewOnly)
+            {
+                StopActiveLaneScroll();
+                viewMode = UcgBattlefieldViewMode.OverviewAll;
+                int overviewLaneCount = GetOverviewTargetLaneCount(turnManager != null ? turnManager.currentTurn : 1);
+                laneIndex = overviewLaneCount - 1;
+                smooth = false;
+            }
+
             _currentViewMode = viewMode;
+            UpdateViewportMaskForCurrentView();
             int clampedLaneIndex = Mathf.Clamp(laneIndex, 0, _lanes.Count - 1);
             float targetScale = viewMode == UcgBattlefieldViewMode.OverviewAll
                 ? GetOverviewScaleForLaneCount(clampedLaneIndex + 1)
-                : 1f;
+                : Mathf.Clamp(focusScale, 0.1f, 1f);
             float targetX = viewMode == UcgBattlefieldViewMode.OverviewAll
                 ? GetOverviewTargetX(targetScale, clampedLaneIndex + 1)
                 : GetFocusLaneTargetX(clampedLaneIndex);
@@ -468,8 +520,27 @@ namespace UCG
 
             viewportImage.color = new Color(1f, 1f, 1f, 0f);
             viewportImage.raycastTarget = true;
+            RectMask2D viewportMask = viewportRect.GetComponent<RectMask2D>();
+            if (viewportMask != null)
+            {
+                viewportMask.enabled = ShouldClipBattlefieldViewport();
+            }
 
             return viewportRect;
+        }
+
+        bool ShouldClipBattlefieldViewport()
+        {
+            return !forceOverviewOnly && _currentViewMode != UcgBattlefieldViewMode.OverviewAll;
+        }
+
+        void UpdateViewportMaskForCurrentView()
+        {
+            RectMask2D viewportMask = viewport != null ? viewport.GetComponent<RectMask2D>() : null;
+            if (viewportMask != null)
+            {
+                viewportMask.enabled = ShouldClipBattlefieldViewport();
+            }
         }
 
         RectTransform EnsureContent(RectTransform viewportRect)
@@ -493,7 +564,8 @@ namespace UCG
             contentRect.anchorMax = new Vector2(0f, 0.5f);
             contentRect.pivot = new Vector2(0f, 0.5f);
             contentRect.anchoredPosition = Vector2.zero;
-            contentRect.sizeDelta = new Vector2(GetContentWidth(maxLaneCount), laneSize.y);
+            float contentWidth = GetContentWidth(maxLaneCount);
+            contentRect.sizeDelta = new Vector2(contentWidth, GetContentHeight(contentWidth));
 
             return contentRect;
         }
@@ -506,6 +578,13 @@ namespace UCG
         float GetLaneLeftX(int index)
         {
             return GetVisualOrderIndex(index) * GetLaneStep();
+        }
+
+        float GetLaneLeftXForScale(int index, float scale)
+        {
+            float t = GetOverviewBlend(scale);
+            float extraSpacing = laneSpacing * (Mathf.Max(1f, overviewLaneSpacingMultiplier) - 1f) * t;
+            return GetLaneLeftX(index) + GetVisualOrderIndex(index) * extraSpacing;
         }
 
         int GetVisualOrderIndex(int laneIndex)
@@ -529,14 +608,21 @@ namespace UCG
         {
             float viewportWidth = viewport != null && viewport.rect.width > 0f ? viewport.rect.width : 1040f;
             float contentWidth = content != null && content.rect.width > 0f ? content.rect.width : GetContentWidth(maxLaneCount);
-            return Mathf.Max(0f, contentWidth * Mathf.Max(0.1f, scale) - viewportWidth);
+            float overviewLeftShiftAllowance = Mathf.Max(0f, overviewContentLeftShift) * GetOverviewBlend(scale);
+            return Mathf.Max(0f, contentWidth * Mathf.Max(0.1f, scale) - viewportWidth) + overviewLeftShiftAllowance;
         }
 
         void SetContentToStart()
         {
             StopActiveLaneScroll();
+            if (forceOverviewOnly)
+            {
+                ShowOverviewInstant("SetContentToStart");
+                return;
+            }
+
             _currentViewMode = UcgBattlefieldViewMode.FocusLane;
-            SetContentView(GetFocusLaneTargetX(0), 1f);
+            SetContentView(GetFocusLaneTargetX(0), Mathf.Clamp(focusScale, 0.1f, 1f));
         }
 
         void SetContentAnchoredX(float targetX)
@@ -553,6 +639,7 @@ namespace UCG
             float clampedTargetX = Mathf.Clamp(targetX, -maxScrollX, 0f);
             content.localScale = new Vector3(clampedScale, clampedScale, 1f);
             content.anchoredPosition = GetTargetContentPosition(targetX, targetScale);
+            ApplyOverviewVisualCompensation(clampedScale);
 
             if (scrollRect != null)
             {
@@ -654,30 +741,29 @@ namespace UCG
 
         public int GetOverviewTargetLaneCount(int currentTurn)
         {
-            return Mathf.Clamp(currentTurn + 2, Mathf.Max(1, visibleLaneCount), Mathf.Max(1, maxLaneCount));
+            return Mathf.Max(1, maxLaneCount);
         }
 
         float GetOverviewScaleForLaneCount(int laneCount)
         {
-            float viewportWidth = viewport != null && viewport.rect.width > 0f ? viewport.rect.width : 1040f;
-            float targetWidth = GetContentWidth(Mathf.Clamp(laneCount, 1, Mathf.Max(1, maxLaneCount)));
-            if (targetWidth <= 0f) return 1f;
-
-            float fitScale = viewportWidth / targetWidth;
-            return Mathf.Clamp(fitScale, overviewScale, 1f);
+            return Mathf.Clamp(overviewScale, 0.1f, 1f);
         }
 
         float GetOverviewTargetX(float scale, int laneCount)
         {
             float viewportWidth = viewport != null && viewport.rect.width > 0f ? viewport.rect.width : 1040f;
             int clampedLaneCount = Mathf.Clamp(laneCount, 1, _lanes.Count > 0 ? _lanes.Count : maxLaneCount);
+            Rect playmatInnerRect = GetOverviewPlaymatInnerRect();
+            Rect laneAreaRect = GetOverviewLaneAreaRect(playmatInnerRect);
+            float visualScale = GetOverviewLayoutVisualScale(scale, playmatInnerRect, laneAreaRect);
             float groupLeft = float.MaxValue;
             float groupRight = float.MinValue;
 
             for (int i = 0; i < clampedLaneCount; i++)
             {
-                float left = GetLaneLeftX(i);
-                float right = left + laneSize.x;
+                float centerX = GetOverviewLaneCenterX(i, playmatInnerRect, laneAreaRect, visualScale);
+                float left = centerX - laneSize.x * visualScale * 0.5f;
+                float right = left + laneSize.x * visualScale;
                 groupLeft = Mathf.Min(groupLeft, left);
                 groupRight = Mathf.Max(groupRight, right);
             }
@@ -688,13 +774,290 @@ namespace UCG
                 groupRight = laneSize.x;
             }
 
-            float groupCenter = (groupLeft + groupRight) * 0.5f * Mathf.Max(0.1f, scale);
-            float targetX = viewportWidth * 0.5f - groupCenter;
+            Rect rightRailRect = GetOverviewRightRailRect(playmatInnerRect);
+            float overviewRightEdge = Mathf.Max(groupRight, rightRailRect.xMax);
+            float targetX = viewportWidth - OverviewViewportRightPadding - overviewRightEdge * Mathf.Max(0.1f, scale);
+            targetX -= Mathf.Max(0f, overviewContentLeftShift) * GetOverviewBlend(scale);
             if (debugBattlefieldScroll)
             {
                 Debug.Log($"ViewMode=OverviewAll, currentTurn={(turnManager != null ? turnManager.currentTurn : 1)}, activeLane={(turnManager != null ? turnManager.ActiveNewLaneIndex + 1 : 1)}, targetX={targetX}, openedLaneCount={GetOpenedLaneCount(turnManager != null ? turnManager.currentTurn : 1)}, overviewLaneCount={clampedLaneCount}");
             }
             return targetX;
+        }
+
+        public float GetOverviewLayoutBlend(float scale)
+        {
+            if (_currentViewMode != UcgBattlefieldViewMode.OverviewAll) return 0f;
+
+            float farScale = Mathf.Clamp(overviewScale, 0.1f, 1f);
+            float denominator = Mathf.Max(0.001f, 1f - farScale);
+            return Mathf.Clamp01((1f - Mathf.Clamp(scale, farScale, 1f)) / denominator);
+        }
+
+        float GetOverviewBlend(float scale)
+        {
+            return GetOverviewLayoutBlend(scale);
+        }
+
+        float GetOverviewVisualCompensation(float scale)
+        {
+            return Mathf.Lerp(1f, Mathf.Max(1f, overviewVisualCompensationScale), GetOverviewBlend(scale));
+        }
+
+        void ApplyOverviewVisualCompensation(float scale)
+        {
+            if (GetOverviewBlend(scale) > 0f)
+            {
+                ApplyOverviewLayout(scale);
+                return;
+            }
+
+            float visualScale = GetOverviewVisualCompensation(scale);
+            for (int i = 0; i < _lanes.Count; i++)
+            {
+                RectTransform laneRect = _lanes[i] != null ? _lanes[i].transform as RectTransform : null;
+                if (laneRect == null) continue;
+
+                laneRect.anchoredPosition = new Vector2(GetLaneLeftXForScale(i, scale), 0f);
+                laneRect.localScale = new Vector3(visualScale, visualScale, 1f);
+                _lanes[i].RestoreReferenceSlotLayout();
+            }
+        }
+
+        void ApplyOverviewLayout(float scale)
+        {
+            if (content == null || viewport == null) return;
+
+            Rect playmatInnerRect = GetOverviewPlaymatInnerRect();
+            Rect laneAreaRect = GetOverviewLaneAreaRect(playmatInnerRect);
+            float visualScale = GetOverviewLayoutVisualScale(scale, playmatInnerRect, laneAreaRect);
+            for (int i = 0; i < _lanes.Count; i++)
+            {
+                UcgBattleLane lane = _lanes[i];
+                RectTransform laneRect = lane != null ? lane.transform as RectTransform : null;
+                if (laneRect == null) continue;
+
+                laneRect.localScale = new Vector3(visualScale, visualScale, 1f);
+                laneRect.anchoredPosition = GetOverviewLanePosition(i, laneAreaRect, scale, visualScale);
+                lane.ApplyOverviewSlotLayout(
+                    GetOverviewOpponentSlotPosition(playmatInnerRect, scale, visualScale),
+                    GetOverviewPlayerSlotPosition(playmatInnerRect, scale, visualScale),
+                    GetOverviewStandardCardSize(1f));
+            }
+        }
+
+        public Rect GetOverviewPlaymatSafeArea()
+        {
+            return GetOverviewLaneAreaRect(GetOverviewPlaymatInnerRect());
+        }
+
+        public Rect GetOverviewPlaymatInnerRect()
+        {
+            float contentWidth = content != null && content.rect.width > 0f ? content.rect.width : GetContentWidth(maxLaneCount);
+            float contentHeight = content != null && content.rect.height > 0f ? content.rect.height : laneSize.y;
+            float outerLeft = Mathf.Clamp(overviewSafeLeftPadding, 0f, contentWidth * 0.45f);
+            float outerRight = Mathf.Max(outerLeft + 1f, contentWidth - Mathf.Max(0f, overviewSafeRightPadding));
+            float outerTop = contentHeight * 0.5f - Mathf.Max(0f, overviewSafeTopPadding);
+            float outerBottom = -contentHeight * 0.5f + Mathf.Max(0f, overviewSafeBottomPadding);
+            if (outerBottom > outerTop - 1f) outerBottom = outerTop - 1f;
+
+            Rect outerPlaymat = Rect.MinMaxRect(outerLeft, outerBottom, outerRight, outerTop);
+            float left = Mathf.Lerp(outerPlaymat.xMin, outerPlaymat.xMax, OverviewPlaymatInnerLeftRatio);
+            float right = Mathf.Lerp(outerPlaymat.xMin, outerPlaymat.xMax, OverviewPlaymatInnerRightRatio);
+            float bottom = Mathf.Lerp(outerPlaymat.yMin, outerPlaymat.yMax, OverviewPlaymatInnerBottomRatio);
+            float top = Mathf.Lerp(outerPlaymat.yMin, outerPlaymat.yMax, OverviewPlaymatInnerTopRatio);
+            if (bottom > top - 1f) bottom = top - 1f;
+            return Rect.MinMaxRect(left, bottom, right, top);
+        }
+
+        Rect GetOverviewLaneAreaRect(Rect playmatInnerRect)
+        {
+            float left = Mathf.Lerp(playmatInnerRect.xMin, playmatInnerRect.xMax, OverviewLaneAreaLeftRatio);
+            float right = Mathf.Lerp(playmatInnerRect.xMin, playmatInnerRect.xMax, OverviewLaneAreaRightRatio);
+            return Rect.MinMaxRect(left, playmatInnerRect.yMin, Mathf.Max(left + 1f, right), playmatInnerRect.yMax);
+        }
+
+        public Rect GetOverviewRightRailRect()
+        {
+            Rect playmatInnerRect = GetOverviewPlaymatInnerRect();
+            return GetOverviewRightRailRect(playmatInnerRect);
+        }
+
+        public Vector2 GetOverviewCardSize()
+        {
+            return GetOverviewStandardCardSize(1f);
+        }
+
+        public Vector2 GetOverviewSceneAreaSize()
+        {
+            Vector2 cardSize = GetOverviewStandardCardSize(1f);
+            return new Vector2(cardSize.y, cardSize.x);
+        }
+
+        public Vector2 GetOverviewSceneCenter()
+        {
+            Rect playmatInnerRect = GetOverviewPlaymatInnerRect();
+            Rect laneAreaRect = GetOverviewLaneAreaRect(playmatInnerRect);
+            float visualScale = GetOverviewLayoutVisualScale(overviewScale, playmatInnerRect, laneAreaRect);
+            float lane01CenterX = TryGetFinalOverviewLaneSlotCenterX(0, out float finalLane01CenterX)
+                ? finalLane01CenterX
+                : GetOverviewLaneCenterX(0, playmatInnerRect, laneAreaRect, visualScale);
+            float lane02CenterX = TryGetFinalOverviewLaneSlotCenterX(1, out float finalLane02CenterX)
+                ? finalLane02CenterX
+                : GetOverviewLaneCenterX(1, playmatInnerRect, laneAreaRect, visualScale);
+            return new Vector2((lane01CenterX + lane02CenterX) * 0.5f, GetOverviewPlaymatCenterY(playmatInnerRect));
+        }
+
+        bool TryGetFinalOverviewLaneSlotCenterX(int laneIndex, out float centerX)
+        {
+            centerX = 0f;
+            if (content == null || laneIndex < 0 || laneIndex >= _lanes.Count) return false;
+
+            UcgBattleLane lane = _lanes[laneIndex];
+            RectTransform slot = lane != null
+                ? (lane.playerSlot != null ? lane.playerSlot : lane.opponentSlot)
+                : null;
+            if (slot == null) return false;
+
+            Vector3 worldCenter = slot.TransformPoint(slot.rect.center);
+            centerX = content.InverseTransformPoint(worldCenter).x;
+            return true;
+        }
+
+        Rect GetOverviewRightRailRect(Rect playmatInnerRect)
+        {
+            float left = Mathf.Lerp(playmatInnerRect.xMin, playmatInnerRect.xMax, OverviewRightRailLeftRatio);
+            float right = Mathf.Lerp(playmatInnerRect.xMin, playmatInnerRect.xMax, OverviewRightRailRightRatio);
+            return Rect.MinMaxRect(left, playmatInnerRect.yMin, Mathf.Max(left + 1f, right), playmatInnerRect.yMax);
+        }
+
+        Vector2 GetOverviewLanePosition(int laneIndex, Rect laneAreaRect, float contentScale, float visualScale)
+        {
+            Rect playmatInnerRect = GetOverviewPlaymatInnerRect();
+            float centerX = GetOverviewLaneCenterX(laneIndex, playmatInnerRect, laneAreaRect, visualScale);
+            float laneLeft = centerX - laneSize.x * Mathf.Max(0.1f, visualScale) * 0.5f;
+            return new Vector2(laneLeft, GetOverviewPlaymatCenterY(playmatInnerRect));
+        }
+
+        float GetOverviewLaneCenterX(int laneIndex, Rect playmatInnerRect, Rect laneAreaRect, float visualScale)
+        {
+            float t = Mathf.Clamp01(laneIndex / Mathf.Max(1f, OverviewLaneLayoutCount - 1f));
+            GetOverviewLaneCenterRange(playmatInnerRect, laneAreaRect, visualScale, out float leftCenter, out float rightCenter);
+            return Mathf.Lerp(rightCenter, leftCenter, t);
+        }
+
+        public float GetOverviewLayoutVisualScale(float scale)
+        {
+            Rect playmatInnerRect = GetOverviewPlaymatInnerRect();
+            Rect laneAreaRect = GetOverviewLaneAreaRect(playmatInnerRect);
+            return GetOverviewLayoutVisualScale(scale, playmatInnerRect, laneAreaRect);
+        }
+
+        float GetOverviewLayoutVisualScale(float scale, Rect playmatInnerRect, Rect laneAreaRect)
+        {
+            return GetOverviewVisualCompensation(scale);
+        }
+
+        void GetOverviewLaneCenterRange(Rect playmatInnerRect, Rect laneAreaRect, float visualScale, out float leftCenter, out float rightCenter)
+        {
+            Rect rightRailRect = GetOverviewRightRailRect(playmatInnerRect);
+            float visualFootprint = GetOverviewLaneFootprintWidth() * Mathf.Max(0.1f, visualScale);
+            float lanePitch = GetOverviewLanePitch(visualScale);
+            float rightFootprintHalf = visualFootprint * 0.5f;
+            float laneAreaMinCenter = Mathf.Max(playmatInnerRect.xMin, laneAreaRect.xMin) + rightFootprintHalf + OverviewLaneAreaLeftPadding;
+            rightCenter = Mathf.Min(laneAreaRect.xMax, rightRailRect.xMin - OverviewLaneRightRailGap) - rightFootprintHalf;
+            leftCenter = rightCenter - lanePitch * Mathf.Max(0f, OverviewLaneLayoutCount - 1f);
+        }
+
+        float GetOverviewLanePitch(float visualScale)
+        {
+            float rotatedFootprintWidth = GetOverviewLaneFootprintWidth() * Mathf.Max(0.1f, visualScale);
+            return rotatedFootprintWidth + Mathf.Max(0f, OverviewRotatedCardClearance);
+        }
+
+        float GetOverviewLaneFootprintWidth()
+        {
+            return Mathf.Max(1f, GetOverviewStandardCardSize(1f).y);
+        }
+
+        Vector2 GetOverviewOpponentSlotPosition(Rect playmatInnerRect, float contentScale, float visualScale)
+        {
+            float slotY = GetOverviewSlotLocalRowHalfSpan(playmatInnerRect, visualScale);
+            return new Vector2(laneSize.x * 0.5f, slotY);
+        }
+
+        Vector2 GetOverviewPlayerSlotPosition(Rect playmatInnerRect, float contentScale, float visualScale)
+        {
+            float slotY = -GetOverviewSlotLocalRowHalfSpan(playmatInnerRect, visualScale);
+            return new Vector2(laneSize.x * 0.5f, slotY);
+        }
+
+        float GetOverviewSlotLocalRowHalfSpan(Rect playmatInnerRect, float visualScale)
+        {
+            float scale = Mathf.Max(0.1f, visualScale);
+            float playmatCenterY = GetOverviewPlaymatCenterY(playmatInnerRect);
+            float playerRowY = GetOverviewPlayerRowY(playmatInnerRect, visualScale);
+            float currentHalfDistance = Mathf.Abs(playmatCenterY - playerRowY);
+            float cardHalfHeight = GetOverviewStandardCardSize(visualScale).y * 0.5f;
+            float sceneHalfHeight = GetOverviewSceneAreaSize().y * scale * 0.5f;
+            float minHalfDistance = sceneHalfHeight + OverviewSceneRowGap + cardHalfHeight;
+            float tightenedHalfDistance = currentHalfDistance * Mathf.Clamp01(OverviewRowCenterlineTighten);
+            return Mathf.Max(minHalfDistance, tightenedHalfDistance) / scale;
+        }
+
+        float GetOverviewPlaymatCenterY(Rect playmatInnerRect)
+        {
+            return (playmatInnerRect.yMin + playmatInnerRect.yMax) * 0.5f;
+        }
+
+        float GetOverviewOpponentRowY(Rect playmatInnerRect, float visualScale)
+        {
+            float slotHalfHeight = GetOverviewStandardCardSize(visualScale).y * 0.5f;
+            return playmatInnerRect.yMax - GetOverviewVerticalEdgeMargin(playmatInnerRect) - slotHalfHeight;
+        }
+
+        float GetOverviewPlayerRowY(Rect playmatInnerRect, float visualScale)
+        {
+            float slotHalfHeight = GetOverviewStandardCardSize(visualScale).y * 0.5f;
+            return playmatInnerRect.yMin + GetOverviewVerticalEdgeMargin(playmatInnerRect) + slotHalfHeight;
+        }
+
+        float GetOverviewVerticalEdgeMargin(Rect playmatInnerRect)
+        {
+            return Mathf.Min(
+                Mathf.Max(0f, OverviewVerticalEdgeMargin),
+                Mathf.Max(0f, playmatInnerRect.height * 0.12f));
+        }
+
+        Vector2 GetOverviewStandardCardSize(float visualScale)
+        {
+            float scale = Mathf.Max(0.1f, visualScale);
+            float height = Mathf.Max(playerSlotSize.y, opponentSlotSize.y, placedCardSize.y, opponentCardSize.y);
+            float width = height * OverviewPortraitCardAspect;
+            return new Vector2(width, height) * scale;
+        }
+
+        float GetOverviewRowY(Rect safeArea, float rowRatio)
+        {
+            return safeArea.yMax - safeArea.height * Mathf.Clamp01(rowRatio);
+        }
+
+        Vector2 GetOverviewBattleCardSize()
+        {
+            float scale = Mathf.Clamp(overviewScale, 0.1f, 1f) * GetOverviewLayoutVisualScale(overviewScale);
+            return GetOverviewStandardCardSize(1f) * scale;
+        }
+
+        Vector2 GetOverviewSlotSize()
+        {
+            float scale = Mathf.Clamp(overviewScale, 0.1f, 1f) * GetOverviewLayoutVisualScale(overviewScale);
+            return GetOverviewStandardCardSize(1f) * scale;
+        }
+
+        float ScreenXToContentLocal(float screenX, float contentScale)
+        {
+            float contentX = content != null ? content.anchoredPosition.x : 0f;
+            return (screenX - contentX) / Mathf.Max(0.1f, contentScale);
         }
 
         bool IsLaneFullyVisible(int laneIndex, float scrollX)
@@ -725,9 +1088,39 @@ namespace UCG
         float GetContentWidth(int laneCount)
         {
             if (laneCount <= 0) return 0f;
-            return laneSize.x * laneCount
+            float referenceWidth = laneSize.x * laneCount
                 + laneSpacing * Mathf.Max(0, laneCount - 1)
                 + Mathf.Max(0f, rightAuxiliaryColumnGutterWidth);
+            return Mathf.Max(referenceWidth, GetOverviewRequiredContentWidth(laneCount));
+        }
+
+        float GetOverviewRequiredContentWidth(int laneCount)
+        {
+            int clampedLaneCount = Mathf.Max(1, laneCount);
+            float overviewVisualScale = Mathf.Max(1f, overviewVisualCompensationScale);
+            float visualFootprint = GetOverviewLaneFootprintWidth() * overviewVisualScale;
+            float lanePitch = visualFootprint + Mathf.Max(0f, OverviewRotatedCardClearance);
+            float laneSpan = visualFootprint + lanePitch * Mathf.Max(0, clampedLaneCount - 1);
+            float rightRailCardWidth = GetOverviewStandardCardSize(overviewVisualScale).x + OverviewRightRailCardPadding * 2f;
+            float laneAreaRatio = Mathf.Max(0.01f, OverviewLaneAreaRightRatio - OverviewLaneAreaLeftRatio);
+            float requiredLaneAreaWidth = laneSpan + OverviewLaneAreaLeftPadding;
+            float requiredRailClearanceWidth = OverviewLaneRightRailGap
+                / Mathf.Max(0.01f, OverviewRightRailLeftRatio - OverviewLaneAreaRightRatio);
+            float requiredRightRailWidth = rightRailCardWidth
+                / Mathf.Max(0.01f, OverviewRightRailRightRatio - OverviewRightRailLeftRatio);
+            float requiredInnerWidth = Mathf.Max(
+                requiredLaneAreaWidth / laneAreaRatio,
+                requiredRailClearanceWidth,
+                requiredRightRailWidth);
+            float innerRatio = Mathf.Max(0.01f, OverviewPlaymatInnerRightRatio - OverviewPlaymatInnerLeftRatio);
+            return requiredInnerWidth / innerRatio
+                + Mathf.Max(0f, overviewSafeLeftPadding)
+                + Mathf.Max(0f, overviewSafeRightPadding);
+        }
+
+        float GetContentHeight(float contentWidth)
+        {
+            return Mathf.Max(laneSize.y, contentWidth * OverviewPlaymatWorldAspect);
         }
 
         void ApplyLaneRect(RectTransform laneRect, int index)

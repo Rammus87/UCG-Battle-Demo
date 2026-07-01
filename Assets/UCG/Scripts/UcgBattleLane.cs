@@ -2,6 +2,7 @@ using UnityEngine;
 using UnityEngine.UI;
 using System.Collections;
 using System.Collections.Generic;
+using System.Text;
 
 namespace UCG
 {
@@ -43,6 +44,17 @@ namespace UCG
         UcgCardData _fixedOpponentCardData;
         Sprite _fixedOpponentCardSprite;
         Vector2 _fixedOpponentCardSize;
+        Vector2 _referenceOpponentSlotPosition;
+        Vector2 _referencePlayerSlotPosition;
+        Vector2 _referenceOpponentSlotSize;
+        Vector2 _referencePlayerSlotSize;
+        Vector2 _overviewCardSize;
+        bool _hasReferenceSlotPositions;
+        bool _useOverviewCardLayout;
+        static Sprite _overviewEmptySlotSprite;
+        const string OverviewEmptySlotMainFrameName = "Overview Empty Slot Main Frame";
+        const string OverviewEmptySlotVisibleFrameName = "Overview Empty Slot Visible Frame";
+        const bool TraceOverviewSlotRectsEnabled = true;
         Color _opponentSlotDefaultColor = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.DeepGlass, 0.110f);
         Color _effectTargetColor = UcgToolUiPalette.WithAlpha(UcgToolUiPalette.BrandPinkLight, 0.62f);
         Image _laneFocusImage;
@@ -54,6 +66,8 @@ namespace UCG
         Image _laneDuelAxisGlowImage;
         RectTransform _laneDuelAxisCoreRect;
         Image _laneDuelAxisCoreImage;
+        Text _opponentLaneNumberLabel;
+        Text _playerLaneNumberLabel;
         Coroutine _playerRestRotationRoutine;
         Coroutine _opponentRestRotationRoutine;
         Coroutine _judgementResultRoutine;
@@ -86,6 +100,7 @@ namespace UCG
             resultLabel = EnsureResultLabel();
 
             playerSlot = EnsureSlot("Player Slot", new Vector2(0f, -310f), playerSlotSize, UcgToolUiPalette.WithAlpha(UcgToolUiPalette.DeepGlass, 0.120f), true);
+            EnsureLaneNumberLabels();
             playerPlayArea = playerSlot.GetComponent<UcgPlayArea>();
             if (playerPlayArea == null) playerPlayArea = playerSlot.gameObject.AddComponent<UcgPlayArea>();
 
@@ -119,18 +134,543 @@ namespace UCG
 
         public void ApplyReferenceSlotLayout(Vector2 opponentSlotPosition, Vector2 playerSlotPosition)
         {
-            ApplySlotPosition(opponentSlot, opponentSlotPosition);
-            ApplySlotPosition(playerSlot, playerSlotPosition);
+            _referenceOpponentSlotPosition = opponentSlotPosition;
+            _referencePlayerSlotPosition = playerSlotPosition;
+            _referenceOpponentSlotSize = opponentSlot != null ? opponentSlot.sizeDelta : Vector2.zero;
+            _referencePlayerSlotSize = playerSlot != null ? playerSlot.sizeDelta : Vector2.zero;
+            _hasReferenceSlotPositions = true;
+            ApplySlotRect(opponentSlot, opponentSlotPosition, _referenceOpponentSlotSize);
+            ApplySlotRect(playerSlot, playerSlotPosition, _referencePlayerSlotSize);
+            ApplyLaneNumberLabelLayout();
+            TraceOverviewSlotRectState("After ApplyReferenceSlotLayout");
         }
 
-        static void ApplySlotPosition(RectTransform slot, Vector2 anchoredPosition)
+        public void ApplyOverviewSlotLayout(Vector2 opponentSlotPosition, Vector2 playerSlotPosition, Vector2 overviewCardSize)
+        {
+            _overviewCardSize = overviewCardSize;
+            _useOverviewCardLayout = overviewCardSize.x > 0f && overviewCardSize.y > 0f;
+            ApplySlotRect(opponentSlot, opponentSlotPosition, overviewCardSize);
+            ApplySlotRect(playerSlot, playerSlotPosition, overviewCardSize);
+            ApplyOverviewSlotVisualSize(opponentSlot, overviewCardSize, false);
+            ApplyOverviewSlotVisualSize(playerSlot, overviewCardSize, true);
+            ApplyPlacedCardSize(opponentSlot, overviewCardSize);
+            ApplyPlacedCardSize(playerSlot, overviewCardSize);
+            if (playerPlayArea != null)
+            {
+                playerPlayArea.cardSlot = playerSlot;
+                playerPlayArea.placedCardSize = overviewCardSize;
+                playerPlayArea.centerPlacedCardsInSlot = true;
+            }
+            ApplyLaneNumberLabelLayout();
+            TraceOverviewSlotRectState("After ApplyOverviewSlotLayout");
+        }
+
+        public void RestoreReferenceSlotLayout()
+        {
+            if (!_hasReferenceSlotPositions) return;
+
+            ApplySlotRect(opponentSlot, _referenceOpponentSlotPosition, _referenceOpponentSlotSize);
+            ApplySlotRect(playerSlot, _referencePlayerSlotPosition, _referencePlayerSlotSize);
+            _useOverviewCardLayout = false;
+            if (playerPlayArea != null)
+            {
+                playerPlayArea.centerPlacedCardsInSlot = false;
+            }
+            ApplyLaneNumberLabelLayout();
+        }
+
+        static void ApplySlotRect(RectTransform slot, Vector2 anchoredPosition, Vector2 size)
         {
             if (slot == null) return;
 
-            slot.anchorMin = new Vector2(0.5f, 0.5f);
-            slot.anchorMax = new Vector2(0.5f, 0.5f);
-            slot.pivot = new Vector2(0.5f, 0.5f);
+            ApplyOverviewCardSize(slot, size);
             slot.anchoredPosition = anchoredPosition;
+            slot.localEulerAngles = Vector3.zero;
+        }
+
+        static void ApplyOverviewCardSize(RectTransform rect, Vector2 size)
+        {
+            if (rect == null) return;
+
+            rect.anchorMin = new Vector2(0.5f, 0.5f);
+            rect.anchorMax = new Vector2(0.5f, 0.5f);
+            rect.pivot = new Vector2(0.5f, 0.5f);
+            if (size.x > 0f && size.y > 0f)
+            {
+                rect.sizeDelta = size;
+                rect.SetSizeWithCurrentAnchors(RectTransform.Axis.Horizontal, size.x);
+                rect.SetSizeWithCurrentAnchors(RectTransform.Axis.Vertical, size.y);
+            }
+            rect.localScale = Vector3.one;
+        }
+
+        static void ApplyPlacedCardSize(RectTransform slot, Vector2 size)
+        {
+            if (slot == null || size.x <= 0f || size.y <= 0f) return;
+
+            UcgCardView[] cardViews = slot.GetComponentsInChildren<UcgCardView>(false);
+            for (int i = 0; i < cardViews.Length; i++)
+            {
+                RectTransform cardRect = cardViews[i] != null ? cardViews[i].transform as RectTransform : null;
+                if (cardRect == null) continue;
+
+                ApplyOverviewCardSize(cardRect, size);
+                cardRect.anchoredPosition = Vector2.zero;
+            }
+        }
+
+        void ApplyOverviewSlotVisualSize(RectTransform slot, Vector2 size, bool isPlayerSlot)
+        {
+            if (slot == null || size.x <= 0f || size.y <= 0f) return;
+
+            ApplyOverviewCardSize(slot, size);
+            EnsureSlotSurfaceDetails(slot, isPlayerSlot);
+
+            Image slotImage = slot.GetComponent<Image>();
+            if (slotImage != null)
+            {
+                slotImage.enabled = true;
+                slotImage.color = UcgToolUiPalette.WithAlpha(
+                    UcgToolUiPalette.DeepGlass,
+                    isPlayerSlot ? 0.135f : 0.120f);
+            }
+
+            Image interiorImage = GetSlotChildImage(slot, "Slot Interior Shade");
+            if (interiorImage != null)
+            {
+                interiorImage.enabled = true;
+                interiorImage.color = UcgToolUiPalette.WithAlpha(
+                    UcgToolUiPalette.DeepGlass,
+                    isPlayerSlot ? 0.105f : 0.105f);
+            }
+
+            bool isEmpty = CountCardsInSlot(slot) == 0;
+            EnsureOverviewEmptySlotMainFrame(slot, size, isPlayerSlot, isEmpty);
+            EnsureOverviewEmptySlotVisibleFrame(slot, size, isPlayerSlot, isEmpty);
+
+            for (int i = 0; i < slot.childCount; i++)
+            {
+                RectTransform child = slot.GetChild(i) as RectTransform;
+                if (child == null) continue;
+
+                child.localScale = Vector3.one;
+                child.localEulerAngles = Vector3.zero;
+            }
+
+            LayoutRebuilder.ForceRebuildLayoutImmediate(slot);
+            TraceOverviewSlotRectState($"After ApplyOverviewSlotVisualSize:{slot.name}");
+        }
+
+        static Image GetSlotChildImage(RectTransform slot, string childName)
+        {
+            if (slot == null || string.IsNullOrEmpty(childName)) return null;
+
+            Transform child = slot.Find(childName);
+            return child != null ? child.GetComponent<Image>() : null;
+        }
+
+        void TraceOverviewSlotRectState(string stage)
+        {
+            if (!TraceOverviewSlotRectsEnabled || !_useOverviewCardLayout) return;
+
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+            Debug.Log(
+                $"[UCG SlotTrace] lane={GetLaneDisplayNumber()} stage={stage}\n" +
+                FormatSlotRectState("Opponent", opponentSlot) + "\n" +
+                FormatSlotRectState("Player", playerSlot));
+            if (opponentSlot != null && CountCardsInSlot(opponentSlot) == 0)
+            {
+                Debug.Log(FormatDetailedEmptySlotTrace(stage));
+            }
+#endif
+        }
+
+        string FormatSlotRectState(string side, RectTransform slot)
+        {
+            if (slot == null) return $"{side}: <null>";
+
+            RectTransform mainFrame = slot.Find(OverviewEmptySlotMainFrameName) as RectTransform;
+            RectTransform frame = slot.Find(OverviewEmptySlotVisibleFrameName) as RectTransform;
+            RectTransform interior = slot.Find("Slot Interior Shade") as RectTransform;
+            RectTransform shadow = slot.Find("Slot Card Ground Shadow") as RectTransform;
+            RectTransform parent = slot.parent as RectTransform;
+            UcgPlayArea playArea = slot.GetComponent<UcgPlayArea>();
+            bool hasPlacedCard = CountCardsInSlot(slot) > 0;
+            bool hasMask = SlotOrParentHasMask(slot);
+
+            return
+                $"{side}: empty={!hasPlacedCard}, placed={hasPlacedCard}, root={FormatRect(slot)}, " +
+                $"mainFrame={FormatRect(mainFrame)}, frame={FormatRect(frame)}, interior={FormatRect(interior)}, shadow={FormatRect(shadow)}, " +
+                $"hitArea={(playArea != null ? FormatRect(playArea.cardSlot != null ? playArea.cardSlot : slot) : "<none>")}, " +
+                $"parent={(parent != null ? parent.name : "<none>")} {FormatRect(parent)}, " +
+                $"maskOrRectMask={hasMask}";
+        }
+
+        static string FormatRect(RectTransform rect)
+        {
+            if (rect == null) return "<null>";
+
+            Vector2 size = rect.sizeDelta;
+            Vector3 scale = rect.localScale;
+            float ratio = size.y > 0.001f ? size.x / size.y : 0f;
+            return
+                $"{rect.name}[size=({size.x:0.##},{size.y:0.##}), " +
+                $"scale=({scale.x:0.###},{scale.y:0.###},{scale.z:0.###}), " +
+                $"anchored=({rect.anchoredPosition.x:0.##},{rect.anchoredPosition.y:0.##}), " +
+                $"ratio={ratio:0.###}, active={rect.gameObject.activeSelf}]";
+        }
+
+        static bool SlotOrParentHasMask(RectTransform slot)
+        {
+            if (slot == null) return false;
+
+            Transform current = slot;
+            while (current != null)
+            {
+                if (current.GetComponent<Mask>() != null || current.GetComponent<RectMask2D>() != null)
+                {
+                    return true;
+                }
+                current = current.parent;
+            }
+
+            return false;
+        }
+
+        string FormatDetailedEmptySlotTrace(string stage)
+        {
+            var builder = new StringBuilder(4096);
+            RectTransform opponentFrame = opponentSlot != null
+                ? opponentSlot.Find(OverviewEmptySlotVisibleFrameName) as RectTransform
+                : null;
+            RectTransform opponentParent = opponentSlot != null ? opponentSlot.parent as RectTransform : null;
+            RectTransform maskRect = FindNearestMaskRect(opponentSlot);
+            bool frameInsideLaneParent = RectContainsWorldCorners(opponentParent, opponentFrame);
+            bool frameInsideMask = RectContainsWorldCorners(maskRect, opponentFrame);
+
+            builder.AppendLine($"[UCG SlotTraceDetail] lane={GetLaneDisplayNumber()} stage={stage}");
+            builder.AppendLine($"Opponent root corners={FormatWorldCorners(opponentSlot)}");
+            builder.AppendLine($"Opponent frame corners={FormatWorldCorners(opponentFrame)}");
+            builder.AppendLine($"Lane parent={(opponentParent != null ? opponentParent.name : "<none>")} corners={FormatWorldCorners(opponentParent)}");
+            builder.AppendLine($"Nearest mask={(maskRect != null ? maskRect.name : "<none>")} corners={FormatWorldCorners(maskRect)}");
+            builder.AppendLine($"frameInsideLaneParent={frameInsideLaneParent}");
+            builder.AppendLine($"frameInsideMask={frameInsideMask}");
+            builder.AppendLine($"parentTransform={FormatTransformDetails(opponentParent)}");
+            builder.AppendLine($"rootTransform={FormatTransformDetails(opponentSlot)}");
+            builder.AppendLine($"frameTransform={FormatTransformDetails(opponentFrame)}");
+            builder.AppendLine(FormatSlotParentBounds("Opponent", opponentSlot));
+            builder.AppendLine(FormatSlotParentBounds("Player", playerSlot));
+            builder.AppendLine("Opponent active image children:");
+            AppendSlotGraphicChildren(builder, "Opponent", opponentSlot, maskRect);
+            builder.AppendLine("Player active image children:");
+            AppendSlotGraphicChildren(builder, "Player", playerSlot, FindNearestMaskRect(playerSlot));
+            return builder.ToString();
+        }
+
+        static RectTransform FindNearestMaskRect(RectTransform slot)
+        {
+            if (slot == null) return null;
+
+            Transform current = slot;
+            while (current != null)
+            {
+                if (current.GetComponent<Mask>() != null || current.GetComponent<RectMask2D>() != null)
+                {
+                    return current as RectTransform;
+                }
+                current = current.parent;
+            }
+
+            return null;
+        }
+
+        static bool RectContainsWorldCorners(RectTransform container, RectTransform target)
+        {
+            if (container == null || target == null) return false;
+
+            Rect rect = container.rect;
+            Vector3[] corners = GetWorldCorners(target);
+            const float epsilon = 0.01f;
+            for (int i = 0; i < corners.Length; i++)
+            {
+                Vector3 local = container.InverseTransformPoint(corners[i]);
+                if (local.x < rect.xMin - epsilon || local.x > rect.xMax + epsilon ||
+                    local.y < rect.yMin - epsilon || local.y > rect.yMax + epsilon)
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        static Vector3[] GetWorldCorners(RectTransform rect)
+        {
+            var corners = new Vector3[4];
+            if (rect != null) rect.GetWorldCorners(corners);
+            return corners;
+        }
+
+        static string FormatWorldCorners(RectTransform rect)
+        {
+            if (rect == null) return "<null>";
+
+            Vector3[] corners = GetWorldCorners(rect);
+            return
+                $"BL=({corners[0].x:0.##},{corners[0].y:0.##}) " +
+                $"TL=({corners[1].x:0.##},{corners[1].y:0.##}) " +
+                $"TR=({corners[2].x:0.##},{corners[2].y:0.##}) " +
+                $"BR=({corners[3].x:0.##},{corners[3].y:0.##})";
+        }
+
+        static string FormatTransformDetails(RectTransform rect)
+        {
+            if (rect == null) return "<null>";
+
+            return
+                $"{rect.name}[anchorMin=({rect.anchorMin.x:0.###},{rect.anchorMin.y:0.###}), " +
+                $"anchorMax=({rect.anchorMax.x:0.###},{rect.anchorMax.y:0.###}), " +
+                $"pivot=({rect.pivot.x:0.###},{rect.pivot.y:0.###}), " +
+                $"size=({rect.sizeDelta.x:0.##},{rect.sizeDelta.y:0.##}), " +
+                $"anchored=({rect.anchoredPosition.x:0.##},{rect.anchoredPosition.y:0.##}), " +
+                $"local=({rect.localPosition.x:0.##},{rect.localPosition.y:0.##},{rect.localPosition.z:0.##}), " +
+                $"world=({rect.position.x:0.##},{rect.position.y:0.##},{rect.position.z:0.##}), " +
+                $"scale=({rect.localScale.x:0.###},{rect.localScale.y:0.###},{rect.localScale.z:0.###})]";
+        }
+
+        static string FormatSlotParentBounds(string side, RectTransform slot)
+        {
+            RectTransform parent = slot != null ? slot.parent as RectTransform : null;
+            if (slot == null || parent == null) return $"{side}InsideParent=<unknown>";
+
+            float centerY = slot.anchoredPosition.y;
+            float halfHeight = slot.sizeDelta.y * 0.5f;
+            float slotYMin = centerY - halfHeight;
+            float slotYMax = centerY + halfHeight;
+            Rect parentRect = parent.rect;
+            bool insideParent = slotYMin >= parentRect.yMin - 0.01f && slotYMax <= parentRect.yMax + 0.01f;
+
+            return
+                $"{side} parentRectY=({parentRect.yMin:0.##},{parentRect.yMax:0.##}) " +
+                $"centerY={centerY:0.##} cardYMin={slotYMin:0.##} cardYMax={slotYMax:0.##} " +
+                $"{side.ToLowerInvariant()}InsideParent={insideParent}";
+        }
+
+        void AppendSlotGraphicChildren(StringBuilder builder, string side, RectTransform slot, RectTransform maskRect)
+        {
+            if (builder == null) return;
+            if (slot == null)
+            {
+                builder.AppendLine($"{side}: <slot null>");
+                return;
+            }
+
+            Graphic[] graphics = slot.GetComponentsInChildren<Graphic>(false);
+            for (int i = 0; i < graphics.Length; i++)
+            {
+                Graphic graphic = graphics[i];
+                if (graphic == null) continue;
+                Image image = graphic as Image;
+                RawImage rawImage = graphic as RawImage;
+                if (image == null && rawImage == null) continue;
+
+                RectTransform rect = graphic.transform as RectTransform;
+                if (rect == null) continue;
+
+                Color color = graphic.color;
+                Sprite sprite = image != null ? image.sprite : null;
+                Texture texture = rawImage != null ? rawImage.texture : null;
+                bool insideMask = maskRect == null || RectContainsWorldCorners(maskRect, rect);
+                bool horizontalStripLikely = IsHorizontalStripCandidate(slot, rect);
+                CanvasGroup canvasGroup = graphic.GetComponentInParent<CanvasGroup>();
+                float canvasAlpha = canvasGroup != null ? canvasGroup.alpha : 1f;
+                string assetName = image != null
+                    ? (sprite != null ? sprite.name : "<null>")
+                    : (texture != null ? texture.name : "<null>");
+
+                builder.AppendLine(
+                    $"{side}/{GetRelativePath(slot, rect)} " +
+                    $"activeSelf={graphic.gameObject.activeSelf} activeInHierarchy={graphic.gameObject.activeInHierarchy} " +
+                    $"siblingIndex={rect.GetSiblingIndex()} size=({rect.sizeDelta.x:0.##},{rect.sizeDelta.y:0.##}) " +
+                    $"scale=({rect.localScale.x:0.###},{rect.localScale.y:0.###},{rect.localScale.z:0.###}) " +
+                    $"anchored=({rect.anchoredPosition.x:0.##},{rect.anchoredPosition.y:0.##}) " +
+                    $"corners={FormatWorldCorners(rect)} " +
+                    $"graphicType={(image != null ? "Image" : "RawImage")} enabled={graphic.enabled} alpha={color.a:0.###} " +
+                    $"asset={assetName} canvasGroupAlpha={canvasAlpha:0.###} insideMask={insideMask} " +
+                    $"horizontalStripLikely={horizontalStripLikely}");
+            }
+        }
+
+        static bool IsHorizontalStripCandidate(RectTransform slot, RectTransform rect)
+        {
+            if (slot == null || rect == null) return false;
+
+            float slotHeight = Mathf.Max(0.001f, slot.sizeDelta.y);
+            float rectHeight = Mathf.Abs(rect.rect.height);
+            float rectWidth = Mathf.Abs(rect.rect.width);
+            return rectHeight < slotHeight * 0.35f || rectWidth / Mathf.Max(0.001f, rectHeight) > 1.2f;
+        }
+
+        static string GetRelativePath(RectTransform root, RectTransform child)
+        {
+            if (root == null || child == null) return "<null>";
+            if (root == child) return child.name;
+
+            var names = new List<string>();
+            Transform current = child;
+            while (current != null)
+            {
+                names.Add(current.name);
+                if (current == root) break;
+                current = current.parent;
+            }
+
+            names.Reverse();
+            return string.Join("/", names);
+        }
+
+        void EnsureOverviewEmptySlotMainFrame(RectTransform slot, Vector2 size, bool isPlayerSlot, bool visible)
+        {
+            if (slot == null || size.x <= 0f || size.y <= 0f) return;
+
+            Transform existingFrame = slot.Find(OverviewEmptySlotMainFrameName);
+            RectTransform frameRect;
+            Image frameImage;
+            Outline frameOutline;
+
+            if (existingFrame == null)
+            {
+                var frameObject = new GameObject(OverviewEmptySlotMainFrameName, typeof(RectTransform), typeof(Image), typeof(Outline));
+                frameObject.transform.SetParent(slot, false);
+                frameRect = frameObject.GetComponent<RectTransform>();
+                frameImage = frameObject.GetComponent<Image>();
+                frameOutline = frameObject.GetComponent<Outline>();
+            }
+            else
+            {
+                frameRect = existingFrame as RectTransform;
+                frameImage = existingFrame.GetComponent<Image>();
+                if (frameImage == null) frameImage = existingFrame.gameObject.AddComponent<Image>();
+                frameOutline = existingFrame.GetComponent<Outline>();
+                if (frameOutline == null) frameOutline = existingFrame.gameObject.AddComponent<Outline>();
+            }
+
+            ApplyOverviewCardSize(frameRect, size);
+            frameRect.anchoredPosition = Vector2.zero;
+            frameRect.localEulerAngles = Vector3.zero;
+            frameRect.gameObject.SetActive(visible);
+
+            frameImage.sprite = GetOverviewEmptySlotSprite();
+            frameImage.type = Image.Type.Simple;
+            frameImage.enabled = true;
+            frameImage.raycastTarget = false;
+            frameImage.color = UcgToolUiPalette.WithAlpha(
+                UcgToolUiPalette.DeepGlass,
+                isPlayerSlot ? 0.070f : 0.145f);
+
+            frameOutline.enabled = true;
+            frameOutline.useGraphicAlpha = true;
+            frameOutline.effectColor = UcgToolUiPalette.WithAlpha(
+                isPlayerSlot ? UcgToolUiPalette.FocusCyan : UcgToolUiPalette.GlassBorder,
+                isPlayerSlot ? 0.22f : 0.30f);
+            frameOutline.effectDistance = new Vector2(1.25f, -1.25f);
+            MoveEmptySlotFrameAboveDecorBelowCards(slot, frameRect);
+        }
+
+        void EnsureOverviewEmptySlotVisibleFrame(RectTransform slot, Vector2 size, bool isPlayerSlot, bool visible)
+        {
+            if (slot == null || size.x <= 0f || size.y <= 0f) return;
+
+            Transform existingFrame = slot.Find(OverviewEmptySlotVisibleFrameName);
+            RectTransform frameRect;
+            Image frameImage;
+            Outline frameOutline;
+
+            if (existingFrame == null)
+            {
+                var frameObject = new GameObject(OverviewEmptySlotVisibleFrameName, typeof(RectTransform), typeof(Image), typeof(Outline));
+                frameObject.transform.SetParent(slot, false);
+                frameRect = frameObject.GetComponent<RectTransform>();
+                frameImage = frameObject.GetComponent<Image>();
+                frameOutline = frameObject.GetComponent<Outline>();
+            }
+            else
+            {
+                frameRect = existingFrame as RectTransform;
+                frameImage = existingFrame.GetComponent<Image>();
+                if (frameImage == null) frameImage = existingFrame.gameObject.AddComponent<Image>();
+                frameOutline = existingFrame.GetComponent<Outline>();
+                if (frameOutline == null) frameOutline = existingFrame.gameObject.AddComponent<Outline>();
+            }
+
+            ApplyOverviewCardSize(frameRect, size);
+            frameRect.anchoredPosition = Vector2.zero;
+            frameRect.localEulerAngles = Vector3.zero;
+            frameRect.gameObject.SetActive(visible);
+            MoveEmptySlotFrameAboveDecorBelowCards(slot, frameRect);
+
+            frameImage.sprite = GetOverviewEmptySlotSprite();
+            frameImage.type = Image.Type.Simple;
+            frameImage.enabled = true;
+            frameImage.raycastTarget = false;
+            frameImage.color = UcgToolUiPalette.WithAlpha(
+                UcgToolUiPalette.DeepGlass,
+                isPlayerSlot ? 0.015f : 0.055f);
+
+            frameOutline.enabled = true;
+            frameOutline.useGraphicAlpha = true;
+            frameOutline.effectColor = UcgToolUiPalette.WithAlpha(
+                isPlayerSlot ? UcgToolUiPalette.FocusCyan : UcgToolUiPalette.GlassBorder,
+                isPlayerSlot ? 0.05f : 0.22f);
+            frameOutline.effectDistance = new Vector2(1.1f, -1.1f);
+        }
+
+        static void MoveEmptySlotFrameAboveDecorBelowCards(RectTransform slot, RectTransform frameRect)
+        {
+            if (slot == null || frameRect == null) return;
+
+            int firstCardIndex = -1;
+            for (int i = 0; i < slot.childCount; i++)
+            {
+                Transform child = slot.GetChild(i);
+                if (child == null || child == frameRect) continue;
+                if (child.GetComponent<UcgCardView>() == null) continue;
+
+                firstCardIndex = i;
+                break;
+            }
+
+            if (firstCardIndex >= 0)
+            {
+                frameRect.SetSiblingIndex(Mathf.Max(0, firstCardIndex));
+            }
+            else
+            {
+                frameRect.SetAsLastSibling();
+            }
+        }
+
+        static Sprite GetOverviewEmptySlotSprite()
+        {
+            if (_overviewEmptySlotSprite != null) return _overviewEmptySlotSprite;
+
+            var texture = new Texture2D(1, 1, TextureFormat.RGBA32, false)
+            {
+                hideFlags = HideFlags.HideAndDontSave,
+                filterMode = FilterMode.Point,
+                wrapMode = TextureWrapMode.Clamp
+            };
+            texture.SetPixel(0, 0, Color.white);
+            texture.Apply(false, true);
+
+            _overviewEmptySlotSprite = Sprite.Create(
+                texture,
+                new Rect(0f, 0f, 1f, 1f),
+                new Vector2(0.5f, 0.5f),
+                1f);
+            _overviewEmptySlotSprite.name = "UCG Overview Empty Slot Sprite";
+            _overviewEmptySlotSprite.hideFlags = HideFlags.HideAndDontSave;
+            return _overviewEmptySlotSprite;
         }
 
         public void ConfigureOpponentScript(UcgOpponentScript script, UcgTestMode mode)
@@ -228,9 +768,13 @@ namespace UCG
             cardRect.anchorMin = new Vector2(0.5f, 0.5f);
             cardRect.anchorMax = new Vector2(0.5f, 0.5f);
             cardRect.pivot = new Vector2(0.5f, 0.5f);
-            cardRect.anchoredPosition = new Vector2(0f, 18f) + new Vector2(8f, 8f) * stackIndex;
-            cardRect.sizeDelta = _fixedOpponentCardSize;
-            cardRect.localScale = new Vector3(1f, 0.94f, 1f);
+            cardRect.anchoredPosition = _useOverviewCardLayout
+                ? Vector2.zero
+                : new Vector2(0f, 18f) + new Vector2(8f, 8f) * stackIndex;
+            cardRect.sizeDelta = _useOverviewCardLayout && _overviewCardSize.x > 0f && _overviewCardSize.y > 0f
+                ? _overviewCardSize
+                : _fixedOpponentCardSize;
+            cardRect.localScale = Vector3.one;
             cardRect.localEulerAngles = Vector3.zero;
 
             var image = cardObject.GetComponent<Image>();
@@ -274,7 +818,7 @@ namespace UCG
 
             if (resultLabel != null)
             {
-                resultLabel.text = $"Lane {laneIndex + 1}：待判定";
+                resultLabel.text = GetLaneDisplayNumber();
                 resultLabel.color = new Color(1f, 1f, 1f, 0.92f);
             }
 
@@ -626,7 +1170,7 @@ namespace UCG
 
             if (resultLabel != null)
             {
-                resultLabel.text = $"Lane {laneIndex + 1}\n{message}";
+                resultLabel.text = $"{GetLaneDisplayNumber()}\n{message}";
             }
 
             ApplyJudgementVisual(laneResult);
@@ -953,6 +1497,7 @@ namespace UCG
 
             opponentTopCard = null;
             ApplySlotFocusState(opponentSlot, false, true);
+            TraceOverviewSlotRectState("After ClearOpponentCards");
         }
 
         public void SetEffectTargetHighlight(UcgPlayerSide side, bool active)
@@ -1072,6 +1617,11 @@ namespace UCG
             }
 
             SetSlotCardGroundShadow(slot, CountCardsInSlot(slot) > 0, active, opponent);
+            if (_useOverviewCardLayout && _overviewCardSize.x > 0f && _overviewCardSize.y > 0f)
+            {
+                ApplyOverviewSlotVisualSize(slot, _overviewCardSize, !opponent);
+            }
+            TraceOverviewSlotRectState($"After ApplySlotFocusState:{slot.name}");
         }
 
         void RefreshOpponentTopCard()
@@ -1529,6 +2079,7 @@ namespace UCG
             if (leftEdge != null) leftEdge.SetSiblingIndex(Mathf.Min(6, slotRect.childCount - 1));
             if (rightEdge != null) rightEdge.SetSiblingIndex(Mathf.Min(7, slotRect.childCount - 1));
             EnsureSlotCornerMarkers(slotRect, isPlayerSlot);
+            TraceOverviewSlotRectState($"After EnsureSlotSurfaceDetails:{slotRect.name}");
         }
 
         void EnsureSlotCornerMarkers(RectTransform slotRect, bool isPlayerSlot)
@@ -1577,6 +2128,7 @@ namespace UCG
             shadowRect.localScale = Vector3.one;
             shadowRect.localEulerAngles = Vector3.zero;
             shadowRect.SetSiblingIndex(Mathf.Min(3, slot.childCount - 1));
+            TraceOverviewSlotRectState($"After SetSlotCardGroundShadow:{slot.name}");
         }
 
         RectTransform EnsureSlotDecorImage(
@@ -1628,11 +2180,8 @@ namespace UCG
         {
             if (image == null) return;
 
-            Sprite roundedSprite = Resources.GetBuiltinResource<Sprite>("UI/Skin/UISprite.psd");
-            if (roundedSprite == null) return;
-
-            image.sprite = roundedSprite;
-            image.type = Image.Type.Sliced;
+            image.sprite = GetOverviewEmptySlotSprite();
+            image.type = Image.Type.Simple;
             image.pixelsPerUnitMultiplier = 1f;
         }
 
@@ -1679,7 +2228,7 @@ namespace UCG
             labelRect.anchoredPosition = Vector2.zero;
             labelRect.sizeDelta = new Vector2(224f, 42f);
 
-            label.text = $"Lane {laneIndex + 1}：待判定";
+            label.text = GetLaneDisplayNumber();
             label.alignment = TextAnchor.MiddleCenter;
             label.color = new Color(1f, 1f, 1f, 0.54f);
             if (_uiFont != null) label.font = _uiFont;
@@ -1690,6 +2239,79 @@ namespace UCG
             label.raycastTarget = false;
 
             return label;
+        }
+
+        string GetLaneDisplayNumber()
+        {
+            return (laneIndex + 1).ToString("00");
+        }
+
+        void EnsureLaneNumberLabels()
+        {
+            _opponentLaneNumberLabel = EnsureLaneNumberLabel(
+                "Opponent Lane Number Label",
+                new Color(1f, 0.50f, 0.55f, 0.78f));
+            _playerLaneNumberLabel = EnsureLaneNumberLabel(
+                "Player Lane Number Label",
+                new Color(0.42f, 0.82f, 1f, 0.78f));
+            ApplyLaneNumberLabelLayout();
+        }
+
+        Text EnsureLaneNumberLabel(string labelName, Color color)
+        {
+            Transform existingLabel = transform.Find(labelName);
+            RectTransform labelRect;
+            Text label;
+
+            if (existingLabel == null)
+            {
+                var labelObject = new GameObject(labelName, typeof(RectTransform), typeof(Text));
+                labelObject.transform.SetParent(transform, false);
+                labelRect = labelObject.GetComponent<RectTransform>();
+                label = labelObject.GetComponent<Text>();
+            }
+            else
+            {
+                labelRect = existingLabel as RectTransform;
+                label = existingLabel.GetComponent<Text>();
+                if (label == null) label = existingLabel.gameObject.AddComponent<Text>();
+            }
+
+            labelRect.anchorMin = new Vector2(0.5f, 0.5f);
+            labelRect.anchorMax = new Vector2(0.5f, 0.5f);
+            labelRect.pivot = new Vector2(0.5f, 0.5f);
+            label.text = GetLaneDisplayNumber();
+            label.alignment = TextAnchor.MiddleCenter;
+            label.color = color;
+            if (_uiFont != null) label.font = _uiFont;
+            label.fontSize = 14;
+            label.resizeTextForBestFit = true;
+            label.resizeTextMinSize = 9;
+            label.resizeTextMaxSize = 14;
+            label.raycastTarget = false;
+
+            return label;
+        }
+
+        void ApplyLaneNumberLabelLayout()
+        {
+            ApplyLaneNumberLabelLayout(_opponentLaneNumberLabel, opponentSlot);
+            ApplyLaneNumberLabelLayout(_playerLaneNumberLabel, playerSlot);
+        }
+
+        static void ApplyLaneNumberLabelLayout(Text label, RectTransform slot)
+        {
+            if (label == null || slot == null) return;
+
+            RectTransform labelRect = label.transform as RectTransform;
+            if (labelRect == null) return;
+
+            float labelHeight = 26f;
+            float gap = 20f;
+            labelRect.sizeDelta = new Vector2(Mathf.Max(72f, slot.sizeDelta.x), labelHeight);
+            labelRect.anchoredPosition = new Vector2(
+                slot.anchoredPosition.x,
+                slot.anchoredPosition.y - slot.sizeDelta.y * 0.5f - gap);
         }
 
         void EnsureSlotLabel(RectTransform parent, string text)
