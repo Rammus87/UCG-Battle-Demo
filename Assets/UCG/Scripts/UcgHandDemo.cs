@@ -39,6 +39,11 @@ namespace UCG
         const float WorldBackgroundViewportReferenceWidth = 1080f;
         const float WorldBackgroundViewportReferenceHeight = 1920f;
         const float WorldBackgroundZoomOutReferenceScale = 0.4f;
+        const float PlaymatVisualSafeLeftRatio = 0.055f;
+        const float PlaymatVisualSafeRightRatio = 0.945f;
+        const float PlaymatVisualSafeBottomRatio = 0.30f;
+        const float PlaymatVisualSafeTopRatio = 0.885f;
+        const float FocusPlaymatVisualSafeViewportFill = 0.94f;
         const float MinSceneSafeWidth = 520f;
         const float MinSceneSafeHeight = 220f;
         const float OverviewSceneAreaMinHeight = 190f;
@@ -222,6 +227,7 @@ namespace UCG
         public float sidePileColumnMargin = 32f;
         public bool sidePileFollowFocus = false;
         [Range(0f, 1f)] public float playmatViewportHorizontalOffset = 1f;
+        [SerializeField] bool showWorldBackgroundDebugOverlay;
         public float sidePileFocusCompensationFactor = 0.18f;
         public float sidePileToLaneGap = 72f;
         public float sidePileTooFarGap = 160f;
@@ -340,6 +346,12 @@ namespace UCG
         Image _worldBackgroundImage;
         float _lastAppliedWorldBackgroundHorizontalOffset = float.MinValue;
         float _lastAppliedWorldBackgroundZoomScale = float.MinValue;
+        bool _lastAppliedWorldBackgroundFocusFraming;
+        float _worldBackgroundFramingBlend;
+        float _lastAppliedWorldBackgroundFramingBlend = float.MinValue;
+        Vector2 _lastAppliedWorldBackgroundImageSize;
+        Vector2 _lastAppliedWorldBackgroundAnchoredPosition;
+        Rect _lastAppliedPlaymatVisualSafeRect;
         Coroutine _battlefieldActionFeedbackRoutine;
         readonly List<Image> _battlefieldFeedbackImages = new List<Image>();
         readonly List<Color> _battlefieldFeedbackBaseColors = new List<Color>();
@@ -388,6 +400,8 @@ namespace UCG
         string _pendingBp01043ReorderMessage = "";
         readonly List<UcgCardData> _pendingBp01043RevealedCards = new List<UcgCardData>();
         UcgPendingAction _pendingAction;
+        bool _preserveFocusThroughEnterEffect;
+        int _preserveFocusLaneIndex = -1;
         RectTransform _pendingConfirmRoot;
         Text _pendingConfirmText;
         Button _pendingConfirmButton;
@@ -1066,8 +1080,10 @@ namespace UCG
 
             float normalizedOffset = GetWorldBackgroundHorizontalOffset();
             float zoomScale = GetWorldBackgroundZoomScale();
+            float framingBlend = UpdateWorldBackgroundFramingBlend();
             if (Mathf.Approximately(_lastAppliedWorldBackgroundHorizontalOffset, normalizedOffset)
-                && Mathf.Approximately(_lastAppliedWorldBackgroundZoomScale, zoomScale))
+                && Mathf.Approximately(_lastAppliedWorldBackgroundZoomScale, zoomScale)
+                && Mathf.Approximately(_lastAppliedWorldBackgroundFramingBlend, framingBlend))
             {
                 return;
             }
@@ -1112,14 +1128,175 @@ namespace UCG
             imageWidth *= zoomMultiplier;
             imageHeight *= zoomMultiplier;
 
+            float framingBlend = Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(_worldBackgroundFramingBlend));
+            float overviewImageWidth = imageWidth;
+            float overviewImageHeight = imageHeight;
+            float focusImageWidth = overviewImageWidth;
+            float focusImageHeight = overviewImageHeight;
+            Rect playmatVisualSafeRect = GetPlaymatVisualSafeRect(new Vector2(focusImageWidth, focusImageHeight));
+            if (framingBlend > 0f)
+            {
+                float safeHeight = Mathf.Max(1f, playmatVisualSafeRect.height);
+                float minImageHeight = viewportSize.y / Mathf.Max(0.1f, FocusPlaymatVisualSafeViewportFill) * focusImageHeight / safeHeight;
+                if (focusImageHeight < minImageHeight)
+                {
+                    focusImageHeight = minImageHeight;
+                    focusImageWidth = Mathf.Max(viewportSize.x, focusImageHeight * aspect);
+                }
+            }
+
+            imageWidth = Mathf.Lerp(overviewImageWidth, focusImageWidth, framingBlend);
+            imageHeight = Mathf.Lerp(overviewImageHeight, focusImageHeight, framingBlend);
+            playmatVisualSafeRect = GetPlaymatVisualSafeRect(new Vector2(imageWidth, imageHeight));
+
             float maxShift = Mathf.Max(0f, (imageWidth - viewportSize.x) * 0.5f);
             float normalizedOffset = GetWorldBackgroundHorizontalOffset();
+            float anchoredX = Mathf.Lerp(maxShift, -maxShift, normalizedOffset);
+            float anchoredY = Mathf.Lerp(0f, -playmatVisualSafeRect.center.y, framingBlend);
 
             imageRect.sizeDelta = new Vector2(imageWidth, imageHeight);
-            imageRect.anchoredPosition = new Vector2(Mathf.Lerp(maxShift, -maxShift, normalizedOffset), 0f);
+            imageRect.anchoredPosition = new Vector2(anchoredX, anchoredY);
             _lastAppliedWorldBackgroundHorizontalOffset = normalizedOffset;
             _lastAppliedWorldBackgroundZoomScale = zoomScale;
+            _lastAppliedWorldBackgroundFocusFraming = framingBlend > 0.5f;
+            _lastAppliedWorldBackgroundFramingBlend = framingBlend;
+            _lastAppliedWorldBackgroundImageSize = imageRect.sizeDelta;
+            _lastAppliedWorldBackgroundAnchoredPosition = imageRect.anchoredPosition;
+            _lastAppliedPlaymatVisualSafeRect = playmatVisualSafeRect;
         }
+
+        float UpdateWorldBackgroundFramingBlend()
+        {
+            float targetBlend = ShouldUseFocusWorldBackgroundFraming() ? 1f : 0f;
+            if (!Application.isPlaying || battlefieldManager == null || battlefieldManager.activeLaneScrollDuration <= 0f)
+            {
+                _worldBackgroundFramingBlend = targetBlend;
+                return _worldBackgroundFramingBlend;
+            }
+
+            float duration = Mathf.Max(0.01f, battlefieldManager.activeLaneScrollDuration);
+            _worldBackgroundFramingBlend = Mathf.MoveTowards(
+                _worldBackgroundFramingBlend,
+                targetBlend,
+                Time.unscaledDeltaTime / duration);
+            return _worldBackgroundFramingBlend;
+        }
+
+        bool ShouldUseFocusWorldBackgroundFraming()
+        {
+            return battlefieldManager != null
+                && battlefieldManager.IsViewTransformOnlyActive
+                && battlefieldManager.IsViewTransformOnlyFocusFraming;
+        }
+
+        Rect GetPlaymatVisualSafeRect(Vector2 imageSize)
+        {
+            float width = Mathf.Max(1f, imageSize.x);
+            float height = Mathf.Max(1f, imageSize.y);
+            float left = Mathf.Clamp01(PlaymatVisualSafeLeftRatio);
+            float right = Mathf.Clamp01(PlaymatVisualSafeRightRatio);
+            float bottom = Mathf.Clamp01(PlaymatVisualSafeBottomRatio);
+            float top = Mathf.Clamp01(PlaymatVisualSafeTopRatio);
+            if (right < left)
+            {
+                float temp = left;
+                left = right;
+                right = temp;
+            }
+
+            if (top < bottom)
+            {
+                float temp = bottom;
+                bottom = top;
+                top = temp;
+            }
+
+            return Rect.MinMaxRect(
+                (left - 0.5f) * width,
+                (bottom - 0.5f) * height,
+                (right - 0.5f) * width,
+                (top - 0.5f) * height);
+        }
+
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+        void OnGUI()
+        {
+            DrawWorldBackgroundDebugOverlay();
+        }
+
+        void DrawWorldBackgroundDebugOverlay()
+        {
+            if (!showWorldBackgroundDebugOverlay || _worldBackgroundImage == null) return;
+
+            RectTransform imageRect = _worldBackgroundImage.rectTransform;
+            if (imageRect == null || imageRect.rect.width <= 0f || imageRect.rect.height <= 0f) return;
+
+            Rect visualSafeRect = GetPlaymatVisualSafeRect(imageRect.rect.size);
+            DrawWorldBackgroundRect(imageRect, visualSafeRect, new Color(0.2f, 1f, 0.55f, 0.95f), "playmatVisualSafeRect");
+
+            string mode = _lastAppliedWorldBackgroundFocusFraming ? "Focus" : "Overview";
+            string detail =
+                $"backgroundMode={mode}\n"
+                + $"backgroundBlend={_lastAppliedWorldBackgroundFramingBlend:0.###}\n"
+                + $"backgroundScaleSource={_lastAppliedWorldBackgroundZoomScale:0.###}\n"
+                + $"backgroundSize={_lastAppliedWorldBackgroundImageSize.x:0.#},{_lastAppliedWorldBackgroundImageSize.y:0.#}\n"
+                + $"backgroundAnchored={_lastAppliedWorldBackgroundAnchoredPosition.x:0.#},{_lastAppliedWorldBackgroundAnchoredPosition.y:0.#}";
+            DrawWorldBackgroundLabel(new Vector2(12f, 164f), detail, new Color(0.2f, 1f, 0.55f, 0.95f));
+        }
+
+        void DrawWorldBackgroundRect(RectTransform rectTransform, Rect localRect, Color color, string label)
+        {
+            Vector2 p1 = WorldBackgroundLocalPointToGuiPoint(rectTransform, new Vector2(localRect.xMin, localRect.yMin));
+            Vector2 p2 = WorldBackgroundLocalPointToGuiPoint(rectTransform, new Vector2(localRect.xMin, localRect.yMax));
+            Vector2 p3 = WorldBackgroundLocalPointToGuiPoint(rectTransform, new Vector2(localRect.xMax, localRect.yMax));
+            Vector2 p4 = WorldBackgroundLocalPointToGuiPoint(rectTransform, new Vector2(localRect.xMax, localRect.yMin));
+
+            DrawWorldBackgroundLine(p1, p2, color, 2f);
+            DrawWorldBackgroundLine(p2, p3, color, 2f);
+            DrawWorldBackgroundLine(p3, p4, color, 2f);
+            DrawWorldBackgroundLine(p4, p1, color, 2f);
+
+            if (!string.IsNullOrEmpty(label))
+            {
+                DrawWorldBackgroundLabel(p2 + new Vector2(4f, 4f), label, color);
+            }
+        }
+
+        Vector2 WorldBackgroundLocalPointToGuiPoint(RectTransform rectTransform, Vector2 localPoint)
+        {
+            Canvas parentCanvas = rectTransform != null ? rectTransform.GetComponentInParent<Canvas>() : null;
+            Camera uiCamera = parentCanvas != null && parentCanvas.renderMode != RenderMode.ScreenSpaceOverlay
+                ? parentCanvas.worldCamera
+                : null;
+            Vector3 worldPoint = rectTransform != null
+                ? rectTransform.TransformPoint(new Vector3(localPoint.x, localPoint.y, 0f))
+                : new Vector3(localPoint.x, localPoint.y, 0f);
+            Vector2 screenPoint = RectTransformUtility.WorldToScreenPoint(uiCamera, worldPoint);
+            return new Vector2(screenPoint.x, Screen.height - screenPoint.y);
+        }
+
+        static void DrawWorldBackgroundLine(Vector2 a, Vector2 b, Color color, float thickness)
+        {
+            Matrix4x4 matrix = GUI.matrix;
+            Color oldColor = GUI.color;
+            GUI.color = color;
+
+            Vector2 delta = b - a;
+            float angle = Mathf.Atan2(delta.y, delta.x) * Mathf.Rad2Deg;
+            GUIUtility.RotateAroundPivot(angle, a);
+            GUI.DrawTexture(new Rect(a.x, a.y - thickness * 0.5f, delta.magnitude, thickness), Texture2D.whiteTexture);
+            GUI.matrix = matrix;
+            GUI.color = oldColor;
+        }
+
+        static void DrawWorldBackgroundLabel(Vector2 position, string label, Color color)
+        {
+            Color oldColor = GUI.color;
+            GUI.color = color;
+            GUI.Label(new Rect(position.x, position.y, 360f, 96f), label);
+            GUI.color = oldColor;
+        }
+#endif
 
         Vector2 GetWorldBackgroundViewportSize(RectTransform viewportRect)
         {
@@ -2910,6 +3087,8 @@ namespace UCG
             battlefieldManager.rightAuxiliaryColumnGutterWidth = rightAuxiliaryColumnGutterWidth;
             battlefieldManager.debugBattlefieldLayout = debugBattlefieldLayout || debugLayoutDiagnostics;
             battlefieldManager.hasInitializedBattlefieldView = _hasInitializedBattlefieldView;
+            battlefieldManager.BeforeViewTransformOnlyFocus -= SyncSceneAreaBeforeViewTransformOnly;
+            battlefieldManager.BeforeViewTransformOnlyFocus += SyncSceneAreaBeforeViewTransformOnly;
             battlefieldManager.Configure(tutorialGuide, turnManager, phaseManager, cardInfoPanel, playResultText, GetPlacedBattleCardSize(), GetTestCardSprite(0), LoadPlaceholderFont());
             battlefieldManager.ConfigureOpponentScript(opponentScript, currentTestMode);
             ApplyReferenceBattleSlotLayout();
@@ -2928,8 +3107,8 @@ namespace UCG
             battlefieldManager.hasInitializedBattlefieldView = _hasInitializedBattlefieldView;
             ApplyCombatFocusViewportPosition("ApplyInitialBattlefieldView");
             battlefieldManager.RefreshOpenedLaneVisibility(turnManager != null ? turnManager.currentTurn : 1);
-            battlefieldManager.JumpToActiveLane("ApplyInitialBattlefieldView");
-            LogCombatViewportDiagnostic("ApplyInitialBattlefieldView", "FocusLane", GetCurrentActiveLaneIndex());
+            battlefieldManager.ShowOverviewViewTransformOnly(false, "ApplyInitialBattlefieldView");
+            LogCombatViewportDiagnostic("ApplyInitialBattlefieldView", "OverviewViewTransformOnly", GetCurrentActiveLaneIndex());
             CaptureInitialBattlefieldContentOffset();
             _hasInitializedBattlefieldView = true;
             battlefieldManager.hasInitializedBattlefieldView = true;
@@ -3165,13 +3344,18 @@ namespace UCG
 
             if (sceneZoneAnchor != null)
             {
-                sceneZoneAnchor.anchoredPosition = GetReferenceSceneAreaPosition();
+                RectTransform sceneAreaRoot = sceneZoneAnchor.parent as RectTransform;
+                if (sceneAreaRoot != null)
+                {
+                    sceneAreaRoot.anchoredPosition = GetReferenceSceneAreaPosition();
+                }
+                sceneZoneAnchor.anchoredPosition = Vector2.zero;
                 sceneZoneAnchor.sizeDelta = GetSceneAreaSize();
                 if (sharedSceneSlot != null)
                 {
                     sharedSceneSlot.sceneCardSize = GetSceneCardBoardSize();
                 }
-                EnsureSceneZoneMatFrame(sceneZoneAnchor.parent as RectTransform, sceneZoneAnchor.anchoredPosition, sceneZoneAnchor.sizeDelta);
+                EnsureSceneZoneMatFrame(sceneAreaRoot, sceneZoneAnchor.anchoredPosition, sceneZoneAnchor.sizeDelta);
             }
 
             RefreshBoardZoneLayout();
@@ -3211,8 +3395,9 @@ namespace UCG
             int activeLaneIndex = GetCurrentActiveLaneIndex();
             if (IsCombatFocusPhase())
             {
-                battlefieldManager.SmoothFocusActiveLane(activeLaneIndex);
-                LogCombatViewportDiagnostic("UpdateDebugCombatViewportOffset", "FocusLane", activeLaneIndex, true);
+                PrepareBattleLayoutForViewTransformOnly();
+                battlefieldManager.FocusActiveLaneViewTransformOnly(activeLaneIndex, true, "UpdateDebugCombatViewportOffset");
+                LogCombatViewportDiagnostic("UpdateDebugCombatViewportOffset", "FocusLaneViewTransformOnly", activeLaneIndex, true);
             }
             else
             {
@@ -3982,11 +4167,12 @@ namespace UCG
             slotRect.anchorMin = new Vector2(0.5f, 0.5f);
             slotRect.anchorMax = new Vector2(0.5f, 0.5f);
             slotRect.pivot = new Vector2(0.5f, 0.5f);
-            slotRect.anchoredPosition = anchoredPosition;
+            sceneAreaRoot.anchoredPosition = anchoredPosition;
+            slotRect.anchoredPosition = Vector2.zero;
             slotRect.sizeDelta = GetSceneAreaSize();
             slotRect.gameObject.SetActive(true);
             sceneZoneAnchor = slotRect;
-            EnsureSceneZoneMatFrame(sceneAreaRoot, anchoredPosition, slotRect.sizeDelta);
+            EnsureSceneZoneMatFrame(sceneAreaRoot, Vector2.zero, slotRect.sizeDelta);
 
             slotImage.color = Color.clear;
             slotImage.enabled = false;
@@ -4521,11 +4707,10 @@ namespace UCG
                 if (existingArea.GetComponent<GraphicRaycaster>() == null) existingArea.gameObject.AddComponent<GraphicRaycaster>();
             }
 
-            areaRect.anchorMin = Vector2.zero;
-            areaRect.anchorMax = Vector2.one;
+            areaRect.anchorMin = new Vector2(0.5f, 0.5f);
+            areaRect.anchorMax = new Vector2(0.5f, 0.5f);
             areaRect.pivot = new Vector2(0.5f, 0.5f);
-            areaRect.offsetMin = Vector2.zero;
-            areaRect.offsetMax = Vector2.zero;
+            areaRect.sizeDelta = Vector2.zero;
             areaRect.localScale = Vector3.one;
             areaRect.localEulerAngles = Vector3.zero;
 
@@ -4544,28 +4729,23 @@ namespace UCG
             return areaRect;
         }
 
-        void UpdateSceneAreaOverviewVisualScale()
+        void UpdateSceneAreaOverviewVisualScale(bool forceOverviewLayout = false)
         {
             RectTransform sceneAreaRoot = sceneZoneAnchor != null ? sceneZoneAnchor.parent as RectTransform : null;
             if (sceneAreaRoot == null || battlefieldManager == null || battlefieldManager.content == null) return;
-            if (battlefieldManager.IsViewTransformOnlyActive) return;
+            if (battlefieldManager.IsViewTransformOnlyActive && !forceOverviewLayout) return;
 
             float contentScale = Mathf.Max(0.1f, battlefieldManager.content.localScale.x);
-            float overviewBlend = battlefieldManager.GetOverviewLayoutBlend(contentScale);
-            float visualScale = Mathf.Lerp(1f, battlefieldManager.GetOverviewLayoutVisualScale(contentScale), overviewBlend);
-            sceneAreaRoot.localScale = new Vector3(visualScale, visualScale, 1f);
+            float overviewBlend = forceOverviewLayout ? 1f : battlefieldManager.GetOverviewLayoutBlend(contentScale);
             if (overviewBlend > 0f)
             {
-                sceneZoneAnchor.sizeDelta = GetOverviewSceneAreaSize();
-                if (sharedSceneSlot != null)
-                {
-                    sharedSceneSlot.sceneCardSize = sceneZoneAnchor.sizeDelta;
-                }
-                ApplyOverviewSceneLayout(sceneAreaRoot, visualScale);
+                ApplyOverviewSceneLayout(sceneAreaRoot);
             }
             else
             {
-                sceneZoneAnchor.anchoredPosition = GetReferenceSceneAreaPosition();
+                sceneAreaRoot.localScale = Vector3.one;
+                sceneAreaRoot.anchoredPosition = GetReferenceSceneAreaPosition();
+                sceneZoneAnchor.anchoredPosition = Vector2.zero;
                 sceneZoneAnchor.sizeDelta = GetSceneAreaSize();
                 if (sharedSceneSlot != null)
                 {
@@ -4575,18 +4755,73 @@ namespace UCG
             EnsureSceneZoneMatFrame(sceneAreaRoot, sceneZoneAnchor.anchoredPosition, sceneZoneAnchor.sizeDelta);
         }
 
-        void ApplyOverviewSceneLayout(RectTransform sceneAreaRoot, float visualScale)
+        void PrepareBattleLayoutForViewTransformOnly()
+        {
+            if (battlefieldManager == null) return;
+
+            if (!battlefieldManager.IsViewTransformOnlyActive)
+            {
+                UpdateSceneAreaOverviewVisualScale(true);
+                RefreshBoardZoneLayout();
+            }
+
+            RegisterFocusViewSafeBattleRects();
+        }
+
+        void SyncSceneAreaBeforeViewTransformOnly()
+        {
+            if (battlefieldManager == null) return;
+
+            UpdateSceneAreaOverviewVisualScale(true);
+            RegisterFocusViewSafeBattleRects();
+            battlefieldManager.ReportViewTransformSceneSync(FormatSceneAreaSyncInfo("BeforeViewTransformOnlyFocus"));
+        }
+
+        string FormatSceneAreaSyncInfo(string source)
+        {
+            RectTransform sceneAreaRoot = sceneZoneAnchor != null ? sceneZoneAnchor.parent as RectTransform : null;
+            Vector2 expectedCenter = battlefieldManager != null ? battlefieldManager.GetOverviewSceneCenter() : Vector2.zero;
+            Vector2 expectedRootAnchored = GetSceneRootAnchoredPositionFromContentCenter(expectedCenter);
+            return
+                $"source={source}, "
+                + $"rootName={(sceneAreaRoot != null ? sceneAreaRoot.name : "<none>")}, "
+                + $"rootParent={(sceneAreaRoot != null && sceneAreaRoot.parent != null ? sceneAreaRoot.parent.name : "<none>")}, "
+                + $"rootAnchored={(sceneAreaRoot != null ? FormatAnchoredPosition(sceneAreaRoot) : "<none>")}, "
+                + $"slotName={(sceneZoneAnchor != null ? sceneZoneAnchor.name : "<none>")}, "
+                + $"slotParent={(sceneAreaRoot != null ? sceneAreaRoot.name : "<none>")}, "
+                + $"slotPath={FormatTransformPath(sceneZoneAnchor)}, "
+                + $"slotAnchored={(sceneZoneAnchor != null ? FormatAnchoredPosition(sceneZoneAnchor) : "<none>")}, "
+                + $"size={(sceneZoneAnchor != null ? FormatSizeDelta(sceneZoneAnchor) : "<none>")}, "
+                + $"contentCenterX={GetSceneContentCenterX():0.##}, "
+                + $"expectedRootAnchored=({expectedRootAnchored.x:0.##},{expectedRootAnchored.y:0.##}), "
+                + $"expectedCenter=({expectedCenter.x:0.##},{expectedCenter.y:0.##})";
+        }
+
+        void ApplyOverviewSceneLayout(RectTransform sceneAreaRoot)
         {
             if (sceneAreaRoot == null || sceneZoneAnchor == null || battlefieldManager == null || battlefieldManager.content == null) return;
 
             Vector2 sceneCenter = battlefieldManager.GetOverviewSceneCenter();
-            float contentWidth = battlefieldManager.content.rect.width > 0f ? battlefieldManager.content.rect.width : battlefieldManager.content.sizeDelta.x;
-            float sceneLocalX = sceneCenter.x - contentWidth * 0.5f;
-            float sceneLocalY = sceneCenter.y;
-            float netScale = Mathf.Max(0.1f, visualScale);
-            sceneZoneAnchor.anchoredPosition = new Vector2(
-                sceneLocalX / netScale,
-                sceneLocalY / netScale);
+            sceneAreaRoot.localScale = Vector3.one;
+            sceneAreaRoot.anchoredPosition = GetSceneRootAnchoredPositionFromContentCenter(sceneCenter);
+            sceneZoneAnchor.anchoredPosition = Vector2.zero;
+            sceneZoneAnchor.sizeDelta = GetOverviewSceneAreaSize();
+            sceneZoneAnchor.localScale = Vector3.one;
+            if (sharedSceneSlot != null)
+            {
+                sharedSceneSlot.sceneCardSize = sceneZoneAnchor.sizeDelta;
+            }
+        }
+
+        Vector2 GetSceneRootAnchoredPositionFromContentCenter(Vector2 contentCenter)
+        {
+            return new Vector2(contentCenter.x - GetSceneContentCenterX(), contentCenter.y);
+        }
+
+        float GetSceneContentCenterX()
+        {
+            RectTransform content = battlefieldManager != null ? battlefieldManager.content : null;
+            return content != null ? content.rect.center.x : 0f;
         }
 
         void EnsureTurnManager()
@@ -4808,6 +5043,7 @@ namespace UCG
             opponentZoneText = opponentDeckZoneText;
             playerDiscardButton = DisableZoneButton(playerDiscardAnchor);
             opponentDiscardButton = DisableZoneButton(opponentDiscardAnchor);
+            RegisterFocusViewSafeBattleRects();
         }
 
         Vector2 GetBoardZoneCardSize()
@@ -4854,9 +5090,6 @@ namespace UCG
             translatedRect = new Rect();
             if (root == null || battlefieldManager == null || battlefieldManager.content == null) return false;
 
-            float contentScale = Mathf.Max(0.1f, battlefieldManager.content.localScale.x);
-            float overviewBlend = battlefieldManager.GetOverviewLayoutBlend(contentScale);
-            if (overviewBlend <= 0f) return false;
             if (contentRect.width <= 1f || contentRect.height <= 1f) return false;
 
             if (root == battlefieldManager.content)
@@ -8624,7 +8857,7 @@ namespace UCG
 
             ShowOpeningBattlefieldOverview();
             yield return new WaitForSecondsRealtime(Mathf.Max(0.1f, openingOverviewHoldSeconds));
-            yield return SmoothOpeningBattlefieldFocus();
+            yield return MaintainOpeningBattlefieldOverview();
             _isOpeningCameraIntro = false;
 
             string resultMessage = string.IsNullOrWhiteSpace(_openingFirstPlayerMessage)
@@ -8660,12 +8893,12 @@ namespace UCG
 
             ApplyCombatFocusViewportPosition("ShowOpeningBattlefieldOverview");
             battlefieldManager.RefreshOpenedLaneVisibility(turnManager != null ? turnManager.currentTurn : 1);
-            battlefieldManager.ShowOverviewInstant("OpeningCameraIntro");
-            LogCombatViewportDiagnostic("ShowOpeningBattlefieldOverview", "OverviewAll", GetCurrentActiveLaneIndex());
+            battlefieldManager.ShowOverviewViewTransformOnly(false, "OpeningCameraIntro");
+            LogCombatViewportDiagnostic("ShowOpeningBattlefieldOverview", "OverviewViewTransformOnly", GetCurrentActiveLaneIndex());
             RefreshBoardZoneLayout();
         }
 
-        IEnumerator SmoothOpeningBattlefieldFocus()
+        IEnumerator MaintainOpeningBattlefieldOverview()
         {
             if (battlefieldManager == null) yield break;
 
@@ -8674,10 +8907,9 @@ namespace UCG
             _openingCameraOverrodeScrollDuration = true;
             battlefieldManager.activeLaneScrollDuration = transitionSeconds;
 
-            int activeLaneIndex = turnManager != null ? turnManager.ActiveNewLaneIndex : 0;
-            ApplyCombatFocusViewportPosition("SmoothOpeningBattlefieldFocus");
-            battlefieldManager.SmoothFocusActiveLane(activeLaneIndex < 0 ? 0 : activeLaneIndex);
-            LogCombatViewportDiagnostic("SmoothOpeningBattlefieldFocus", "FocusLane", activeLaneIndex < 0 ? 0 : activeLaneIndex);
+            ApplyCombatFocusViewportPosition("OpeningFirstPlayerDecisionOverview");
+            battlefieldManager.ShowOverviewViewTransformOnly(true, "OpeningFirstPlayerDecisionOverview");
+            LogCombatViewportDiagnostic("OpeningFirstPlayerDecisionOverview", "OverviewViewTransformOnly", GetCurrentActiveLaneIndex());
             yield return new WaitForSecondsRealtime(transitionSeconds);
 
             RestoreOpeningCameraScrollDuration();
@@ -12751,7 +12983,15 @@ namespace UCG
                 }
             }
 
-            HandleAutoPhase(phase);
+            if (phase == UcgGamePhase.Open)
+            {
+                yield return RevealOpenPhaseLanesSequentially();
+            }
+            else
+            {
+                HandleAutoPhase(phase);
+            }
+
             if (turnManager != null)
             {
                 turnManager.UpdateTurnInfoText();
@@ -12795,50 +13035,7 @@ namespace UCG
                     HandleDrawPhase();
                     break;
                 case UcgGamePhase.Open:
-                    if (playResultText != null)
-                    {
-                        playResultText.text = "公開雙方設置的角色卡。";
-                    }
-                    if (battlefieldManager != null)
-                    {
-                        var revealedEffects = battlefieldManager.FlipAllFaceDownCardsAndCollectEffects();
-                        PlayRevealFeedbackForOpenedLanes();
-                        if (effectManager != null)
-                        {
-                            effectManager.ClearQueue();
-                            effectManager.EnqueueRevealEffects(revealedEffects, GetCurrentFirstPlayer());
-                            if (debugEffectResolution)
-                            {
-                                Debug.Log($"Open phase queued enter effects: count={revealedEffects.Count}, pending={effectManager.PendingCount}");
-                                for (int i = 0; i < revealedEffects.Count; i++)
-                                {
-                                    UcgEffectInstance effect = revealedEffects[i];
-                                    UcgEffectRule rule = effect != null && effect.cardData != null
-                                        ? UcgEffectParser.ParsePrimaryRule(effect.cardData)
-                                        : null;
-                                    int stackCount = effect != null && effect.ownerSide == UcgPlayerSide.Player && effect.lane != null && effect.lane.playerPlayArea != null
-                                        ? effect.lane.playerPlayArea.GetStackCount()
-                                        : effect != null && effect.lane != null
-                                            ? effect.lane.GetOpponentStackCount()
-                                            : 0;
-                                    Debug.Log(
-                                        "Enter effect queued after reveal:\n"
-                                        + $"提示"
-                                        + $"提示"
-                                        + $"card={(effect.cardData != null ? effect.cardData.id : "null")}\n"
-                                        + $"cardName={(effect.cardData != null ? effect.cardData.cardName : "null")}\n"
-                                        + $"stackCount={stackCount}\n"
-                                        + $"提示"
-                                        + $"提示");
-                                }
-                            }
-                        }
-                    }
-
-                    int effectCount = effectManager != null ? effectManager.PendingCount : 0;
-                    ShowPlayStatus(effectCount > 0
-                        ? $"公開完成，待處理效果 {effectCount} 個。"
-                        : "公開完成，沒有待處理效果。", 1.2f);
+                    Debug.Log("[UCG OpenRevealSequence]\nsource=HandleAutoPhase\nstatus=Open reveal is handled by RevealOpenPhaseLanesSequentially");
                     break;
                 case UcgGamePhase.BattleJudgement:
                     if (playResultText != null)
@@ -13444,21 +13641,39 @@ namespace UCG
             ApplyCombatFocusViewportPosition("ApplyBattlefieldViewForCurrentPhase");
             battlefieldManager.RefreshOpenedLaneVisibility(currentTurn);
 
-            if (phaseManager.CurrentPhase == UcgGamePhase.SceneSetup
-                || phaseManager.CurrentPhase == UcgGamePhase.CharacterSetup
-                || phaseManager.CurrentPhase == UcgGamePhase.Upgrade)
-            {
-                int activeLaneIndex = turnManager != null ? turnManager.ActiveNewLaneIndex : 0;
-                battlefieldManager.SmoothFocusActiveLane(activeLaneIndex < 0 ? 0 : activeLaneIndex);
-                LogCombatViewportDiagnostic("ApplyBattlefieldViewForCurrentPhase", "FocusLane", activeLaneIndex < 0 ? 0 : activeLaneIndex);
-            }
-            else
-            {
-                battlefieldManager.ShowOverview();
-                LogCombatViewportDiagnostic("ApplyBattlefieldViewForCurrentPhase", "OverviewAll", GetCurrentActiveLaneIndex());
-            }
+            // Patch 01: phase entry defaults to Overview. EnterEffect Focus will be
+            // decided later from the source card owner, not from the old preserve flag.
+            _preserveFocusThroughEnterEffect = false;
+            _preserveFocusLaneIndex = -1;
+            LogViewTransformPhaseBranch("OverviewViewTransformOnly", GetCurrentActiveLaneIndex());
+            battlefieldManager.ShowOverviewViewTransformOnly(true, "ApplyBattlefieldViewForCurrentPhase");
+            LogCombatViewportDiagnostic("ApplyBattlefieldViewForCurrentPhase", "OverviewViewTransformOnly", GetCurrentActiveLaneIndex());
 
             RefreshBoardZoneLayout();
+        }
+
+        bool ShouldPreserveFocusDuringEnterEffect()
+        {
+            return phaseManager != null
+                && phaseManager.CurrentPhase == UcgGamePhase.EnterEffect
+                && _preserveFocusThroughEnterEffect
+                && _preserveFocusLaneIndex >= 0;
+        }
+
+        void LogViewTransformPhaseBranch(string branch, int laneIndex)
+        {
+            bool confirmVisible = _pendingConfirmRoot != null && _pendingConfirmRoot.gameObject.activeInHierarchy;
+            Debug.Log(
+                "[UCG ViewTransformOnly]\n"
+                + $"source=ApplyBattlefieldViewForCurrentPhase:{branch}\n"
+                + $"laneIndex={laneIndex}\n"
+                + $"phase={(phaseManager != null ? phaseManager.CurrentPhase.ToString() : "<none>")}\n"
+                + $"pendingAction={(_pendingAction != null)}\n"
+                + $"confirmationModal={confirmVisible}\n"
+                + $"preserveEnterEffectFocus={_preserveFocusThroughEnterEffect}\n"
+                + $"preserveFocusLaneIndex={_preserveFocusLaneIndex}\n"
+                + $"viewTransformActive={(battlefieldManager != null && battlefieldManager.IsViewTransformOnlyActive)}\n"
+                + $"viewTransformCoroutine={(battlefieldManager != null && battlefieldManager.IsViewTransformOnlyTransitionRunning)}");
         }
 
         bool CanAdvanceFromCharacterSetup()
@@ -14982,6 +15197,7 @@ namespace UCG
             ResetAdvancePromptCountdownForNewDecision();
             HidePendingConfirm();
             SetHandCardsInteractable(true, null);
+            ClearEnterEffectFocusPreservation("CancelPendingAction");
 
             if (pending.actionType == UcgPendingActionType.SceneSetup)
             {
@@ -15001,6 +15217,7 @@ namespace UCG
             ResetAdvancePromptCountdownForNewDecision();
             HidePendingConfirm();
             SetHandCardsInteractable(true, null);
+            ClearEnterEffectFocusPreservation("ClearPendingActionState");
             RefreshNextPhaseButtonState();
         }
 
@@ -15024,6 +15241,8 @@ namespace UCG
                 return;
             }
 
+            PreserveFocusThroughEnterEffect(pending.targetLane.laneIndex, "CommitPendingBattlefieldAction");
+
             if (deckManager != null)
             {
                 deckManager.RemoveFromPlayerHand(pending.cardData);
@@ -15041,6 +15260,37 @@ namespace UCG
             }
 
             StartPlayerBattlefieldCommitAnimation(pending, message);
+        }
+
+        void PreserveFocusThroughEnterEffect(int laneIndex, string source)
+        {
+            _preserveFocusThroughEnterEffect = laneIndex >= 0;
+            _preserveFocusLaneIndex = laneIndex >= 0 ? laneIndex : -1;
+            LogEnterEffectFocusPreservation(source, "Preserve");
+        }
+
+        void ClearEnterEffectFocusPreservation(string source)
+        {
+            if (!_preserveFocusThroughEnterEffect && _preserveFocusLaneIndex < 0) return;
+
+            _preserveFocusThroughEnterEffect = false;
+            _preserveFocusLaneIndex = -1;
+            LogEnterEffectFocusPreservation(source, "Clear");
+        }
+
+        void LogEnterEffectFocusPreservation(string source, string action)
+        {
+            bool confirmVisible = _pendingConfirmRoot != null && _pendingConfirmRoot.gameObject.activeInHierarchy;
+            Debug.Log(
+                "[UCG ViewTransformOnly]\n"
+                + $"source={source}:{action}EnterEffectFocus\n"
+                + $"phase={(phaseManager != null ? phaseManager.CurrentPhase.ToString() : "<none>")}\n"
+                + $"pendingAction={(_pendingAction != null)}\n"
+                + $"confirmationModal={confirmVisible}\n"
+                + $"preserveEnterEffectFocus={_preserveFocusThroughEnterEffect}\n"
+                + $"preserveFocusLaneIndex={_preserveFocusLaneIndex}\n"
+                + $"viewTransformActive={(battlefieldManager != null && battlefieldManager.IsViewTransformOnlyActive)}\n"
+                + $"viewTransformCoroutine={(battlefieldManager != null && battlefieldManager.IsViewTransformOnlyTransitionRunning)}");
         }
 
         void StartPlayerBattlefieldCommitAnimation(UcgPendingAction pending, string message)
@@ -17277,6 +17527,138 @@ namespace UCG
                 if (lane == null) continue;
 
                 lane.SetActiveLaneFocus(allowFocusVisual && lane.laneIndex == turnManager.ActiveNewLaneIndex);
+            }
+        }
+
+        IEnumerator RevealOpenPhaseLanesSequentially()
+        {
+            var revealedEffects = new List<UcgEffectInstance>();
+            if (effectManager != null)
+            {
+                effectManager.ClearQueue();
+            }
+
+            if (playResultText != null)
+            {
+                playResultText.text = "公開雙方設置的角色卡。";
+            }
+
+            Debug.Log("[UCG OpenRevealSequence]\nsource=OpenRevealSequence start\norder=Lane 08 -> Lane 01");
+
+            List<int> laneOrder = BuildOpenRevealLaneOrder();
+            for (int i = 0; i < laneOrder.Count; i++)
+            {
+                int laneIndex = laneOrder[i];
+                int visualLaneNumber = laneIndex + 1;
+                UcgBattleLane lane = battlefieldManager != null ? battlefieldManager.GetLane(laneIndex) : null;
+                if (lane == null || !lane.gameObject.activeSelf || !HasOpenRevealFaceDownCards(lane))
+                {
+                    Debug.Log($"[UCG OpenRevealSequence]\nsource=Skip empty lane\nvisualLane=Lane {visualLaneNumber:00}\nlaneIndex={laneIndex}");
+                    continue;
+                }
+
+                Debug.Log($"[UCG OpenRevealSequence]\nsource=Focus lane\nvisualLane=Lane {visualLaneNumber:00}\nlaneIndex={laneIndex}");
+                ApplyCombatFocusViewportPosition("OpenRevealSequence");
+                PrepareBattleLayoutForViewTransformOnly();
+                battlefieldManager.FocusActiveLaneViewTransformOnly(laneIndex, true, "OpenRevealSequence");
+                LogCombatViewportDiagnostic("OpenRevealSequence", "FocusLaneViewTransformOnly", laneIndex);
+                yield return new WaitForSecondsRealtime(GetOpenRevealFocusWaitSeconds());
+
+                int beforeCount = revealedEffects.Count;
+                lane.FlipAllFaceDownCards(revealedEffects);
+                PlayRevealFeedback(GetLaneTopCardView(lane, UcgPlayerSide.Player));
+                PlayRevealFeedback(GetLaneTopCardView(lane, UcgPlayerSide.Opponent));
+                int collectedCount = revealedEffects.Count - beforeCount;
+                Debug.Log($"[UCG OpenRevealSequence]\nsource=Reveal lane\nvisualLane=Lane {visualLaneNumber:00}\nlaneIndex={laneIndex}\ncollectedEnterEffects={collectedCount}\ntotalCollectedEnterEffects={revealedEffects.Count}");
+                yield return new WaitForSecondsRealtime(GetOpenRevealLaneHoldSeconds());
+            }
+
+            if (effectManager != null)
+            {
+                effectManager.EnqueueRevealEffects(revealedEffects, GetCurrentFirstPlayer());
+            }
+
+            LogOpenRevealEffects(revealedEffects);
+            int effectCount = effectManager != null ? effectManager.PendingCount : 0;
+            Debug.Log($"[UCG OpenRevealSequence]\nsource=OpenRevealSequence complete\ncollectedEnterEffects={revealedEffects.Count}\npendingEnterEffects={effectCount}");
+
+            if (battlefieldManager != null)
+            {
+                battlefieldManager.ShowOverviewViewTransformOnly(true, "OpenRevealSequenceComplete");
+                LogCombatViewportDiagnostic("OpenRevealSequenceComplete", "OverviewViewTransformOnly", GetCurrentActiveLaneIndex());
+                yield return new WaitForSecondsRealtime(GetOpenRevealFocusWaitSeconds());
+            }
+
+            ShowPlayStatus(effectCount > 0
+                ? $"公開完成，待處理效果 {effectCount} 個。"
+                : "公開完成，沒有待處理效果。", 1.2f);
+        }
+
+        List<int> BuildOpenRevealLaneOrder()
+        {
+            var laneOrder = new List<int>();
+            if (battlefieldManager == null) return laneOrder;
+
+            List<UcgBattleLane> lanes = battlefieldManager.GetAllLanes();
+            int laneCount = lanes != null ? lanes.Count : 0;
+            int lastLaneIndex = Mathf.Min(8, laneCount) - 1;
+            for (int laneIndex = lastLaneIndex; laneIndex >= 0; laneIndex--)
+            {
+                laneOrder.Add(laneIndex);
+            }
+
+            return laneOrder;
+        }
+
+        bool HasOpenRevealFaceDownCards(UcgBattleLane lane)
+        {
+            UcgCardView playerTopCard = GetLaneTopCardView(lane, UcgPlayerSide.Player);
+            UcgCardView opponentTopCard = GetLaneTopCardView(lane, UcgPlayerSide.Opponent);
+            return (playerTopCard != null && playerTopCard.IsFaceDown)
+                || (opponentTopCard != null && opponentTopCard.IsFaceDown);
+        }
+
+        float GetOpenRevealFocusWaitSeconds()
+        {
+            return battlefieldManager != null
+                ? Mathf.Max(0.05f, battlefieldManager.activeLaneScrollDuration)
+                : 0.25f;
+        }
+
+        float GetOpenRevealLaneHoldSeconds()
+        {
+            return Mathf.Max(0.25f, autoPhaseDelaySeconds * 0.45f);
+        }
+
+        void LogOpenRevealEffects(List<UcgEffectInstance> revealedEffects)
+        {
+            int count = revealedEffects != null ? revealedEffects.Count : 0;
+            if (!debugEffectResolution)
+            {
+                Debug.Log($"[UCG OpenRevealSequence]\nsource=Collected enter effects\ncount={count}");
+                return;
+            }
+
+            Debug.Log($"Open phase queued enter effects: count={count}, pending={(effectManager != null ? effectManager.PendingCount : 0)}");
+            for (int i = 0; i < count; i++)
+            {
+                UcgEffectInstance effect = revealedEffects[i];
+                UcgEffectRule rule = effect != null && effect.cardData != null
+                    ? UcgEffectParser.ParsePrimaryRule(effect.cardData)
+                    : null;
+                int stackCount = effect != null && effect.ownerSide == UcgPlayerSide.Player && effect.lane != null && effect.lane.playerPlayArea != null
+                    ? effect.lane.playerPlayArea.GetStackCount()
+                    : effect != null && effect.lane != null
+                        ? effect.lane.GetOpponentStackCount()
+                        : 0;
+                Debug.Log(
+                    "Enter effect queued after reveal:\n"
+                    + $"lane={(effect != null ? effect.LaneIndex + 1 : 0):00}\n"
+                    + $"owner={(effect != null ? effect.ownerSide.ToString() : "None")}\n"
+                    + $"card={(effect != null && effect.cardData != null ? effect.cardData.id : "null")}\n"
+                    + $"cardName={(effect != null && effect.cardData != null ? effect.cardData.cardName : "null")}\n"
+                    + $"stackCount={stackCount}\n"
+                    + $"rule={(rule != null ? rule.effectCategory.ToString() : "None")}");
             }
         }
 
@@ -22122,6 +22504,24 @@ namespace UCG
 
         void RefreshBoardZoneLayout()
         {
+            if (battlefieldManager != null && battlefieldManager.IsViewTransformOnlyActive)
+            {
+                RegisterFocusViewSafeBattleRects();
+                Debug.Log(
+                    "[UCG ViewTransformOnly]\n"
+                    + "source=RefreshBoardZoneLayout:SkippedDuringViewTransformOnly\n"
+                    + $"phase={(phaseManager != null ? phaseManager.CurrentPhase.ToString() : "<none>")}\n"
+                    + $"pendingAction={(_pendingAction != null)}\n"
+                    + $"confirmationModal={(_pendingConfirmRoot != null && _pendingConfirmRoot.gameObject.activeInHierarchy)}\n"
+                    + $"viewTransformCoroutine={battlefieldManager.IsViewTransformOnlyTransitionRunning}");
+                return;
+            }
+
+            if (battlefieldManager != null)
+            {
+                battlefieldManager.LogLane1AndContentState("RefreshBoardZoneLayout:Before");
+            }
+
             RectTransform root = GetBoardZoneLayoutRoot();
             if (root == null) return;
 
@@ -22130,6 +22530,24 @@ namespace UCG
             LogBoardZoneDebug("RefreshBoardZoneLayout", false);
             LogSidePileLayoutDebug("RefreshBoardZoneLayout");
             LogPileRegionModeCompare("RefreshBoardZoneLayout", false);
+            RegisterFocusViewSafeBattleRects();
+
+            if (battlefieldManager != null)
+            {
+                battlefieldManager.LogLane1AndContentState("RefreshBoardZoneLayout:After");
+            }
+        }
+
+        void RegisterFocusViewSafeBattleRects()
+        {
+            if (battlefieldManager == null) return;
+
+            battlefieldManager.SetFocusViewSafeRects(
+                sceneZoneAnchor,
+                opponentDeckAnchor,
+                opponentDiscardAnchor,
+                playerDeckAnchor,
+                playerDiscardAnchor);
         }
 
         void RefreshBoardZoneLayoutIfBattlefieldViewChanged()

@@ -1,5 +1,6 @@
 using System.Collections;
 using System.Collections.Generic;
+using System.Text;
 using UnityEngine;
 using UnityEngine.UI;
 
@@ -34,6 +35,9 @@ namespace UCG
         const float OverviewVerticalEdgeMargin = 96f;
         const float OverviewPortraitCardAspect = 0.716f;
         const float OverviewPlaymatWorldAspect = 853f / 1280f; // Matches Docs/LayoutRefs/target_playmat_layout.png.
+        const float FocusViewOpponentRowTopPadding = 72f;
+        const float FocusViewPlayerRowBottomPadding = 118f;
+        const float FocusViewCenterOffsetY = 0f;
 
         public int maxLaneCount = 8;
         public int initialLaneCount = 3;
@@ -79,13 +83,19 @@ namespace UCG
         public bool debugBattlefieldLayout;
         public bool hasInitializedBattlefieldView;
         [SerializeField] bool showViewTransformDebugButtons = true;
+        [SerializeField] bool showPlaymatBoundsDebugOverlay = false;
 
         readonly List<UcgBattleLane> _lanes = new List<UcgBattleLane>();
+        readonly List<RectTransform> _focusViewSafeRects = new List<RectTransform>();
         Coroutine _activeLaneScrollCoroutine;
         UcgBattlefieldViewMode _currentViewMode = UcgBattlefieldViewMode.OverviewAll;
+        string _lastViewTransformSceneSyncInfo = "<none>";
 
         public List<UcgBattleLane> Lanes => _lanes;
         public bool IsViewTransformOnlyActive { get; private set; }
+        public bool IsViewTransformOnlyTransitionRunning => _activeLaneScrollCoroutine != null;
+        public bool IsViewTransformOnlyFocusFraming { get; private set; }
+        public event System.Action BeforeViewTransformOnlyFocus;
 
         public void Configure(UcgTutorialGuide guide, UcgTurnManager turns, UcgPhaseManager phases, UcgCardInfoPanel infoPanel, Text sharedResultText, Vector2 cardSize, Sprite fixedOpponentSprite, Font font)
         {
@@ -117,10 +127,12 @@ namespace UCG
 
                 var laneRect = laneObject.GetComponent<RectTransform>();
                 ApplyLaneRect(laneRect, i);
+                LogLaneRectState("BuildLanes:AfterInitialApplyLaneRect", i, laneRect);
 
                 var lane = laneObject.GetComponent<UcgBattleLane>();
                 lane.Initialize(i, uiFont, resultText, tutorialGuide, turnManager, phaseManager, playerSlotSize, opponentSlotSize, placedCardSize);
                 ApplyLaneRect(laneRect, i);
+                LogLaneRectState("BuildLanes:AfterInitializeApplyLaneRect", i, laneRect);
                 lane.ConfigureOpponentScript(opponentScript, opponentTestMode);
                 lane.ConfigureFixedOpponentCard(CreateFixedOpponentCardData(i), opponentCardSprite, cardInfoPanel, opponentCardSize);
                 _lanes.Add(lane);
@@ -129,6 +141,7 @@ namespace UCG
             Canvas.ForceUpdateCanvases();
             RefreshOpenedLaneVisibility(turnManager != null ? turnManager.currentTurn : 1);
             SetContentToStart();
+            LogAllLaneAnchoredPositions("BuildLanes:Completed");
             LogScrollDebugState("BuildLanes completed");
         }
 
@@ -261,6 +274,7 @@ namespace UCG
             FocusActiveLane(laneIndex);
         }
 
+        [System.Obsolete("Legacy View API may trigger ApplyOverviewVisualCompensation / layout reflow. Use ViewTransformOnly APIs instead.", false)]
         public void FocusActiveLane(int laneIndex, string source = "FocusActiveLane")
         {
             if (forceOverviewOnly)
@@ -272,6 +286,7 @@ namespace UCG
             SetBattlefieldView(UcgBattlefieldViewMode.FocusLane, laneIndex, false, source);
         }
 
+        [System.Obsolete("Legacy View API may trigger ApplyOverviewVisualCompensation / layout reflow. Use ViewTransformOnly APIs instead.", false)]
         public void SmoothFocusActiveLane(int laneIndex)
         {
             if (forceOverviewOnly)
@@ -281,6 +296,83 @@ namespace UCG
             }
 
             SetBattlefieldView(UcgBattlefieldViewMode.FocusLane, laneIndex, true, "SmoothFocusActiveLane");
+        }
+
+        public void FocusActiveLaneViewTransformOnly(int laneIndex, bool smooth, string source)
+        {
+            ApplyFocusLaneViewTransformOnly(laneIndex, smooth, source);
+        }
+
+        public void SetFocusViewSafeRects(params RectTransform[] rects)
+        {
+            _focusViewSafeRects.Clear();
+            if (rects == null) return;
+
+            for (int i = 0; i < rects.Length; i++)
+            {
+                RectTransform rect = rects[i];
+                if (rect == null || _focusViewSafeRects.Contains(rect)) continue;
+
+                _focusViewSafeRects.Add(rect);
+            }
+        }
+
+        public void ReportViewTransformSceneSync(string info)
+        {
+            _lastViewTransformSceneSyncInfo = string.IsNullOrWhiteSpace(info) ? "<empty>" : info;
+        }
+
+        void ApplyFocusLaneViewTransformOnly(int laneIndex, bool smooth, string source)
+        {
+            LogViewTransformOnlyState($"{source}:ApplyFocusStart", laneIndex, 1f, 0f, 0f, -1f, smooth);
+            LogLane1AndContentState($"{source}:BeforeFocusTarget");
+            BeforeViewTransformOnlyFocus?.Invoke();
+            if (!TryGetFocusLaneViewTransformOnlyTargets(laneIndex, out float targetX, out float targetY, out float targetScale))
+            {
+                Debug.Log($"[UCG ViewTransformOnly]\nsource={source}:ApplyFocusFailed\nlaneIndex={laneIndex}\nphase={GetViewTransformPhaseName()}");
+                return;
+            }
+
+            int clampedLaneIndex = Mathf.Clamp(laneIndex, 0, _lanes.Count - 1);
+            float viewportRatio = GetFocusLaneViewportRatio(clampedLaneIndex);
+            LogViewTransformOnlyTarget(source, clampedLaneIndex, targetScale, targetX, targetY, viewportRatio, smooth);
+            if (ShouldLogFocusSafeDiagnostic(source))
+            {
+                LogFocusSafeDiagnostic(source, clampedLaneIndex, targetScale, targetX, targetY);
+            }
+            StopActiveLaneScroll();
+            IsViewTransformOnlyActive = true;
+            IsViewTransformOnlyFocusFraming = true;
+            if (smooth && Application.isPlaying && activeLaneScrollDuration > 0f)
+            {
+                _activeLaneScrollCoroutine = StartCoroutine(SmoothViewTransformOnly(targetX, targetY, targetScale, source));
+                return;
+            }
+
+            SetViewTransformOnly(targetX, targetY, targetScale, source);
+            LogLane1AndContentState($"{source}:AfterFocusInstant");
+        }
+
+        public void ShowOverviewViewTransformOnly(bool smooth, string source)
+        {
+            if (content == null || viewport == null || _lanes.Count == 0) return;
+
+            LogViewTransformOnlyState($"{source}:ShowOverviewStart", -1, 1f, 0f, 0f, -1f, smooth);
+            int currentTurn = turnManager != null ? turnManager.currentTurn : 1;
+            int overviewLaneCount = GetOverviewTargetLaneCount(currentTurn);
+            float targetScale = GetOverviewScaleForLaneCount(overviewLaneCount);
+            float targetX = GetOverviewTargetX(targetScale, overviewLaneCount);
+            LogViewTransformOnlyTarget(source, Mathf.Max(0, overviewLaneCount - 1), targetScale, targetX, 0f, -1f, smooth);
+            StopActiveLaneScroll();
+            IsViewTransformOnlyActive = true;
+            IsViewTransformOnlyFocusFraming = false;
+            if (smooth && Application.isPlaying && activeLaneScrollDuration > 0f)
+            {
+                _activeLaneScrollCoroutine = StartCoroutine(SmoothViewTransformOnly(targetX, 0f, targetScale, source));
+                return;
+            }
+
+            SetViewTransformOnly(targetX, 0f, targetScale, source);
         }
 
         public void ShowOverview()
@@ -304,6 +396,7 @@ namespace UCG
             if (smooth && IsAnyCardDragging()) return;
 
             IsViewTransformOnlyActive = false;
+            IsViewTransformOnlyFocusFraming = false;
 
             if (forceOverviewOnly)
             {
@@ -312,6 +405,12 @@ namespace UCG
                 int overviewLaneCount = GetOverviewTargetLaneCount(turnManager != null ? turnManager.currentTurn : 1);
                 laneIndex = overviewLaneCount - 1;
                 smooth = false;
+            }
+
+            if (viewMode == UcgBattlefieldViewMode.FocusLane)
+            {
+                Debug.LogWarning("Legacy View API may trigger ApplyOverviewVisualCompensation / layout reflow. Use ViewTransformOnly APIs instead.");
+                return;
             }
 
             _currentViewMode = viewMode;
@@ -634,6 +733,8 @@ namespace UCG
             SetContentView(targetX, content != null ? content.localScale.x : 1f);
         }
 
+        // Legacy View API may trigger ApplyOverviewVisualCompensation / layout reflow.
+        // Use ViewTransformOnly APIs instead for Focus / camera-like view changes.
         void SetContentView(float targetX, float targetScale)
         {
             if (content == null) return;
@@ -665,6 +766,8 @@ namespace UCG
             _activeLaneScrollCoroutine = StartCoroutine(SmoothViewTo(targetX, targetScale));
         }
 
+        // Legacy View API may trigger ApplyOverviewVisualCompensation / layout reflow.
+        // Use ViewTransformOnly APIs instead for Focus / camera-like view changes.
         IEnumerator SmoothViewTo(float targetX, float targetScale)
         {
             float startX = content != null ? content.anchoredPosition.x - combatAreaOffsetX : 0f;
@@ -691,19 +794,8 @@ namespace UCG
 
         public void PreviewFocusLaneViewTransformOnly(int laneIndex)
         {
-            if (content == null || viewport == null || _lanes.Count == 0) return;
-
-            int clampedLaneIndex = Mathf.Clamp(laneIndex, 0, _lanes.Count - 1);
-            float viewportWidth = viewport.rect.width > 0f ? viewport.rect.width : 1040f;
-            float lanePitch = GetLanePitchForView(clampedLaneIndex);
-            float footprintWidth = GetViewTransformRotatedFootprintWidth(clampedLaneIndex);
-            float targetScale = CalculateFocusLaneScale(viewportWidth, lanePitch, footprintWidth, 0.88f);
-            float laneCenterX = GetLaneCenterForView(clampedLaneIndex);
-            float viewportRatio = GetFocusLaneViewportRatio(clampedLaneIndex);
-            float targetX = GetContentTargetXForWorldPoint(laneCenterX, viewportRatio, targetScale);
-            float targetY = GetContentTargetYForFocusLaneView(clampedLaneIndex, targetScale);
-
-            SetViewTransformOnly(targetX, targetY, targetScale);
+            int internalLaneIndex = Mathf.Max(0, laneIndex - 1);
+            ApplyFocusLaneViewTransformOnly(internalLaneIndex, true, $"DebugButton Focus {laneIndex:00}");
         }
 
         [ContextMenu("UCG/Test ViewTransform Focus Lane 01")]
@@ -741,8 +833,11 @@ namespace UCG
             if (GUILayout.Button("Focus 01")) PreviewFocusLaneViewTransformOnly(1);
             if (GUILayout.Button("Focus 02")) PreviewFocusLaneViewTransformOnly(2);
             if (GUILayout.Button("Focus 04")) PreviewFocusLaneViewTransformOnly(4);
-            if (GUILayout.Button("Overview")) ShowOverviewInstant();
+            if (GUILayout.Button("Overview")) ShowOverviewViewTransformOnly(true, "DebugButton Overview");
+            showPlaymatBoundsDebugOverlay = GUILayout.Toggle(showPlaymatBoundsDebugOverlay, "Bounds");
             GUILayout.EndArea();
+
+            DrawPlaymatBoundsDebugOverlay();
         }
 #endif
 
@@ -799,12 +894,12 @@ namespace UCG
             return targetViewportX - worldX * Mathf.Max(0.1f, scale) - combatAreaOffsetX;
         }
 
-        public void SetViewTransformOnly(float targetX, float targetScale)
+        public void SetViewTransformOnly(float targetX, float targetScale, string source = "SetViewTransformOnly")
         {
-            SetViewTransformOnly(targetX, 0f, targetScale);
+            SetViewTransformOnly(targetX, 0f, targetScale, source);
         }
 
-        public void SetViewTransformOnly(float targetX, float targetY, float targetScale)
+        public void SetViewTransformOnly(float targetX, float targetY, float targetScale, string source = "SetViewTransformOnly")
         {
             if (content == null) return;
 
@@ -824,18 +919,27 @@ namespace UCG
             }
 
             AssertViewTransformOnlyDidNotMutateBattleLayout(beforeSnapshot);
+            LogViewTransformOnlyApplied($"{source}:SetApplied", targetScale, clampedTargetX, targetY);
+            LogLane1AndContentState($"{source}:AfterSetViewTransformOnly");
         }
 
         public IEnumerator SmoothViewTransformOnly(float targetX, float targetScale)
         {
+            yield return SmoothViewTransformOnly(targetX, 0f, targetScale, "SmoothViewTransformOnly");
+        }
+
+        public IEnumerator SmoothViewTransformOnly(float targetX, float targetY, float targetScale, string source = "SmoothViewTransformOnly")
+        {
             if (!Application.isPlaying || activeLaneScrollDuration <= 0f)
             {
-                SetViewTransformOnly(targetX, targetScale);
+                SetViewTransformOnly(targetX, targetY, targetScale, source);
                 yield break;
             }
 
-            StopActiveLaneScroll();
+            LogViewTransformOnlyState($"{source}:SmoothStart", -1, targetScale, targetX, targetY, -1f, true);
+            IsViewTransformOnlyActive = true;
             float startX = content != null ? content.anchoredPosition.x - combatAreaOffsetX : 0f;
+            float startY = content != null ? content.anchoredPosition.y : 0f;
             float startScale = content != null ? content.localScale.x : 1f;
             float clampedTargetScale = Mathf.Max(0.1f, targetScale);
             float maxScrollX = GetMaxScrollX(clampedTargetScale);
@@ -849,13 +953,519 @@ namespace UCG
                 float eased = Mathf.SmoothStep(0f, 1f, t);
                 SetViewTransformOnly(
                     Mathf.Lerp(startX, clampedTargetX, eased),
-                    0f,
-                    Mathf.Lerp(startScale, clampedTargetScale, eased));
+                    Mathf.Lerp(startY, targetY, eased),
+                    Mathf.Lerp(startScale, clampedTargetScale, eased),
+                    source);
                 yield return null;
             }
 
-            SetViewTransformOnly(clampedTargetX, clampedTargetScale);
+            SetViewTransformOnly(clampedTargetX, targetY, clampedTargetScale, source);
             _activeLaneScrollCoroutine = null;
+            LogViewTransformOnlyApplied($"{source}:SmoothComplete", clampedTargetScale, clampedTargetX, targetY);
+            LogLane1AndContentState($"{source}:AfterSmoothComplete");
+        }
+
+        bool TryGetFocusLaneViewTransformOnlyTargets(int laneIndex, out float targetX, out float targetY, out float targetScale)
+        {
+            targetX = 0f;
+            targetY = 0f;
+            targetScale = 1f;
+            if (content == null || viewport == null || _lanes.Count == 0) return false;
+
+            int clampedLaneIndex = Mathf.Clamp(laneIndex, 0, _lanes.Count - 1);
+            float viewportWidth = viewport.rect.width > 0f ? viewport.rect.width : 1040f;
+            float lanePitch = GetLanePitchForView(clampedLaneIndex);
+            float footprintWidth = GetViewTransformRotatedFootprintWidth(clampedLaneIndex);
+            targetScale = CalculateFocusLaneScale(viewportWidth, lanePitch, footprintWidth, 0.88f);
+            float laneCenterX = GetLaneCenterForView(clampedLaneIndex);
+            float viewportRatio = GetFocusLaneViewportRatio(clampedLaneIndex);
+            targetX = GetContentTargetXForWorldPoint(laneCenterX, viewportRatio, targetScale);
+            targetY = GetContentTargetYForFocusLaneView(clampedLaneIndex, targetScale);
+            return true;
+        }
+
+        void LogViewTransformOnlyTarget(
+            string source,
+            int laneIndex,
+            float targetScale,
+            float targetX,
+            float targetY,
+            float viewportRatio,
+            bool smooth)
+        {
+            float contentScaleBefore = content != null ? content.localScale.x : 1f;
+            Vector2 contentPosBefore = content != null ? content.anchoredPosition : Vector2.zero;
+            float maxScrollX = GetMaxScrollX(targetScale);
+            float clampedTargetX = Mathf.Clamp(targetX, -maxScrollX, 0f);
+            Vector2 contentPosAfterTarget = new Vector2(clampedTargetX + combatAreaOffsetX, targetY);
+            Debug.Log(
+                "[UCG ViewTransformOnly]\n"
+                + $"source={source}\n"
+                + $"laneIndex={laneIndex}\n"
+                + $"targetScale={targetScale:0.###}\n"
+                + $"targetX={targetX:0.#}\n"
+                + $"targetY={targetY:0.#}\n"
+                + GetFocusViewTargetDebugDetails(laneIndex, targetScale, targetX, targetX, targetY)
+                + $"viewportRatio={(viewportRatio >= 0f ? viewportRatio.ToString("0.###") : "overview")}\n"
+                + $"smooth={smooth}\n"
+                + $"phase={GetViewTransformPhaseName()}\n"
+                + $"coroutineRunning={IsViewTransformOnlyTransitionRunning}\n"
+                + $"contentScaleBefore={contentScaleBefore:0.###}\n"
+                + $"contentPosBefore={FormatVector2(contentPosBefore)}\n"
+                + $"contentScaleAfterTarget={targetScale:0.###}\n"
+                + $"contentPosAfterTarget={FormatVector2(contentPosAfterTarget)}");
+        }
+
+        void LogViewTransformOnlyState(
+            string source,
+            int laneIndex,
+            float targetScale,
+            float targetX,
+            float targetY,
+            float viewportRatio,
+            bool smooth)
+        {
+            float contentScale = content != null ? content.localScale.x : 1f;
+            Vector2 contentPosition = content != null ? content.anchoredPosition : Vector2.zero;
+            Debug.Log(
+                "[UCG ViewTransformOnly]\n"
+                + $"source={source}\n"
+                + $"laneIndex={laneIndex}\n"
+                + $"targetScale={targetScale:0.###}\n"
+                + $"targetX={targetX:0.#}\n"
+                + $"targetY={targetY:0.#}\n"
+                + $"viewportRatio={(viewportRatio >= 0f ? viewportRatio.ToString("0.###") : "overview")}\n"
+                + $"smooth={smooth}\n"
+                + $"phase={GetViewTransformPhaseName()}\n"
+                + $"coroutineRunning={IsViewTransformOnlyTransitionRunning}\n"
+                + $"contentScaleBefore={contentScale:0.###}\n"
+                + $"contentPosBefore={FormatVector2(contentPosition)}\n"
+                + $"contentScaleAfterTarget={targetScale:0.###}\n"
+                + $"contentPosAfterTarget={FormatVector2(new Vector2(targetX + combatAreaOffsetX, targetY))}");
+        }
+
+        string GetFocusViewTargetDebugDetails(int laneIndex, float targetScale, float rawTargetX, float finalTargetX, float targetY)
+        {
+            if (laneIndex < 0 || laneIndex >= _lanes.Count) return "";
+
+            float safeScale = Mathf.Max(0.1f, targetScale);
+            float laneCenterX = GetLaneCenterForView(laneIndex);
+            float viewportRatio = GetFocusLaneViewportRatio(laneIndex);
+            float viewportWidth = viewport != null && viewport.rect.width > 0f ? viewport.rect.width : 1040f;
+            float laneWindowCenterX = (viewportWidth * Mathf.Clamp01(viewportRatio) - finalTargetX - combatAreaOffsetX) / safeScale;
+            Rect playmatInnerRect = GetOverviewPlaymatInnerRect();
+            Rect rightRailRect = GetOverviewRightRailRect(playmatInnerRect);
+            Rect sceneAreaRect = GetOverviewSceneRect();
+            TryGetFocusSafeBoundsInContent(laneIndex, out Rect focusSafeBounds);
+
+            return
+                $"focusLaneIndex={laneIndex}\n"
+                + $"laneCenterX={laneCenterX:0.#}\n"
+                + $"laneWindowCenterX={laneWindowCenterX:0.#}\n"
+                + $"rawTargetX={rawTargetX:0.#}\n"
+                + $"finalTargetX={finalTargetX:0.#}\n"
+                + $"targetXChangedByRightRail={Mathf.Abs(rawTargetX - finalTargetX) > 0.1f}\n"
+                + $"playmatInnerRect={FormatRect(playmatInnerRect)}\n"
+                + $"rightRailRect={FormatRect(rightRailRect)}\n"
+                + $"deckTrashFocusBounds={FormatRect(focusSafeBounds)}\n"
+                + $"sceneAreaRect={FormatRect(sceneAreaRect)}\n";
+        }
+
+        bool ShouldLogFocusSafeDiagnostic(string source)
+        {
+            return !string.IsNullOrEmpty(source)
+                && source.StartsWith("DebugButton Focus", System.StringComparison.Ordinal);
+        }
+
+        void LogFocusSafeDiagnostic(string source, int laneIndex, float targetScale, float targetX, float targetY)
+        {
+            Rect playmatInnerRect = GetOverviewPlaymatInnerRect();
+            float playmatCenterY = playmatInnerRect.center.y;
+            Rect viewportContentRect = GetViewportContentRect(targetX, targetY, targetScale);
+            Rect battleLaneBounds = GetBattleLaneBounds();
+            Rect opponentRowBounds = GetRowBounds(true);
+            Rect playerRowBounds = GetRowBounds(false);
+            Rect expectedSceneAreaBounds = GetOverviewSceneRect();
+            Rect actualSceneAreaBounds = GetRegisteredSafeBounds(IsSceneSafeRect, expectedSceneAreaBounds);
+            Vector2 sceneDesignAnchor = GetOverviewSceneCenter();
+            Vector2 normalCardSize = GetOverviewNormalCardSize();
+            Vector2 overviewStandardCardSize = GetOverviewStandardCardSize(1f);
+            Vector2 actualBattleCardSize = GetOverviewActualBattleCardSize(out string actualBattleCardSizeSource);
+            Vector2 deckZoneSingleCardSize = GetRegisteredSingleCardSize(IsDeckSafeRect, out string deckZoneSingleCardSizeSource);
+            Vector2 trashZoneSingleCardSize = GetRegisteredSingleCardSize(IsTrashSafeRect, out string trashZoneSingleCardSizeSource);
+            Vector2 playerRowSingleCardSize = GetRowSingleCardSize(false, out string playerRowSingleCardSizeSource);
+            Vector2 opponentRowSingleCardSize = GetRowSingleCardSize(true, out string opponentRowSingleCardSizeSource);
+            Vector2 expectedSceneHorizontalCardSize = GetOverviewSceneAreaSize();
+            Rect rightRailLayoutBounds = GetOverviewRightRailRect(playmatInnerRect);
+            Rect rightRailRegisteredBounds = GetRegisteredSafeBounds(IsRightRailSafeRect, rightRailLayoutBounds);
+            Rect deckBounds = GetRegisteredSafeBounds(IsDeckSafeRect, new Rect());
+            Rect trashBounds = GetRegisteredSafeBounds(IsTrashSafeRect, new Rect());
+            float focusLaneCenterX = laneIndex >= 0 && laneIndex < _lanes.Count ? GetLaneCenterForView(laneIndex) : 0f;
+            float viewportCenterX = viewportContentRect.center.x;
+            float sceneDeltaX = actualSceneAreaBounds.width > 0f && battleLaneBounds.width > 0f
+                ? actualSceneAreaBounds.center.x - battleLaneBounds.center.x
+                : 0f;
+            float sceneDeltaY = actualSceneAreaBounds.width > 0f
+                ? actualSceneAreaBounds.center.y - playmatCenterY
+                : 0f;
+            float sceneDesignAnchorDeltaX = actualSceneAreaBounds.width > 0f
+                ? actualSceneAreaBounds.center.x - sceneDesignAnchor.x
+                : 0f;
+            float playerBottomDistance = playerRowBounds.width > 0f
+                ? playerRowBounds.yMin - playmatInnerRect.yMin
+                : 0f;
+            float opponentTopDistance = opponentRowBounds.width > 0f
+                ? playmatInnerRect.yMax - opponentRowBounds.yMax
+                : 0f;
+            bool anyOutsidePlaymat =
+                IsRectOutside(playmatInnerRect, opponentRowBounds)
+                || IsRectOutside(playmatInnerRect, playerRowBounds)
+                || IsRectOutside(playmatInnerRect, actualSceneAreaBounds)
+                || IsRectOutside(playmatInnerRect, rightRailRegisteredBounds)
+                || IsRectOutside(playmatInnerRect, deckBounds)
+                || IsRectOutside(playmatInnerRect, trashBounds);
+
+            var builder = new StringBuilder();
+            builder.AppendLine("[UCG FocusSafeDiagnostic]");
+            builder.AppendLine($"source={source}");
+            builder.AppendLine($"focusLaneIndex={laneIndex}");
+            builder.AppendLine($"targetScale={FormatFloat(targetScale)}");
+            builder.AppendLine($"targetX={FormatFloat(targetX)}");
+            builder.AppendLine($"targetY={FormatFloat(targetY)}");
+            builder.AppendLine($"playmatInnerRect={FormatRect(playmatInnerRect)}");
+            builder.AppendLine($"playmatCenterY={FormatFloat(playmatCenterY)}");
+            builder.AppendLine($"viewportContentRect={FormatRect(viewportContentRect)}");
+            builder.AppendLine($"battleLaneBounds={FormatRect(battleLaneBounds)}");
+            builder.AppendLine($"laneCenters={FormatLaneCenters()}");
+            builder.AppendLine($"focusLaneCenterX={FormatFloat(focusLaneCenterX)}");
+            builder.AppendLine($"viewportCenterXInContent={FormatFloat(viewportCenterX)}");
+            builder.AppendLine($"focusLaneCenterDeltaFromViewportCenter={FormatFloat(focusLaneCenterX - viewportCenterX)}");
+            builder.AppendLine($"opponentRowBounds={FormatRect(opponentRowBounds)}");
+            builder.AppendLine($"playerRowBounds={FormatRect(playerRowBounds)}");
+            builder.AppendLine($"sceneAreaBounds={FormatRect(actualSceneAreaBounds)}");
+            builder.AppendLine($"expectedSceneAreaBounds={FormatRect(expectedSceneAreaBounds)}");
+            builder.AppendLine("sceneDesignAnchor=Lane01Lane02Midpoint");
+            builder.AppendLine($"placedCardSize={FormatVector2(placedCardSize)}");
+            builder.AppendLine($"overviewStandardCardSize={FormatVector2(overviewStandardCardSize)}");
+            builder.AppendLine($"actualBattleCardSize={FormatVector2(actualBattleCardSize)}");
+            builder.AppendLine($"actualBattleCardSizeSource={actualBattleCardSizeSource}");
+            builder.AppendLine($"deckZoneSingleCardSize={FormatVector2(deckZoneSingleCardSize)} source={deckZoneSingleCardSizeSource}");
+            builder.AppendLine($"trashZoneSingleCardSize={FormatVector2(trashZoneSingleCardSize)} source={trashZoneSingleCardSizeSource}");
+            builder.AppendLine($"playerRowSingleCardSize={FormatVector2(playerRowSingleCardSize)} source={playerRowSingleCardSizeSource}");
+            builder.AppendLine($"opponentRowSingleCardSize={FormatVector2(opponentRowSingleCardSize)} source={opponentRowSingleCardSizeSource}");
+            builder.AppendLine($"normalCardSize={FormatVector2(normalCardSize)}");
+            builder.AppendLine($"sceneCardSizeSource={GetOverviewSceneCardSizeSource()}");
+            builder.AppendLine($"expectedSceneHorizontalCardSize={FormatVector2(expectedSceneHorizontalCardSize)}");
+            builder.AppendLine($"rightRailBounds={FormatRect(rightRailRegisteredBounds)}");
+            builder.AppendLine($"rightRailLayoutBounds={FormatRect(rightRailLayoutBounds)}");
+            builder.AppendLine($"deckBounds={FormatRect(deckBounds)}");
+            builder.AppendLine($"trashBounds={FormatRect(trashBounds)}");
+            builder.AppendLine($"sceneCenterDeltaFromBattleLaneBoundsCenter={FormatFloat(sceneDeltaX)}");
+            builder.AppendLine($"sceneCenterDeltaFromSceneDesignAnchor={FormatFloat(sceneDesignAnchorDeltaX)}");
+            builder.AppendLine($"sceneCenterDeltaFromPlaymatCenterY={FormatFloat(sceneDeltaY)}");
+            builder.AppendLine($"playerRowDistanceFromPlaymatBottom={FormatFloat(playerBottomDistance)}");
+            builder.AppendLine($"opponentRowDistanceFromPlaymatTop={FormatFloat(opponentTopDistance)}");
+            builder.AppendLine($"rightRailOverflowOutsidePlaymat={FormatOverflow(playmatInnerRect, rightRailRegisteredBounds)}");
+            builder.AppendLine($"deckOverflowOutsidePlaymat={FormatOverflow(playmatInnerRect, deckBounds)}");
+            builder.AppendLine($"trashOverflowOutsidePlaymat={FormatOverflow(playmatInnerRect, trashBounds)}");
+            builder.AppendLine($"anyRegisteredBattleObjectOutsidePlaymat={anyOutsidePlaymat}");
+            builder.AppendLine($"lastSceneSync={_lastViewTransformSceneSyncInfo}");
+            builder.AppendLine($"registeredSceneInfo={FormatRegisteredSceneInfo()}");
+            builder.AppendLine("registeredBattleRects:");
+            AppendRegisteredSafeRectDiagnostics(builder, playmatInnerRect);
+            Debug.Log(builder.ToString());
+        }
+
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+        void DrawPlaymatBoundsDebugOverlay()
+        {
+            if (!showPlaymatBoundsDebugOverlay || content == null || viewport == null) return;
+
+            Rect playmatInnerRect = GetOverviewPlaymatInnerRect();
+            Rect battleLaneBounds = GetBattleLaneBounds();
+            Rect rightRailLayoutBounds = GetOverviewRightRailRect(playmatInnerRect);
+            Rect deckBounds = GetRegisteredSafeBounds(IsDeckSafeRect, new Rect());
+            Rect trashBounds = GetRegisteredSafeBounds(IsTrashSafeRect, new Rect());
+            Rect sceneBounds = GetRegisteredSafeBounds(IsSceneSafeRect, GetOverviewSceneRect());
+            Rect viewportContentRect = GetCurrentViewportContentRect();
+
+            DrawContentRect(playmatInnerRect, new Color(0.15f, 0.95f, 1f, 0.95f), "playmatInnerRect");
+            DrawContentHorizontalLine(playmatInnerRect.xMin, playmatInnerRect.xMax, playmatInnerRect.center.y, new Color(1f, 0.95f, 0.15f, 0.95f), "playmatCenterY");
+            DrawContentRect(battleLaneBounds, new Color(0.25f, 0.95f, 0.25f, 0.95f), "battleLaneBounds");
+            DrawContentRect(rightRailLayoutBounds, new Color(1f, 0.45f, 0.1f, 0.95f), "rightRailLayoutBounds");
+            DrawContentRect(deckBounds, new Color(0.2f, 0.55f, 1f, 0.95f), "deckBounds");
+            DrawContentRect(trashBounds, new Color(1f, 0.2f, 0.65f, 0.95f), "trashBounds");
+            DrawContentRect(sceneBounds, new Color(0.85f, 0.25f, 1f, 0.95f), "sceneAreaBounds");
+            DrawContentRect(viewportContentRect, new Color(1f, 1f, 1f, 0.9f), "viewportContentRect");
+        }
+
+        Rect GetCurrentViewportContentRect()
+        {
+            if (viewport == null || content == null) return new Rect();
+
+            float safeScale = Mathf.Max(0.1f, content.localScale.x);
+            Vector2 contentPosition = content.anchoredPosition;
+            Rect viewportRect = viewport.rect;
+            return Rect.MinMaxRect(
+                (viewportRect.xMin - contentPosition.x) / safeScale,
+                (viewportRect.yMin - contentPosition.y) / safeScale,
+                (viewportRect.xMax - contentPosition.x) / safeScale,
+                (viewportRect.yMax - contentPosition.y) / safeScale);
+        }
+
+        void DrawContentRect(Rect contentRect, Color color, string label)
+        {
+            if (contentRect.width <= 0f || contentRect.height <= 0f) return;
+
+            Vector2 p1 = ContentPointToGuiPoint(new Vector2(contentRect.xMin, contentRect.yMin));
+            Vector2 p2 = ContentPointToGuiPoint(new Vector2(contentRect.xMin, contentRect.yMax));
+            Vector2 p3 = ContentPointToGuiPoint(new Vector2(contentRect.xMax, contentRect.yMax));
+            Vector2 p4 = ContentPointToGuiPoint(new Vector2(contentRect.xMax, contentRect.yMin));
+            DrawGuiLine(p1, p2, color, 2f);
+            DrawGuiLine(p2, p3, color, 2f);
+            DrawGuiLine(p3, p4, color, 2f);
+            DrawGuiLine(p4, p1, color, 2f);
+
+            if (!string.IsNullOrEmpty(label))
+            {
+                DrawOverlayLabel(p2 + new Vector2(4f, 4f), label, color);
+            }
+        }
+
+        void DrawContentHorizontalLine(float xMin, float xMax, float y, Color color, string label)
+        {
+            Vector2 p1 = ContentPointToGuiPoint(new Vector2(xMin, y));
+            Vector2 p2 = ContentPointToGuiPoint(new Vector2(xMax, y));
+            DrawGuiLine(p1, p2, color, 2f);
+            DrawOverlayLabel(p1 + new Vector2(4f, -18f), label, color);
+        }
+
+        Vector2 ContentPointToGuiPoint(Vector2 contentPoint)
+        {
+            Canvas canvas = content != null ? content.GetComponentInParent<Canvas>() : null;
+            Camera uiCamera = canvas != null && canvas.renderMode != RenderMode.ScreenSpaceOverlay
+                ? canvas.worldCamera
+                : null;
+            Vector3 worldPoint = content != null
+                ? content.TransformPoint(new Vector3(contentPoint.x, contentPoint.y, 0f))
+                : new Vector3(contentPoint.x, contentPoint.y, 0f);
+            Vector2 screenPoint = RectTransformUtility.WorldToScreenPoint(uiCamera, worldPoint);
+            return new Vector2(screenPoint.x, Screen.height - screenPoint.y);
+        }
+
+        void DrawGuiLine(Vector2 start, Vector2 end, Color color, float thickness)
+        {
+            Matrix4x4 previousMatrix = GUI.matrix;
+            Color previousColor = GUI.color;
+            Vector2 delta = end - start;
+            float angle = Mathf.Atan2(delta.y, delta.x) * Mathf.Rad2Deg;
+            GUI.color = color;
+            GUIUtility.RotateAroundPivot(angle, start);
+            GUI.DrawTexture(new Rect(start.x, start.y - thickness * 0.5f, delta.magnitude, thickness), Texture2D.whiteTexture);
+            GUI.matrix = previousMatrix;
+            GUI.color = previousColor;
+        }
+
+        void DrawOverlayLabel(Vector2 position, string label, Color color)
+        {
+            Color previousColor = GUI.color;
+            GUI.color = color;
+            GUI.Label(new Rect(position.x, position.y, 240f, 22f), label);
+            GUI.color = previousColor;
+        }
+#endif
+
+        Rect GetViewportContentRect(float targetX, float targetY, float targetScale)
+        {
+            if (viewport == null) return new Rect();
+
+            float safeScale = Mathf.Max(0.1f, targetScale);
+            float maxScrollX = GetMaxScrollX(safeScale);
+            float clampedTargetX = Mathf.Clamp(targetX, -maxScrollX, 0f);
+            Vector2 contentPosition = new Vector2(clampedTargetX + combatAreaOffsetX, targetY);
+            Rect viewportRect = viewport.rect;
+            return Rect.MinMaxRect(
+                (viewportRect.xMin - contentPosition.x) / safeScale,
+                (viewportRect.yMin - contentPosition.y) / safeScale,
+                (viewportRect.xMax - contentPosition.x) / safeScale,
+                (viewportRect.yMax - contentPosition.y) / safeScale);
+        }
+
+        Rect GetBattleLaneBounds()
+        {
+            Rect bounds = new Rect();
+            bool hasBounds = false;
+            for (int i = 0; i < _lanes.Count; i++)
+            {
+                UcgBattleLane lane = _lanes[i];
+                if (lane == null) continue;
+
+                EncapsulateRectTransformBoundsInContent(lane.opponentSlot, ref bounds, ref hasBounds);
+                EncapsulateRectTransformBoundsInContent(lane.playerSlot, ref bounds, ref hasBounds);
+            }
+
+            return hasBounds ? bounds : new Rect();
+        }
+
+        Rect GetRowBounds(bool opponent)
+        {
+            Rect bounds = new Rect();
+            bool hasBounds = false;
+            for (int i = 0; i < _lanes.Count; i++)
+            {
+                UcgBattleLane lane = _lanes[i];
+                RectTransform slot = lane != null
+                    ? opponent ? lane.opponentSlot : lane.playerSlot
+                    : null;
+                EncapsulateRectTransformBoundsInContent(slot, ref bounds, ref hasBounds);
+            }
+
+            return hasBounds ? bounds : new Rect();
+        }
+
+        Rect GetRegisteredSafeBounds(System.Func<RectTransform, bool> predicate, Rect fallback)
+        {
+            Rect bounds = new Rect();
+            bool hasBounds = false;
+            for (int i = 0; i < _focusViewSafeRects.Count; i++)
+            {
+                RectTransform rect = _focusViewSafeRects[i];
+                if (rect == null || predicate == null || !predicate(rect)) continue;
+
+                EncapsulateRectTransformBoundsInContent(rect, ref bounds, ref hasBounds);
+            }
+
+            return hasBounds ? bounds : fallback;
+        }
+
+        bool IsSceneSafeRect(RectTransform rect)
+        {
+            return rect != null && rect.name.IndexOf("Scene", System.StringComparison.OrdinalIgnoreCase) >= 0;
+        }
+
+        bool IsRightRailSafeRect(RectTransform rect)
+        {
+            return rect != null && !IsSceneSafeRect(rect);
+        }
+
+        bool IsDeckSafeRect(RectTransform rect)
+        {
+            return rect != null && rect.name.IndexOf("Deck", System.StringComparison.OrdinalIgnoreCase) >= 0;
+        }
+
+        bool IsTrashSafeRect(RectTransform rect)
+        {
+            if (rect == null) return false;
+
+            return rect.name.IndexOf("Discard", System.StringComparison.OrdinalIgnoreCase) >= 0
+                || rect.name.IndexOf("Trash", System.StringComparison.OrdinalIgnoreCase) >= 0;
+        }
+
+        string FormatLaneCenters()
+        {
+            var builder = new StringBuilder();
+            for (int i = 0; i < _lanes.Count; i++)
+            {
+                if (i > 0) builder.Append(", ");
+                builder.Append("Lane ").Append((i + 1).ToString("00")).Append('=').Append(FormatFloat(GetLaneCenterForView(i)));
+            }
+
+            return builder.ToString();
+        }
+
+        void AppendRegisteredSafeRectDiagnostics(StringBuilder builder, Rect playmatInnerRect)
+        {
+            for (int i = 0; i < _focusViewSafeRects.Count; i++)
+            {
+                RectTransform rect = _focusViewSafeRects[i];
+                if (rect == null)
+                {
+                    builder.AppendLine($"  [{i}] <null>");
+                    continue;
+                }
+
+                Rect bounds = new Rect();
+                bool hasBounds = false;
+                EncapsulateRectTransformBoundsInContent(rect, ref bounds, ref hasBounds);
+                builder.AppendLine(
+                    $"  [{i}] name={rect.name}, active={rect.gameObject.activeInHierarchy}, bounds={(hasBounds ? FormatRect(bounds) : "<none>")}, outsidePlaymat={(hasBounds && IsRectOutside(playmatInnerRect, bounds))}");
+            }
+        }
+
+        string FormatRegisteredSceneInfo()
+        {
+            for (int i = 0; i < _focusViewSafeRects.Count; i++)
+            {
+                RectTransform rect = _focusViewSafeRects[i];
+                if (!IsSceneSafeRect(rect)) continue;
+
+                RectTransform root = rect.parent as RectTransform;
+                return
+                    $"index={i}, slotName={rect.name}, slotParent={(rect.parent != null ? rect.parent.name : "<none>")}, slotAnchored={FormatVector2(rect.anchoredPosition)}, rootName={(root != null ? root.name : "<none>")}, rootParent={(root != null && root.parent != null ? root.parent.name : "<none>")}, rootAnchored={(root != null ? FormatVector2(root.anchoredPosition) : "<none>")}, path={GetTransformPath(rect)}";
+            }
+
+            return "<none>";
+        }
+
+        string GetTransformPath(Transform transform)
+        {
+            if (transform == null) return "<none>";
+
+            var stack = new Stack<string>();
+            Transform current = transform;
+            while (current != null)
+            {
+                stack.Push(current.name);
+                current = current.parent;
+            }
+
+            return string.Join("/", stack.ToArray());
+        }
+
+        bool IsRectOutside(Rect container, Rect rect)
+        {
+            if (rect.width <= 0f || rect.height <= 0f) return false;
+
+            return rect.xMin < container.xMin
+                || rect.xMax > container.xMax
+                || rect.yMin < container.yMin
+                || rect.yMax > container.yMax;
+        }
+
+        string FormatOverflow(Rect container, Rect rect)
+        {
+            if (rect.width <= 0f || rect.height <= 0f) return "<none>";
+
+            float left = Mathf.Max(0f, container.xMin - rect.xMin);
+            float right = Mathf.Max(0f, rect.xMax - container.xMax);
+            float bottom = Mathf.Max(0f, container.yMin - rect.yMin);
+            float top = Mathf.Max(0f, rect.yMax - container.yMax);
+            float max = Mathf.Max(Mathf.Max(left, right), Mathf.Max(bottom, top));
+            return $"left={FormatFloat(left)}, right={FormatFloat(right)}, bottom={FormatFloat(bottom)}, top={FormatFloat(top)}, max={FormatFloat(max)}";
+        }
+
+        void LogViewTransformOnlyApplied(string source, float targetScale, float targetX, float targetY)
+        {
+            float contentScaleAfter = content != null ? content.localScale.x : 1f;
+            Vector2 contentPositionAfter = content != null ? content.anchoredPosition : Vector2.zero;
+            Debug.Log(
+                "[UCG ViewTransformOnly]\n"
+                + $"source={source}\n"
+                + $"laneIndex=-1\n"
+                + $"targetScale={targetScale:0.###}\n"
+                + $"targetX={targetX:0.#}\n"
+                + $"targetY={targetY:0.#}\n"
+                + $"viewportRatio=applied\n"
+                + $"smooth={Application.isPlaying && activeLaneScrollDuration > 0f}\n"
+                + $"phase={GetViewTransformPhaseName()}\n"
+                + $"coroutineRunning={IsViewTransformOnlyTransitionRunning}\n"
+                + $"contentScaleAfter={contentScaleAfter:0.###}\n"
+                + $"contentPosAfter={FormatVector2(contentPositionAfter)}");
+        }
+
+        string GetViewTransformPhaseName()
+        {
+            return phaseManager != null ? phaseManager.CurrentPhase.ToString() : "<none>";
         }
 
         float GetContentTargetYForFocusLaneView(int laneIndex, float scale)
@@ -864,17 +1474,132 @@ namespace UCG
 
             UcgBattleLane lane = _lanes[laneIndex];
             RectTransform opponentSlot = lane != null ? lane.opponentSlot : null;
-            if (opponentSlot == null) return 0f;
+            RectTransform playerSlot = lane != null ? lane.playerSlot : null;
+            if (opponentSlot == null || playerSlot == null) return 0f;
 
             float viewportHeight = viewport.rect.height > 0f ? viewport.rect.height : 960f;
             float safeScale = Mathf.Max(0.1f, scale);
-            Vector3 opponentWorldCenter = opponentSlot.TransformPoint(opponentSlot.rect.center);
-            float opponentCenterY = content != null ? content.InverseTransformPoint(opponentWorldCenter).y : opponentSlot.anchoredPosition.y;
-            float opponentHeight = Mathf.Max(1f, opponentSlot.rect.height);
             float viewportTop = viewportHeight * 0.5f;
-            float maximumTopOverflow = opponentHeight * safeScale * 0.4f;
-            float targetY = viewportTop - (opponentCenterY + opponentHeight * 0.5f) * safeScale + maximumTopOverflow;
-            return Mathf.Min(0f, targetY);
+            float viewportBottom = -viewportTop;
+
+            Rect playmatInnerRect = GetOverviewPlaymatInnerRect();
+            float idealTargetY = FocusViewCenterOffsetY - playmatInnerRect.center.y * safeScale;
+            if (!TryGetFocusSafeBoundsInContent(laneIndex, out Rect focusBounds))
+            {
+                return idealTargetY;
+            }
+
+            float topLimit = viewportTop - FocusViewOpponentRowTopPadding - focusBounds.yMax * safeScale;
+            float bottomLimit = viewportBottom + FocusViewPlayerRowBottomPadding - focusBounds.yMin * safeScale;
+            if (bottomLimit <= topLimit)
+            {
+                return Mathf.Clamp(idealTargetY, bottomLimit, topLimit);
+            }
+
+            return (bottomLimit + topLimit) * 0.5f;
+        }
+
+        bool TryGetFocusSafeBoundsInContent(int laneIndex, out Rect bounds)
+        {
+            bounds = new Rect();
+            bool hasBounds = false;
+
+            if (laneIndex >= 0 && laneIndex < _lanes.Count)
+            {
+                UcgBattleLane lane = _lanes[laneIndex];
+                if (lane != null)
+                {
+                    EncapsulateRectTransformBoundsInContent(lane.opponentSlot, ref bounds, ref hasBounds);
+                    EncapsulateRectTransformBoundsInContent(lane.playerSlot, ref bounds, ref hasBounds);
+                }
+            }
+
+            EncapsulateRect(GetOverviewSceneRect(), ref bounds, ref hasBounds);
+            for (int i = 0; i < _focusViewSafeRects.Count; i++)
+            {
+                EncapsulateRectTransformBoundsInContent(_focusViewSafeRects[i], ref bounds, ref hasBounds);
+            }
+
+            if (!hasBounds)
+            {
+                bounds = GetOverviewPlaymatInnerRect();
+                hasBounds = true;
+            }
+
+            return hasBounds;
+        }
+
+        Rect GetOverviewSceneRect()
+        {
+            Vector2 sceneCenter = GetOverviewSceneCenter();
+            Vector2 sceneSize = GetOverviewSceneAreaSize();
+            return Rect.MinMaxRect(
+                sceneCenter.x - sceneSize.x * 0.5f,
+                sceneCenter.y - sceneSize.y * 0.5f,
+                sceneCenter.x + sceneSize.x * 0.5f,
+                sceneCenter.y + sceneSize.y * 0.5f);
+        }
+
+        void EncapsulateRectTransformBoundsInContent(RectTransform rect, ref Rect bounds, ref bool hasBounds)
+        {
+            if (rect == null || content == null || !rect.gameObject.activeInHierarchy) return;
+
+            Vector3[] corners = new Vector3[4];
+            rect.GetWorldCorners(corners);
+            float minX = float.PositiveInfinity;
+            float minY = float.PositiveInfinity;
+            float maxX = float.NegativeInfinity;
+            float maxY = float.NegativeInfinity;
+            for (int i = 0; i < corners.Length; i++)
+            {
+                Vector3 local = content.InverseTransformPoint(corners[i]);
+                minX = Mathf.Min(minX, local.x);
+                minY = Mathf.Min(minY, local.y);
+                maxX = Mathf.Max(maxX, local.x);
+                maxY = Mathf.Max(maxY, local.y);
+            }
+
+            if (float.IsInfinity(minX) || float.IsInfinity(minY) || float.IsInfinity(maxX) || float.IsInfinity(maxY)) return;
+
+            EncapsulateRect(Rect.MinMaxRect(minX, minY, maxX, maxY), ref bounds, ref hasBounds);
+        }
+
+        void EncapsulateRect(Rect rect, ref Rect bounds, ref bool hasBounds)
+        {
+            if (rect.width <= 0f || rect.height <= 0f) return;
+
+            if (!hasBounds)
+            {
+                bounds = rect;
+                hasBounds = true;
+                return;
+            }
+
+            bounds = Rect.MinMaxRect(
+                Mathf.Min(bounds.xMin, rect.xMin),
+                Mathf.Min(bounds.yMin, rect.yMin),
+                Mathf.Max(bounds.xMax, rect.xMax),
+                Mathf.Max(bounds.yMax, rect.yMax));
+        }
+
+        bool TryGetRectVerticalBoundsInContent(RectTransform rect, out float minY, out float maxY)
+        {
+            minY = 0f;
+            maxY = 0f;
+            if (rect == null || content == null) return false;
+
+            Vector3[] corners = new Vector3[4];
+            rect.GetWorldCorners(corners);
+            minY = float.PositiveInfinity;
+            maxY = float.NegativeInfinity;
+            for (int i = 0; i < corners.Length; i++)
+            {
+                float localY = content.InverseTransformPoint(corners[i]).y;
+                minY = Mathf.Min(minY, localY);
+                maxY = Mathf.Max(maxY, localY);
+            }
+
+            return !float.IsInfinity(minY) && !float.IsInfinity(maxY);
         }
 
         float GetLanePitchForView(int laneIndex)
@@ -1140,6 +1865,7 @@ namespace UCG
                     GetOverviewPlayerSlotPosition(playmatInnerRect, scale, visualScale),
                     GetOverviewStandardCardSize(1f));
             }
+            LogAllLaneAnchoredPositions("ApplyOverviewLayout:Completed");
         }
 
         public Rect GetOverviewPlaymatSafeArea()
@@ -1184,40 +1910,119 @@ namespace UCG
             return GetOverviewStandardCardSize(1f);
         }
 
+        public Vector2 GetOverviewNormalCardSize()
+        {
+            return GetOverviewActualBattleCardSize(out _);
+        }
+
         public Vector2 GetOverviewSceneAreaSize()
         {
-            Vector2 cardSize = GetOverviewStandardCardSize(1f);
+            Vector2 cardSize = GetOverviewNormalCardSize();
             return new Vector2(cardSize.y, cardSize.x);
         }
 
         public Vector2 GetOverviewSceneCenter()
         {
+            return GetOverviewSceneDesignAnchor();
+        }
+
+        public string GetOverviewSceneCardSizeSource()
+        {
+            GetOverviewActualBattleCardSize(out string source);
+            return source + ", rotated 90 degrees";
+        }
+
+        Vector2 GetOverviewActualBattleCardSize(out string source)
+        {
+            Vector2 deckSize = GetRegisteredSingleCardSize(IsDeckSafeRect, out string deckSource);
+            if (IsValidCardSize(deckSize))
+            {
+                source = deckSource;
+                return deckSize;
+            }
+
+            Vector2 trashSize = GetRegisteredSingleCardSize(IsTrashSafeRect, out string trashSource);
+            if (IsValidCardSize(trashSize))
+            {
+                source = trashSource;
+                return trashSize;
+            }
+
+            Vector2 playerRowSize = GetRowSingleCardSize(false, out string playerRowSource);
+            if (IsValidCardSize(playerRowSize))
+            {
+                source = playerRowSource;
+                return playerRowSize;
+            }
+
+            Vector2 opponentRowSize = GetRowSingleCardSize(true, out string opponentRowSource);
+            if (IsValidCardSize(opponentRowSize))
+            {
+                source = opponentRowSource;
+                return opponentRowSize;
+            }
+
+            source = "fallback GetOverviewStandardCardSize(1f); no registered actual battle card bounds available";
+            return GetOverviewStandardCardSize(1f);
+        }
+
+        Vector2 GetRegisteredSingleCardSize(System.Func<RectTransform, bool> predicate, out string source)
+        {
+            source = "<none>";
+            for (int i = 0; i < _focusViewSafeRects.Count; i++)
+            {
+                RectTransform rect = _focusViewSafeRects[i];
+                if (rect == null || predicate == null || !predicate(rect)) continue;
+
+                Rect bounds = new Rect();
+                bool hasBounds = false;
+                EncapsulateRectTransformBoundsInContent(rect, ref bounds, ref hasBounds);
+                if (!hasBounds || bounds.width <= 1f || bounds.height <= 1f) continue;
+
+                source = $"{rect.name} registered bounds";
+                return new Vector2(bounds.width, bounds.height);
+            }
+
+            return Vector2.zero;
+        }
+
+        Vector2 GetRowSingleCardSize(bool opponent, out string source)
+        {
+            source = "<none>";
+            for (int i = 0; i < _lanes.Count; i++)
+            {
+                UcgBattleLane lane = _lanes[i];
+                RectTransform slot = lane != null
+                    ? opponent ? lane.opponentSlot : lane.playerSlot
+                    : null;
+                if (slot == null) continue;
+
+                Rect bounds = new Rect();
+                bool hasBounds = false;
+                EncapsulateRectTransformBoundsInContent(slot, ref bounds, ref hasBounds);
+                if (!hasBounds || bounds.height <= 1f) continue;
+
+                float width = bounds.width > 1f ? bounds.width : bounds.height * OverviewPortraitCardAspect;
+                source = $"{slot.name} actual row slot bounds";
+                return new Vector2(width, bounds.height);
+            }
+
+            return Vector2.zero;
+        }
+
+        bool IsValidCardSize(Vector2 size)
+        {
+            return size.x > 1f && size.y > 1f;
+        }
+
+        Vector2 GetOverviewSceneDesignAnchor()
+        {
             Rect playmatInnerRect = GetOverviewPlaymatInnerRect();
             Rect laneAreaRect = GetOverviewLaneAreaRect(playmatInnerRect);
             float visualScale = GetOverviewLayoutVisualScale(overviewScale, playmatInnerRect, laneAreaRect);
-            float lane01CenterX = TryGetFinalOverviewLaneSlotCenterX(0, out float finalLane01CenterX)
-                ? finalLane01CenterX
-                : GetOverviewLaneCenterX(0, playmatInnerRect, laneAreaRect, visualScale);
-            float lane02CenterX = TryGetFinalOverviewLaneSlotCenterX(1, out float finalLane02CenterX)
-                ? finalLane02CenterX
-                : GetOverviewLaneCenterX(1, playmatInnerRect, laneAreaRect, visualScale);
-            return new Vector2((lane01CenterX + lane02CenterX) * 0.5f, GetOverviewPlaymatCenterY(playmatInnerRect));
-        }
-
-        bool TryGetFinalOverviewLaneSlotCenterX(int laneIndex, out float centerX)
-        {
-            centerX = 0f;
-            if (content == null || laneIndex < 0 || laneIndex >= _lanes.Count) return false;
-
-            UcgBattleLane lane = _lanes[laneIndex];
-            RectTransform slot = lane != null
-                ? (lane.playerSlot != null ? lane.playerSlot : lane.opponentSlot)
-                : null;
-            if (slot == null) return false;
-
-            Vector3 worldCenter = slot.TransformPoint(slot.rect.center);
-            centerX = content.InverseTransformPoint(worldCenter).x;
-            return true;
+            float lane01Center = GetOverviewLaneCenterX(0, playmatInnerRect, laneAreaRect, visualScale);
+            float lane02Center = GetOverviewLaneCenterX(1, playmatInnerRect, laneAreaRect, visualScale);
+            return new Vector2((lane01Center + lane02Center) * 0.5f, GetOverviewPlaymatCenterY(playmatInnerRect));
         }
 
         Rect GetOverviewRightRailRect(Rect playmatInnerRect)
@@ -1428,6 +2233,57 @@ namespace UCG
             laneRect.pivot = new Vector2(0f, 0.5f);
             laneRect.sizeDelta = laneSize;
             laneRect.anchoredPosition = GetLanePosition(index);
+            LogLaneRectState("ApplyLaneRect", index, laneRect);
+        }
+
+        public void LogLane1AndContentState(string stage)
+        {
+            RectTransform laneRect = _lanes.Count > 0 && _lanes[0] != null
+                ? _lanes[0].transform as RectTransform
+                : null;
+            LogLaneContentState(stage, 0, laneRect);
+        }
+
+        void LogLaneRectState(string stage, int laneIndex, RectTransform laneRect)
+        {
+            LogLaneContentState(stage, laneIndex, laneRect);
+        }
+
+        void LogAllLaneAnchoredPositions(string stage)
+        {
+            System.Text.StringBuilder builder = new System.Text.StringBuilder();
+            builder.Append("[UCG LanePositionTrace]\n");
+            builder.Append("stage=").Append(stage).Append('\n');
+            builder.Append("contentPos=").Append(FormatVector2(content != null ? content.anchoredPosition : Vector2.zero)).Append('\n');
+            builder.Append("contentScale=").Append(content != null ? content.localScale.ToString("F3") : "<none>").Append('\n');
+            for (int i = 0; i < _lanes.Count; i++)
+            {
+                RectTransform laneRect = _lanes[i] != null ? _lanes[i].transform as RectTransform : null;
+                builder.Append("laneIndex=").Append(i)
+                    .Append(", name=").Append(laneRect != null ? laneRect.name : "<none>")
+                    .Append(", anchored=").Append(FormatVector2(laneRect != null ? laneRect.anchoredPosition : Vector2.zero))
+                    .Append(", parent=").Append(laneRect != null && laneRect.parent != null ? laneRect.parent.name : "<none>")
+                    .Append('\n');
+            }
+            Debug.Log(builder.ToString());
+        }
+
+        void LogLaneContentState(string stage, int laneIndex, RectTransform laneRect)
+        {
+            RectTransform parentRect = laneRect != null ? laneRect.parent as RectTransform : null;
+            Debug.Log(
+                "[UCG LanePositionTrace]\n"
+                + $"stage={stage}\n"
+                + $"laneIndex={laneIndex}\n"
+                + $"laneName={(laneRect != null ? laneRect.name : "<none>")}\n"
+                + $"laneAnchored={(laneRect != null ? FormatVector2(laneRect.anchoredPosition) : "<none>")}\n"
+                + $"laneSize={(laneRect != null ? FormatVector2(laneRect.sizeDelta) : "<none>")}\n"
+                + $"laneScale={(laneRect != null ? laneRect.localScale.ToString("F3") : "<none>")}\n"
+                + $"parentName={(parentRect != null ? parentRect.name : "<none>")}\n"
+                + $"parentAnchored={(parentRect != null ? FormatVector2(parentRect.anchoredPosition) : "<none>")}\n"
+                + $"parentScale={(parentRect != null ? parentRect.localScale.ToString("F3") : "<none>")}\n"
+                + $"contentAnchored={(content != null ? FormatVector2(content.anchoredPosition) : "<none>")}\n"
+                + $"contentScale={(content != null ? content.localScale.ToString("F3") : "<none>")}");
         }
 
         void LogScrollDebugState(string context)
@@ -1474,6 +2330,11 @@ namespace UCG
         string FormatVector3(Vector3 value)
         {
             return "(" + FormatFloat(value.x) + ", " + FormatFloat(value.y) + ", " + FormatFloat(value.z) + ")";
+        }
+
+        string FormatRect(Rect value)
+        {
+            return $"(xMin={FormatFloat(value.xMin)}, yMin={FormatFloat(value.yMin)}, xMax={FormatFloat(value.xMax)}, yMax={FormatFloat(value.yMax)}, w={FormatFloat(value.width)}, h={FormatFloat(value.height)})";
         }
 
         string FormatFloat(float value)
